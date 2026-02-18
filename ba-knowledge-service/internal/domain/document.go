@@ -1,57 +1,56 @@
-package domain
+package v32
 
-import (
-	"time"
-)
+import "time"
 
-type DocumentType string
+// RequirementTier enum matching Proto definition
+type RequirementTier int32
 
 const (
-	DocTypePRD        DocumentType = "PRD"
-	DocTypeURDIndex   DocumentType = "URD_INDEX"
-	DocTypeURDOutline DocumentType = "URD_OUTLINE"
-	DocTypeURDFull    DocumentType = "URD_FULL"
+	TierUnspecified RequirementTier = 0
+	TierPRD         RequirementTier = 1
+	TierURDIndex    RequirementTier = 2
+	TierURDOutline  RequirementTier = 3
+	TierURDFull     RequirementTier = 4
 )
 
+func (t RequirementTier) String() string {
+	switch t {
+	case TierPRD:
+		return "PRD"
+	case TierURDIndex:
+		return "URD_INDEX"
+	case TierURDOutline:
+		return "URD_OUTLINE"
+	case TierURDFull:
+		return "URD_FULL"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// DocumentStatus enum
 type DocumentStatus string
 
 const (
-	DocStatusDraft    DocumentStatus = "DRAFT"
-	DocStatusInReview DocumentStatus = "IN_REVIEW"
-	DocStatusApproved DocumentStatus = "APPROVED"
-	DocStatusArchived DocumentStatus = "ARCHIVED"
+	DocumentStatusDraft      DocumentStatus = "draft"
+	DocumentStatusGenerating DocumentStatus = "generating"
+	DocumentStatusReviewing  DocumentStatus = "reviewing"
+	DocumentStatusApproved   DocumentStatus = "approved"
+	DocumentStatusFailed     DocumentStatus = "failed"
 )
 
-// Document represents a knowledge artifact in Postgres
+// Document represents a generic requirement document in the system
 type Document struct {
-	ID          string         `gorm:"primaryKey;type:uuid"`
-	ProjectID   string         `gorm:"type:uuid;not null;index"`
-	DocType     DocumentType   `gorm:"type:varchar(20);not null"`
-	Title       string         `gorm:"type:varchar(255)"`
-	Version     string         `gorm:"type:varchar(20);default:'1.0.0'"`
-	Status      DocumentStatus `gorm:"type:varchar(20);default:'DRAFT'"`
-	S3Key       string         `gorm:"type:varchar(500)"`
-	GraphNodeID string         `gorm:"type:varchar(100)"` // Reference to Neo4j node ID
-	CreatedBy   string         `gorm:"type:uuid"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
-// DocumentLineage tracks dependencies between documents
-type DocumentLineage struct {
-	ID               uint   `gorm:"primaryKey"`
-	SourceDocID      string `gorm:"type:uuid;not null;index"`
-	TargetDocID      string `gorm:"type:uuid;not null;index"`
-	RelationshipType string `gorm:"type:varchar(50)"` // GENERATES, EXPANDS_TO, DERIVED_FROM
-	CreatedAt        time.Time
-}
-
-// ExternalSource maps internal documents to external systems (Confluence, Jira)
-type ExternalSource struct {
-	ID            uint   `gorm:"primaryKey"`
-	SourceType    string `gorm:"type:varchar(20)"` // CONFLUENCE, JIRA
-	ExternalID    string `gorm:"type:varchar(255);index"`
-	InternalDocID string `gorm:"type:uuid;not null;index"`
-	SyncStatus    string `gorm:"type:varchar(20)"` // SYNCED, OUTDATED, CONFLICT
-	LastSyncAt    time.Time
+	ID               string          `json:"id" bson:"_id"`
+	ProjectID        string          `json:"project_id" bson:"project_id"`
+	ParentDocumentID string          `json:"parent_document_id" bson:"parent_document_id"` // E.g., Index ID for Outline
+	RootDocumentID   string          `json:"root_document_id" bson:"root_document_id"`     // E.g., BRD ID for URD
+	Tier             RequirementTier `json:"tier" bson:"tier"`
+	Status           DocumentStatus  `json:"status" bson:"status"`
+	ModuleName       string          `json:"module_name" bson:"module_name"`
+	Version          int             `json:"version" bson:"version"`
+	Content          string          `json:"content" bson:"content"` // Markdown content
+	CreatedAt        time.Time       `json:"created_at" bson:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at" bson:"updated_at"`
+	ApprovedAt       *time.Time      `json:"approved_at,omitempty" bson:"approved_at,omitempty"`
 }
