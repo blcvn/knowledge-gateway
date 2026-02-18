@@ -7,7 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blcvn/backend/services/pkg/infrastructure/redis"
+	"github.com/blcvn/backend/services/pkg/infrastructure/queue"
+	"github.com/go-redis/redis/v8"
 )
 
 func main() {
@@ -17,8 +18,12 @@ func main() {
 		redisAddr = "localhost:6379"
 	}
 
-	queue := redis.NewRedisQueue(redisAddr) // Assuming shared pkg has this structure from Phase 1
-	_ = queue
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+
+	redisQueue := queue.NewRedisQueue(redisClient)
+	_ = redisQueue
 
 	// Setup signal handling
 	sigs := make(chan os.Signal, 1)

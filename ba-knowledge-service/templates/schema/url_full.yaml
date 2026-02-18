@@ -1,0 +1,224 @@
+name: "URD Full"
+type: "urd_full"
+version: "1.0"
+description: "Complete Use Case Requirements Document with full details"
+
+metadata:
+  - name: "Module"
+    pattern: '^> \*\*Module:\*\* .+$'
+    required: true
+  - name: "Version"
+    pattern: '^> \*\*Version:\*\* .+$'
+    required: true
+  - name: "Created Date"
+    pattern: '^> \*\*Created Date:\*\* .+$'
+    required: true
+
+sections:
+  - id: "uc-mapping"
+    title: "US → Use Case Mapping"
+    level: 1
+    type: "table"
+    required: true
+    pattern: '^# 1 US → Use Case Mapping$'
+    table:
+      headers: ["Use Case ID", "Use Case Name", "Related User Stories", "Priority", "Notes"]
+      min_rows: 1
+      allow_comment: true
+
+  - id: "actor-definition"
+    title: "Actor Definition"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 2 Actor Definition$'
+    subsections:
+      - id: "human-actors"
+        title: "Human Actors"
+        level: 2
+        type: "table"
+        required: true
+        pattern: '^## 2\.1 Human Actors$'
+        table:
+          headers: ["Actor ID", "Name", "Description", "Persona/Role"]
+          min_rows: 1
+          allow_comment: true
+      
+      - id: "system-actors"
+        title: "System Actors"
+        level: 2
+        type: "table"
+        required: true
+        pattern: '^## 2\.2 System Actors$'
+        table:
+          headers: ["Actor ID", "Name", "Description", "Type"]
+          min_rows: 0
+          allow_comment: true
+
+  - id: "system-boundary"
+    title: "System Boundary"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 3 System Boundary$'
+    subsections:
+      - id: "boundary-diagram"
+        title: "Diagram"
+        level: 2
+        type: "diagram"
+        required: true
+        pattern: '^## 3\.1 Diagram$'
+        diagram:
+          type: "mermaid"
+          allowed_types: ["graph TD", "graph LR", "flowchart"]
+          forbidden_types: ["ascii"]
+          required_pattern: '```mermaid'
+        followed_by:
+          type: "table"
+          headers: ["System/Module", "Inside/Outside", "Responsibility", "Owner"]
+
+  - id: "use-case-summary"
+    title: "Use Case Summary Table"
+    level: 1
+    type: "table"
+    required: true
+    pattern: '^# 4 Use Case Summary Table$'
+    table:
+      headers: ["UC ID", "Name", "Actor", "Trigger", "Preconditions", "Postconditions", "Priority"]
+      min_rows: 1
+      allow_comment: true
+
+  - id: "main-flow"
+    title: "Main Flow Sketch (High-Level)"
+    level: 1
+    type: "iterative"
+    required: true
+    pattern: '^# 5 Main Flow Sketch \(High-Level\)$'
+    repeatable: true
+    repeat_pattern: '^## 5\.\d+ UC-\d+:'
+    subsections:
+      - id: "flow-sketch"
+        title: "Flow Sketch"
+        level: 3
+        type: "diagram"
+        required: true
+        pattern: '^### 5\.\d+\.1 Flow Sketch:$'
+        diagram:
+          type: "mermaid"
+          allowed_types: ["sequenceDiagram"]
+          required_pattern: '```mermaid'
+      
+      - id: "uc-overview"
+        title: "Use Case Overview"
+        level: 3
+        type: "table"
+        required: true
+        pattern: '^### 5\.\d+\.2 Use Case Overview$'
+        table:
+          headers: ["Field", "Value"]
+          min_rows: 8
+          allow_comment: false
+      
+      - id: "main-flow-detail"
+        title: "Main Flow"
+        level: 3
+        type: "table"
+        required: true
+        pattern: '^### 5\.\d+\.3 Main Flow$'
+        table:
+          headers: ["Step", "Actor", "Action", "System Response", "Business Rule", "Notes"]
+          min_rows: 1
+          allow_comment: false
+      
+      - id: "alternative-flows"
+        title: "Alternative Flows"
+        level: 3
+        type: "table"
+        required: true
+        pattern: '^### 5\.\d+\.4 Alternative Flows$'
+        table:
+          headers: ["ID", "Step", "Condition", "Flow", "Return Step"]
+          min_rows: 0
+          allow_comment: false
+      
+      - id: "exception-flows"
+        title: "Exception / Error Flows"
+        level: 3
+        type: "table"
+        required: true
+        pattern: '^### 5\.\d+\.5 Exception / Error Flows$'
+        table:
+          headers: ["ID", "Step", "Condition", "System Behavior", "User Message", "Severity"]
+          min_rows: 0
+          allow_comment: false
+      
+      - id: "sequence-diagram"
+        title: "Sequence Diagram"
+        level: 3
+        type: "diagram"
+        required: false
+        pattern: '^### 5\.\d+\.6 Sequence Diagram$'
+        diagram:
+          type: "mermaid"
+          allowed_types: ["sequenceDiagram"]
+          required_pattern: '```mermaid'
+      
+      - id: "api-specification"
+        title: "API Specification"
+        level: 3
+        type: "section"
+        required: false
+        pattern: '^### 5\.\d+\.7 API Specification$'
+
+  - id: "integration-touchpoints"
+    title: "Integration Touchpoints"
+    level: 1
+    type: "table"
+    required: true
+    pattern: '^# 6 Integration Touchpoints$'
+    table:
+      headers: ["Use Case", "Step", "System", "Purpose", "Mode", "Error Handling"]
+      min_rows: 0
+      allow_comment: true
+
+  - id: "data-entities"
+    title: "Data Entities Overview"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 7 Data Entities Overview$'
+    subsections:
+      - id: "entities-diagram"
+        title: "Diagram"
+        level: 2
+        type: "diagram"
+        required: true
+        pattern: '^## 7\.1 Diagram.*$'
+        diagram:
+          type: "mermaid"
+          allowed_types: ["erDiagram"]
+          required_pattern: '```mermaid'
+        followed_by:
+          type: "table"
+          headers: ["Entity", "Description", "States", "Relationships"]
+
+  - id: "technical-notes"
+    title: "Technical Notes & Concerns"
+    level: 1
+    type: "table"
+    required: true
+    pattern: '^# 8 Technical Notes & Concerns$'
+    table:
+      headers: ["ID", "Concern", "Affected UC", "Mitigation", "Owner"]
+      min_rows: 0
+      allow_comment: true
+
+validation_rules:
+  - name: "no-html-comments"
+    pattern: '<!-- .+ -->'
+    severity: "warning"
+    message: "HTML comment blocks should be replaced with actual content"
+  
+  - name: "require-detailed-subsections"
+    severity: "info"
+    message: "URD Full should contain detailed subsections 5.x.2 through 5.x.7 for each use case"

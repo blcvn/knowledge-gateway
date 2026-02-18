@@ -2,10 +2,11 @@ package usecases
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/blcvn/backend/services/ba-knowledge-service/internal/domain"
+	"github.com/blcvn/backend/services/ba-knowledge-service/internal/editor"
 	"github.com/blcvn/backend/services/ba-knowledge-service/internal/generators/full"
 	"github.com/blcvn/backend/services/ba-knowledge-service/internal/generators/index"
 	"github.com/blcvn/backend/services/ba-knowledge-service/internal/generators/outline"
@@ -24,6 +25,8 @@ type DocumentUseCase struct {
 	promptClient      promptpb.PromptServiceClient
 	redisClient       *redis.Client
 	prdParser         *prd.Parser
+	eventEmitter      domain.EventEmitter
+	validatorAgent    *editor.ValidatorAgent
 }
 
 // NewDocumentUseCase creates a new document usecase
@@ -32,6 +35,8 @@ func NewDocumentUseCase(
 	aiProxyClient aiproxy.AIProxyServiceClient,
 	promptClient promptpb.PromptServiceClient,
 	redisClient *redis.Client,
+	eventEmitter domain.EventEmitter,
+	validatorAgent *editor.ValidatorAgent,
 ) *DocumentUseCase {
 	return &DocumentUseCase{
 		persistenceClient: persistenceClient,
@@ -39,6 +44,8 @@ func NewDocumentUseCase(
 		promptClient:      promptClient,
 		redisClient:       redisClient,
 		prdParser:         prd.NewParser(aiProxyClient, promptClient),
+		eventEmitter:      eventEmitter,
+		validatorAgent:    validatorAgent,
 	}
 }
 
@@ -76,23 +83,17 @@ func (u *DocumentUseCase) CreatePRD(ctx context.Context, projectID, moduleName s
 
 	fmt.Printf("[DocumentUseCase.CreatePRD] PRD saved successfully with ID: %s\n", docID)
 
-	// Emit event to Redis queue for Knowledge Worker to process
-	event := map[string]interface{}{
-		"id":          uuid.New().String(),
-		"type":        "PRDUploaded",
-		"document_id": docID,
-		"project_id":  projectID,
-		"tier":        "PRD",
-		"created_at":  time.Now().Format(time.RFC3339),
+	// Emit event
+	event := &domain.PlannerEvent{
+		Type:       domain.EventPRDUploaded,
+		DocumentID: docID,
+		ProjectID:  projectID,
+		Tier:       domain.TierPRD,
+		CreatedAt:  time.Now(),
 	}
 
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		fmt.Printf("[DocumentUseCase.CreatePRD] Warning: Failed to marshal event: %v\n", err)
-	} else {
-		if err := u.redisClient.Publish(ctx, "document_events", eventJSON).Err(); err != nil {
-			fmt.Printf("[DocumentUseCase.CreatePRD] Warning: Failed to publish event: %v\n", err)
-		}
+	if err := u.eventEmitter.Emit(event); err != nil {
+		fmt.Printf("[DocumentUseCase.CreatePRD] Warning: Failed to emit event: %v\n", err)
 	}
 
 	fmt.Printf("[DocumentUseCase.CreatePRD] ====== SUCCESS ======\n")
@@ -284,22 +285,153 @@ func (u *DocumentUseCase) ApproveDocument(ctx context.Context, id string) error 
 	}
 
 	// Emit approval event
-	event := map[string]interface{}{
-		"id":          uuid.New().String(),
-		"type":        "DocumentApproved",
-		"document_id": id,
-		"created_at":  time.Now().Format(time.RFC3339),
+	event := &domain.PlannerEvent{
+		Type:       domain.EventFullApproved, // TODO: Determine event type based on input doc type!
+		DocumentID: id,
+		CreatedAt:  time.Now(),
 	}
-
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		fmt.Printf("[DocumentUseCase.ApproveDocument] Warning: Failed to marshal event: %v\n", err)
-	} else {
-		if err := u.redisClient.Publish(ctx, "document_events", eventJSON).Err(); err != nil {
-			fmt.Printf("[DocumentUseCase.ApproveDocument] Warning: Failed to publish event: %v\n", err)
+	// Identify correct event type
+	// Ideally we fetch the document first to know its tier.
+	doc, _ := u.persistenceClient.GetDocument(ctx, &persistencepb.GetDocumentRequest{Id: id})
+	if doc != nil {
+		switch doc.Tier {
+		case "URD_INDEX":
+			event.Type = domain.EventIndexApproved
+			event.Tier = domain.TierURDIndex
+			event.ProjectID = doc.ProjectId
+		case "URD_OUTLINE":
+			event.Type = domain.EventOutlineApproved
+			event.Tier = domain.TierURDOutline
+			event.ProjectID = doc.ProjectId
+		case "URD_FULL":
+			event.Type = domain.EventFullApproved
+			event.Tier = domain.TierURDFull
+			event.ProjectID = doc.ProjectId
 		}
 	}
 
+	if err := u.eventEmitter.Emit(event); err != nil {
+		fmt.Printf("[DocumentUseCase.ApproveDocument] Warning: Failed to emit event: %v\n", err)
+	}
+
 	fmt.Printf("[DocumentUseCase.ApproveDocument] ====== SUCCESS ======\n")
+	return nil
+}
+
+// GetDocument retrieves a document by ID
+func (u *DocumentUseCase) GetDocument(ctx context.Context, id string) (*domain.Document, error) {
+	resp, err := u.persistenceClient.GetDocument(ctx, &persistencepb.GetDocumentRequest{Id: id})
+	if err != nil {
+		return nil, err
+	}
+
+	// Map persistence response to domain document
+	tier := domain.RequirementTier(0)
+	switch resp.Tier {
+	case "PRD":
+		tier = domain.TierPRD
+	case "URD_INDEX":
+		tier = domain.TierURDIndex
+	case "URD_OUTLINE":
+		tier = domain.TierURDOutline
+	case "URD_FULL":
+		tier = domain.TierURDFull
+	}
+
+	return &domain.Document{
+		ID:               resp.Id,
+		ProjectID:        resp.ProjectId,
+		Content:          resp.Content,
+		Tier:             tier,
+		Status:           domain.DocumentStatus(resp.Status),
+		ModuleName:       resp.ModuleName,
+		CreatedAt:        resp.CreatedAt.AsTime(),
+		UpdatedAt:        resp.UpdatedAt.AsTime(),
+		ParentDocumentID: resp.ParentId,
+	}, nil
+}
+
+// GetDocumentByParentId retrieves a document by parent ID and tier
+func (u *DocumentUseCase) GetDocumentByParentId(ctx context.Context, parentID string, tier domain.RequirementTier) (*domain.Document, error) {
+	tierStr := ""
+	switch tier {
+	case domain.TierPRD:
+		tierStr = "PRD"
+	case domain.TierURDIndex:
+		tierStr = "URD_INDEX"
+	case domain.TierURDOutline:
+		tierStr = "URD_OUTLINE"
+	case domain.TierURDFull:
+		tierStr = "URD_FULL"
+	}
+
+	req := &persistencepb.ListDocumentsRequest{
+		ParentId: parentID,
+		Tier:     tierStr,
+	}
+
+	resp, err := u.persistenceClient.ListDocuments(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list documents: %w", err)
+	}
+
+	if len(resp.Documents) == 0 {
+		return nil, fmt.Errorf("document not found for parent %s and tier %s", parentID, tierStr)
+	}
+
+	// Return first match
+	doc := resp.Documents[0]
+
+	// Map persistence response to domain document (Duplicated mapping logic, should extract helper)
+	// For now, inline
+	return &domain.Document{
+		ID:               doc.Id,
+		ProjectID:        doc.ProjectId,
+		Content:          doc.Content,
+		Tier:             tier,
+		Status:           domain.DocumentStatus(doc.Status),
+		ModuleName:       doc.ModuleName,
+		CreatedAt:        doc.CreatedAt.AsTime(),
+		UpdatedAt:        doc.UpdatedAt.AsTime(),
+		ParentDocumentID: doc.ParentId,
+	}, nil
+}
+
+// SaveEditedDocument validates and saves edited content
+func (u *DocumentUseCase) SaveEditedDocument(ctx context.Context, id string, tier domain.RequirementTier, content string) error {
+	fmt.Printf("[DocumentUseCase.SaveEditedDocument] Validating content for ID: %s\n", id)
+
+	// Validate
+	if u.validatorAgent != nil {
+		doc := &domain.Document{ID: id, Tier: tier}
+		result, err := u.validatorAgent.Execute(ctx, doc, content)
+		if err != nil {
+			return fmt.Errorf("validator execution failed: %w", err)
+		}
+		if !result.Success {
+			// Convert validation errors to string for now
+			errMsgs := ""
+			for _, e := range result.Errors {
+				errMsgs += fmt.Sprintf("[%s] %s\n", e.Type, e.Message)
+			}
+			return fmt.Errorf("validation failed:\n%s", errMsgs)
+		}
+	}
+
+	// Update via Persistence
+	req := &persistencepb.UpdateDocumentRequest{
+		DocumentId: id,
+		Content:    content,
+	}
+
+	resp, err := u.persistenceClient.UpdateDocument(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to update document: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("failed to update document: %s", resp.Error)
+	}
+
 	return nil
 }

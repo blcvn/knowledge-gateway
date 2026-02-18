@@ -1,4 +1,4 @@
-package domain
+package v32
 
 // Note: This file is a direct port of prd_model.go from the reference implementation
 // adapted for the v3.2 domain package in ba-agent-service.

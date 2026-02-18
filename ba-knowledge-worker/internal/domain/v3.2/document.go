@@ -1,4 +1,4 @@
-package domain
+package v32
 
 import "time"
 
@@ -53,31 +53,4 @@ type Document struct {
 	CreatedAt        time.Time       `json:"created_at" bson:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at" bson:"updated_at"`
 	ApprovedAt       *time.Time      `json:"approved_at,omitempty" bson:"approved_at,omitempty"`
-}
-
-// Approval represents a document approval
-type Approval struct {
-	ID         string          `json:"id" bson:"_id"`
-	DocumentID string          `json:"document_id" bson:"document_id"`
-	Tier       RequirementTier `json:"tier" bson:"tier"`
-	Comment    string          `json:"comment" bson:"comment"`
-	ApprovedBy string          `json:"approved_by" bson:"approved_by"`
-	ApprovedAt time.Time       `json:"approved_at" bson:"approved_at"`
-}
-
-type ReviewActionType string
-
-const (
-	ActionPending ReviewActionType = "pending"
-	ActionDone    ReviewActionType = "done" // or applied/rejected
-)
-
-// Review represents a feedback item on a document
-type Review struct {
-	ID         string           `json:"id" bson:"_id"`
-	DocumentID string           `json:"document_id" bson:"document_id"`
-	Tier       RequirementTier  `json:"tier" bson:"tier"`
-	Comment    string           `json:"comment" bson:"comment"`
-	ActionType ReviewActionType `json:"action_type" bson:"action_type"`
-	CreatedAt  time.Time        `json:"created_at" bson:"created_at"`
 }
