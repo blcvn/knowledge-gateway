@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/blcvn/backend/services/pkg/domain"
+	"github.com/blcvn/ba-shared-libs/pkg/domain"
 	aiproxy "github.com/blcvn/kratos-proto/go/ai-proxy"
 	prompt "github.com/blcvn/kratos-proto/go/prompt"
 )

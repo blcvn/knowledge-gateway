@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blcvn/backend/services/pkg/infrastructure/queue"
+	"github.com/blcvn/ba-shared-libs/pkg/infrastructure/queue"
 	"github.com/go-redis/redis/v8"
 )
 

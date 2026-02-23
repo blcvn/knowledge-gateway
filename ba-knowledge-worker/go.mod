@@ -3,7 +3,7 @@ module github.com/blcvn/backend/services/ba-knowledge-worker
 go 1.24.0
 
 require (
-	github.com/blcvn/backend/services/pkg v0.0.0
+	github.com/blcvn/ba-shared-libs/pkg v0.0.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/hibiken/asynq v0.24.1
 )
@@ -23,4 +23,6 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/blcvn/backend/services/pkg => ../pkg
+replace github.com/blcvn/ba-shared-libs/pkg => ../../ba-shared-libs/pkg
+
+replace github.com/blcvn/ba-shared-libs/proto => ../../ba-shared-libs/proto

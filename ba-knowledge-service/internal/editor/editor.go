@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/blcvn/backend/services/pkg/domain"
+	"github.com/blcvn/ba-shared-libs/pkg/domain"
 	"github.com/blcvn/backend/services/ba-knowledge-service/internal/editor/validator"
 )
 

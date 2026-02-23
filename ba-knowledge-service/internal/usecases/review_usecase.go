@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/blcvn/backend/services/pkg/domain"
-	persistencepb "github.com/blcvn/backend/services/proto/persistence"
+	"github.com/blcvn/ba-shared-libs/pkg/domain"
+	persistencepb "github.com/blcvn/ba-shared-libs/proto/persistence"
 )
 
 type ReviewUseCase struct {

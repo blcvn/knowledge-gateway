@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/blcvn/backend/services/ba-knowledge-worker/internal/worker"
-	"github.com/blcvn/backend/services/pkg/queue"
+	"github.com/blcvn/ba-shared-libs/pkg/queue"
 )
 
 func main() {

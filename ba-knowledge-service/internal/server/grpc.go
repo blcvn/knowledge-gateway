@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/blcvn/backend/services/pkg/domain"
+	"github.com/blcvn/ba-shared-libs/pkg/domain"
 	"github.com/blcvn/backend/services/ba-knowledge-service/internal/usecases"
-	knowledgepb "github.com/blcvn/backend/services/proto/knowledge"
+	knowledgepb "github.com/blcvn/ba-shared-libs/proto/knowledge"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

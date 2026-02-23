@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	domain "github.com/blcvn/backend/services/pkg/domain"
+	domain "github.com/blcvn/ba-shared-libs/pkg/domain"
 	"github.com/blcvn/backend/services/ba-knowledge-service/internal/usecases"
 )
 
