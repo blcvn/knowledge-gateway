@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	domain "github.com/blcvn/backend/services/ba-knowledge-service/internal/domain"
+	domain "github.com/blcvn/backend/services/pkg/domain"
 	"github.com/google/uuid"
 )
 

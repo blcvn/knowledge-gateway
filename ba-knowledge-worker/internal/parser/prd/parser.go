@@ -7,8 +7,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/blcvn/backend/services/ba-knowledge-worker/internal/domain"
-	v32 "github.com/blcvn/backend/services/ba-knowledge-worker/internal/domain/v3.2"
+	"github.com/blcvn/backend/services/pkg/domain"
+	v32 "github.com/blcvn/backend/services/pkg/domain/v3.2"
 )
 
 // Parser handles PRD parsing

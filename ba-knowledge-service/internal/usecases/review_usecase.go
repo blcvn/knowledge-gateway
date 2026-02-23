@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/blcvn/backend/services/ba-knowledge-service/internal/domain"
+	"github.com/blcvn/backend/services/pkg/domain"
 	persistencepb "github.com/blcvn/backend/services/proto/persistence"
 )
 

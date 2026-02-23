@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	v32 "github.com/blcvn/backend/services/ba-knowledge-worker/internal/domain/v3.2"
+	v32 "github.com/blcvn/backend/services/pkg/domain/v3.2"
 )
 
 // UpdateFromFull updates the KG based on the Full URD content

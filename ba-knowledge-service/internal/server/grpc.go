@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/blcvn/backend/services/ba-knowledge-service/internal/domain"
+	"github.com/blcvn/backend/services/pkg/domain"
 	"github.com/blcvn/backend/services/ba-knowledge-service/internal/usecases"
 	knowledgepb "github.com/blcvn/backend/services/proto/knowledge"
 	"google.golang.org/protobuf/types/known/timestamppb"
