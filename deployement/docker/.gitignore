@@ -1,0 +1,2 @@
+# Sensitive credentials — never commit this file
+.env

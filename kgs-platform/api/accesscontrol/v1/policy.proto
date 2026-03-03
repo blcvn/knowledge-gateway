@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package api.accesscontrol.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "kgs-platform/api/accesscontrol/v1;v1";
+
+service AccessControl {
+  // Create a new OPA Policy
+  rpc CreatePolicy (CreatePolicyRequest) returns (PolicyReply) {
+    option (google.api.http) = {
+      post: "/v1/policies"
+      body: "*"
+    };
+  }
+
+  // List all policies for the app
+  rpc ListPolicies (ListPoliciesRequest) returns (ListPoliciesReply) {
+    option (google.api.http) = {
+      get: "/v1/policies"
+    };
+  }
+
+  // Get a specific policy
+  rpc GetPolicy (GetPolicyRequest) returns (PolicyReply) {
+    option (google.api.http) = {
+      get: "/v1/policies/{id}"
+    };
+  }
+}
+
+message CreatePolicyRequest {
+  string name = 1;
+  string description = 2;
+  string rego_content = 3;
+}
+
+message ListPoliciesRequest {
+  // Pagination
+}
+
+message GetPolicyRequest {
+  int64 id = 1;
+}
+
+message PolicyReply {
+  int64 id = 1;
+  string name = 2;
+  string description = 3;
+  string rego_content = 4;
+  bool is_active = 5;
+}
+
+message ListPoliciesReply {
+  repeated PolicyReply policies = 1;
+}

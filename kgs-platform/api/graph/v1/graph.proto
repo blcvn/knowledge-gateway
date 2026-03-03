@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package api.graph.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "kgs-platform/api/graph/v1;v1";
+
+service Graph {
+  // Create a new node in the Knowledge Graph
+  rpc CreateNode (CreateNodeRequest) returns (CreateNodeReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/nodes"
+      body: "*"
+    };
+  }
+
+  // Get a node by ID
+  rpc GetNode (GetNodeRequest) returns (GetNodeReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/nodes/{node_id}"
+    };
+  }
+
+  // Create an edge between two nodes
+  rpc CreateEdge (CreateEdgeRequest) returns (CreateEdgeReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/edges"
+      body: "*"
+    };
+  }
+  // Get contextual neighborhood around a node
+  rpc GetContext (GetContextRequest) returns (GraphReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/nodes/{node_id}/context"
+    };
+  }
+
+  // Get downstream impact of a node
+  rpc GetImpact (GetImpactRequest) returns (GraphReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/nodes/{node_id}/impact"
+    };
+  }
+
+  // Get upstream coverage of a node
+  rpc GetCoverage (GetCoverageRequest) returns (GraphReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/nodes/{node_id}/coverage"
+    };
+  }
+
+  // Get subgraph for a list of node IDs
+  rpc GetSubgraph (GetSubgraphRequest) returns (GraphReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/subgraph"
+      body: "*"
+    };
+  }
+}
+
+message CreateNodeRequest {
+  string label = 1;
+  string properties_json = 2; // raw JSON string of properties
+}
+
+message CreateNodeReply {
+  string node_id = 1;
+  string label = 2;
+  string properties_json = 3;
+}
+
+message GetNodeRequest {
+  string node_id = 1;
+}
+
+message GetNodeReply {
+  string node_id = 1;
+  string label = 2;
+  string properties_json = 3;
+}
+
+message CreateEdgeRequest {
+  string source_node_id = 1;
+  string target_node_id = 2;
+  string relation_type = 3;
+  string properties_json = 4;
+}
+
+message CreateEdgeReply {
+  string edge_id = 1;
+  string source_node_id = 2;
+  string target_node_id = 3;
+  string relation_type = 4;
+  string properties_json = 5;
+}
+
+message GetContextRequest {
+  string node_id = 1;
+  int32 depth = 2;
+  string direction = 3; // INCOMING, OUTGOING, BOTH (default)
+}
+
+message GetImpactRequest {
+  string node_id = 1;
+  int32 max_depth = 2;
+}
+
+message GetCoverageRequest {
+  string node_id = 1;
+  int32 max_depth = 2;
+}
+
+message GetSubgraphRequest {
+  repeated string node_ids = 1;
+}
+
+message GraphNode {
+  string id = 1;
+  string label = 2;
+  string properties_json = 3;
+}
+
+message GraphEdge {
+  string id = 1;
+  string source = 2;
+  string target = 3;
+  string type = 4;
+  string properties_json = 5;
+}
+
+message GraphReply {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+}
