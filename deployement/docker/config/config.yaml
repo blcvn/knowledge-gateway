@@ -1,0 +1,24 @@
+server:
+  http:
+    addr: 0.0.0.0:8000
+    timeout: 10s
+  grpc:
+    addr: 0.0.0.0:9000
+    timeout: 10s
+data:
+  database:
+    driver: postgres
+    source: host=postgres user=kgs password=kgspassword dbname=kgs_platform port=5432 sslmode=disable TimeZone=Asia/Ho_Chi_Minh
+  redis:
+    network: tcp
+    addr: redis:6379
+    password: ""
+    read_timeout: 0.2s
+    write_timeout: 0.2s
+  neo4j:
+    uri: bolt://neo4j:7687
+    user: neo4j
+    password: neo4jpassword
+    database: kgs
+  opa:
+    url: http://opa:8181

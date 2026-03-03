@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package api.registry.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "kgs-platform/api/registry/v1;v1";
+
+service Registry {
+  // Create a new application
+  rpc CreateApp (CreateAppRequest) returns (CreateAppReply) {
+    option (google.api.http) = {
+      post: "/v1/apps"
+      body: "*"
+    };
+  }
+
+  // Get application details
+  rpc GetApp (GetAppRequest) returns (GetAppReply) {
+    option (google.api.http) = {
+      get: "/v1/apps/{app_id}"
+    };
+  }
+
+  // List all applications
+  rpc ListApps (ListAppsRequest) returns (ListAppsReply) {
+    option (google.api.http) = {
+      get: "/v1/apps"
+    };
+  }
+
+  // Issue a new API key for an application
+  rpc IssueApiKey (IssueApiKeyRequest) returns (IssueApiKeyReply) {
+    option (google.api.http) = {
+      post: "/v1/apps/{app_id}/keys"
+      body: "*"
+    };
+  }
+
+  // Revoke an existing API key
+  rpc RevokeApiKey (RevokeApiKeyRequest) returns (RevokeApiKeyReply) {
+    option (google.api.http) = {
+      delete: "/v1/keys/{key_hash}"
+    };
+  }
+}
+
+message CreateAppRequest {
+  string app_name = 1;
+  string description = 2;
+  string owner = 3;
+}
+
+message CreateAppReply {
+  string app_id = 1;
+  string status = 2;
+}
+
+message GetAppRequest {
+  string app_id = 1;
+}
+
+message GetAppReply {
+  string app_id = 1;
+  string app_name = 2;
+  string description = 3;
+  string owner = 4;
+  string status = 5;
+}
+
+message ListAppsRequest {}
+
+message ListAppsReply {
+  repeated GetAppReply apps = 1;
+}
+
+message IssueApiKeyRequest {
+  string app_id = 1;
+  string name = 2;
+  string scopes = 3;
+  int64 ttl_seconds = 4; // 0 for never expire
+}
+
+message IssueApiKeyReply {
+  string api_key = 1; // returned only once
+  string key_hash = 2;
+  string key_prefix = 3;
+}
+
+message RevokeApiKeyRequest {
+  string key_hash = 1;
+}
+
+message RevokeApiKeyReply {
+  bool success = 1;
+}

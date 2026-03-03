@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package api.rules.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "kgs-platform/api/rules/v1;v1";
+
+service Rules {
+  // Create a new business rule
+  rpc CreateRule (CreateRuleRequest) returns (RuleReply) {
+    option (google.api.http) = {
+      post: "/v1/rules"
+      body: "*"
+    };
+  }
+
+  // List all rules for the app
+  rpc ListRules (ListRulesRequest) returns (ListRulesReply) {
+    option (google.api.http) = {
+      get: "/v1/rules"
+    };
+  }
+
+  // Get a specific rule
+  rpc GetRule (GetRuleRequest) returns (RuleReply) {
+    option (google.api.http) = {
+      get: "/v1/rules/{id}"
+    };
+  }
+}
+
+message CreateRuleRequest {
+  string name = 1;
+  string description = 2;
+  string trigger_type = 3; // "SCHEDULED", "ON_WRITE"
+  string cron = 4; // Optional, required if SCHEDULED
+  string cypher_query = 5;
+  string action = 6;
+  string payload_json = 7;
+}
+
+message ListRulesRequest {
+  // Add pagination if needed
+}
+
+message GetRuleRequest {
+  int64 id = 1;
+}
+
+message RuleReply {
+  int64 id = 1;
+  string name = 2;
+  string description = 3;
+  string trigger_type = 4;
+  string cron = 5;
+  string cypher_query = 6;
+  string action = 7;
+  string payload_json = 8;
+  bool is_active = 9;
+}
+
+message ListRulesReply {
+  repeated RuleReply rules = 1;
+}

@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package api.ontology.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "kgs-platform/api/ontology/v1;v1";
+
+service Ontology {
+  // Define a new EntityType in the Knowledge Graph
+  rpc CreateEntityType (CreateEntityTypeRequest) returns (CreateEntityTypeReply) {
+    option (google.api.http) = {
+      post: "/v1/ontology/entities"
+      body: "*"
+    };
+  }
+
+  // Define a new RelationType in the Knowledge Graph
+  rpc CreateRelationType (CreateRelationTypeRequest) returns (CreateRelationTypeReply) {
+    option (google.api.http) = {
+      post: "/v1/ontology/relations"
+      body: "*"
+    };
+  }
+
+  // Get schema definitions for EntityTypes
+  rpc ListEntityTypes (ListEntityTypesRequest) returns (ListEntityTypesReply) {
+    option (google.api.http) = {
+      get: "/v1/ontology/entities"
+    };
+  }
+
+  // Get schema definitions for RelationTypes
+  rpc ListRelationTypes (ListRelationTypesRequest) returns (ListRelationTypesReply) {
+    option (google.api.http) = {
+      get: "/v1/ontology/relations"
+    };
+  }
+}
+
+message CreateEntityTypeRequest {
+  string name = 1;
+  string description = 2;
+  string schema = 3; // JSON Schema definition for properties
+}
+
+message CreateEntityTypeReply {
+  uint32 id = 1;
+  string name = 2;
+  string status = 3;
+}
+
+message CreateRelationTypeRequest {
+  string name = 1;
+  string description = 2;
+  string properties_schema = 3; // JSON Schema for edge properties
+  repeated string source_types = 4;
+  repeated string target_types = 5;
+}
+
+message CreateRelationTypeReply {
+  uint32 id = 1;
+  string name = 2;
+  string status = 3;
+}
+
+message ListEntityTypesRequest {}
+
+message EntityTypeInfo {
+  uint32 id = 1;
+  string name = 2;
+  string schema = 3;
+}
+
+message ListEntityTypesReply {
+  repeated EntityTypeInfo entities = 1;
+}
+
+message ListRelationTypesRequest {}
+
+message RelationTypeInfo {
+  uint32 id = 1;
+  string name = 2;
+  string properties_schema = 3;
+  repeated string source_types = 4;
+  repeated string target_types = 5;
+}
+
+message ListRelationTypesReply {
+  repeated RelationTypeInfo relations = 1;
+}
