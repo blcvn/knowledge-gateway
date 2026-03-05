@@ -52,9 +52,14 @@ message Data {
     string collection = 3;
     int32 vector_size = 4;
   }
+  message NATS {
+    string url = 1;
+    string stream = 2;
+  }
   Database database = 1;
   Redis redis = 2;
   Neo4j neo4j = 3;
   OPA opa = 4;
   Qdrant qdrant = 5;
+  NATS nats = 6;
 }

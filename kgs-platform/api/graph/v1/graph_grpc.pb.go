@@ -40,6 +40,18 @@ type GraphClient interface {
 	BatchUpsertEntities(ctx context.Context, in *BatchUpsertRequest, opts ...grpc.CallOption) (*BatchUpsertReply, error)
 	// Hybrid search across vector and full-text indexes
 	HybridSearch(ctx context.Context, in *HybridSearchRequest, opts ...grpc.CallOption) (*HybridSearchReply, error)
+	// Create an overlay graph for session-scoped writes
+	CreateOverlay(ctx context.Context, in *CreateOverlayRequest, opts ...grpc.CallOption) (*CreateOverlayReply, error)
+	// Commit overlay changes into base graph and create new version
+	CommitOverlay(ctx context.Context, in *CommitOverlayRequest, opts ...grpc.CallOption) (*CommitOverlayReply, error)
+	// Discard an overlay graph
+	DiscardOverlay(ctx context.Context, in *DiscardOverlayRequest, opts ...grpc.CallOption) (*DiscardOverlayReply, error)
+	// List versions in current namespace
+	ListVersions(ctx context.Context, in *ListVersionsRequest, opts ...grpc.CallOption) (*ListVersionsReply, error)
+	// Diff two versions in current namespace
+	DiffVersions(ctx context.Context, in *DiffVersionsRequest, opts ...grpc.CallOption) (*DiffVersionsReply, error)
+	// Rollback current namespace to target version
+	RollbackVersion(ctx context.Context, in *RollbackVersionRequest, opts ...grpc.CallOption) (*RollbackVersionReply, error)
 }
 
 type graphClient struct {
@@ -131,6 +143,60 @@ func (c *graphClient) HybridSearch(ctx context.Context, in *HybridSearchRequest,
 	return out, nil
 }
 
+func (c *graphClient) CreateOverlay(ctx context.Context, in *CreateOverlayRequest, opts ...grpc.CallOption) (*CreateOverlayReply, error) {
+	out := new(CreateOverlayReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/CreateOverlay", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) CommitOverlay(ctx context.Context, in *CommitOverlayRequest, opts ...grpc.CallOption) (*CommitOverlayReply, error) {
+	out := new(CommitOverlayReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/CommitOverlay", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) DiscardOverlay(ctx context.Context, in *DiscardOverlayRequest, opts ...grpc.CallOption) (*DiscardOverlayReply, error) {
+	out := new(DiscardOverlayReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/DiscardOverlay", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) ListVersions(ctx context.Context, in *ListVersionsRequest, opts ...grpc.CallOption) (*ListVersionsReply, error) {
+	out := new(ListVersionsReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/ListVersions", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) DiffVersions(ctx context.Context, in *DiffVersionsRequest, opts ...grpc.CallOption) (*DiffVersionsReply, error) {
+	out := new(DiffVersionsReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/DiffVersions", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) RollbackVersion(ctx context.Context, in *RollbackVersionRequest, opts ...grpc.CallOption) (*RollbackVersionReply, error) {
+	out := new(RollbackVersionReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/RollbackVersion", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GraphServer is the server API for Graph service.
 // All implementations must embed UnimplementedGraphServer
 // for forward compatibility
@@ -153,6 +219,18 @@ type GraphServer interface {
 	BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error)
 	// Hybrid search across vector and full-text indexes
 	HybridSearch(context.Context, *HybridSearchRequest) (*HybridSearchReply, error)
+	// Create an overlay graph for session-scoped writes
+	CreateOverlay(context.Context, *CreateOverlayRequest) (*CreateOverlayReply, error)
+	// Commit overlay changes into base graph and create new version
+	CommitOverlay(context.Context, *CommitOverlayRequest) (*CommitOverlayReply, error)
+	// Discard an overlay graph
+	DiscardOverlay(context.Context, *DiscardOverlayRequest) (*DiscardOverlayReply, error)
+	// List versions in current namespace
+	ListVersions(context.Context, *ListVersionsRequest) (*ListVersionsReply, error)
+	// Diff two versions in current namespace
+	DiffVersions(context.Context, *DiffVersionsRequest) (*DiffVersionsReply, error)
+	// Rollback current namespace to target version
+	RollbackVersion(context.Context, *RollbackVersionRequest) (*RollbackVersionReply, error)
 	mustEmbedUnimplementedGraphServer()
 }
 
@@ -186,6 +264,24 @@ func (UnimplementedGraphServer) BatchUpsertEntities(context.Context, *BatchUpser
 }
 func (UnimplementedGraphServer) HybridSearch(context.Context, *HybridSearchRequest) (*HybridSearchReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HybridSearch not implemented")
+}
+func (UnimplementedGraphServer) CreateOverlay(context.Context, *CreateOverlayRequest) (*CreateOverlayReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateOverlay not implemented")
+}
+func (UnimplementedGraphServer) CommitOverlay(context.Context, *CommitOverlayRequest) (*CommitOverlayReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CommitOverlay not implemented")
+}
+func (UnimplementedGraphServer) DiscardOverlay(context.Context, *DiscardOverlayRequest) (*DiscardOverlayReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DiscardOverlay not implemented")
+}
+func (UnimplementedGraphServer) ListVersions(context.Context, *ListVersionsRequest) (*ListVersionsReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListVersions not implemented")
+}
+func (UnimplementedGraphServer) DiffVersions(context.Context, *DiffVersionsRequest) (*DiffVersionsReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DiffVersions not implemented")
+}
+func (UnimplementedGraphServer) RollbackVersion(context.Context, *RollbackVersionRequest) (*RollbackVersionReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RollbackVersion not implemented")
 }
 func (UnimplementedGraphServer) mustEmbedUnimplementedGraphServer() {}
 
@@ -362,6 +458,114 @@ func _Graph_HybridSearch_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Graph_CreateOverlay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateOverlayRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).CreateOverlay(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/CreateOverlay",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).CreateOverlay(ctx, req.(*CreateOverlayRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_CommitOverlay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommitOverlayRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).CommitOverlay(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/CommitOverlay",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).CommitOverlay(ctx, req.(*CommitOverlayRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_DiscardOverlay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiscardOverlayRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).DiscardOverlay(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/DiscardOverlay",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).DiscardOverlay(ctx, req.(*DiscardOverlayRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_ListVersions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListVersionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).ListVersions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/ListVersions",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).ListVersions(ctx, req.(*ListVersionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_DiffVersions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiffVersionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).DiffVersions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/DiffVersions",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).DiffVersions(ctx, req.(*DiffVersionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_RollbackVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RollbackVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).RollbackVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/RollbackVersion",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).RollbackVersion(ctx, req.(*RollbackVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Graph_ServiceDesc is the grpc.ServiceDesc for Graph service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -404,6 +608,30 @@ var Graph_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "HybridSearch",
 			Handler:    _Graph_HybridSearch_Handler,
+		},
+		{
+			MethodName: "CreateOverlay",
+			Handler:    _Graph_CreateOverlay_Handler,
+		},
+		{
+			MethodName: "CommitOverlay",
+			Handler:    _Graph_CommitOverlay_Handler,
+		},
+		{
+			MethodName: "DiscardOverlay",
+			Handler:    _Graph_DiscardOverlay_Handler,
+		},
+		{
+			MethodName: "ListVersions",
+			Handler:    _Graph_ListVersions_Handler,
+		},
+		{
+			MethodName: "DiffVersions",
+			Handler:    _Graph_DiffVersions_Handler,
+		},
+		{
+			MethodName: "RollbackVersion",
+			Handler:    _Graph_RollbackVersion_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

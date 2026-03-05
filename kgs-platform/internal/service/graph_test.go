@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	pb "kgs-platform/api/graph/v1"
 	"kgs-platform/internal/batch"
 	"kgs-platform/internal/biz"
+	"kgs-platform/internal/overlay"
 	"kgs-platform/internal/search"
 	"kgs-platform/internal/server/middleware"
+	"kgs-platform/internal/version"
 )
 
 type mockGraphUsecase struct {
@@ -61,7 +64,7 @@ func TestGraphServiceCreateNode(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, nil, nil)
+	}, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -105,7 +108,7 @@ func TestGraphServiceGetNode(t *testing.T) {
 				"name":  "alice",
 			}, nil
 		},
-	}, nil, nil)
+	}, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -151,6 +154,58 @@ func (f *fakeSearchEngine) HybridSearch(ctx context.Context, namespace, query st
 	return f.results, f.err
 }
 
+type fakeOverlayManager struct {
+	createFn  func(ctx context.Context, namespace, sessionID, baseVersionID string) (*overlay.OverlayGraph, error)
+	commitFn  func(ctx context.Context, overlayID, conflictPolicy string) (*overlay.CommitResult, error)
+	discardFn func(ctx context.Context, overlayID string) error
+}
+
+func (f *fakeOverlayManager) Create(ctx context.Context, namespace, sessionID, baseVersionID string) (*overlay.OverlayGraph, error) {
+	return f.createFn(ctx, namespace, sessionID, baseVersionID)
+}
+
+func (f *fakeOverlayManager) Get(ctx context.Context, overlayID string) (*overlay.OverlayGraph, error) {
+	return nil, nil
+}
+
+func (f *fakeOverlayManager) Commit(ctx context.Context, overlayID, conflictPolicy string) (*overlay.CommitResult, error) {
+	return f.commitFn(ctx, overlayID, conflictPolicy)
+}
+
+func (f *fakeOverlayManager) Discard(ctx context.Context, overlayID string) error {
+	return f.discardFn(ctx, overlayID)
+}
+
+func (f *fakeOverlayManager) DiscardBySession(ctx context.Context, sessionID string) error {
+	return nil
+}
+
+type fakeVersionManager struct {
+	listFn     func(ctx context.Context, namespace string) ([]version.GraphVersion, error)
+	diffFn     func(ctx context.Context, namespace, fromVersionID, toVersionID string) (*version.DiffResult, error)
+	rollbackFn func(ctx context.Context, namespace, targetVersionID, reason string) (string, error)
+}
+
+func (f *fakeVersionManager) CreateDelta(ctx context.Context, namespace string, changes version.ChangeSet) (string, error) {
+	return "", nil
+}
+
+func (f *fakeVersionManager) GetVersion(ctx context.Context, namespace, versionID string) (*version.GraphVersion, error) {
+	return nil, nil
+}
+
+func (f *fakeVersionManager) ListVersions(ctx context.Context, namespace string) ([]version.GraphVersion, error) {
+	return f.listFn(ctx, namespace)
+}
+
+func (f *fakeVersionManager) DiffVersions(ctx context.Context, namespace, fromVersionID, toVersionID string) (*version.DiffResult, error) {
+	return f.diffFn(ctx, namespace, fromVersionID, toVersionID)
+}
+
+func (f *fakeVersionManager) Rollback(ctx context.Context, namespace, targetVersionID, reason string) (string, error) {
+	return f.rollbackFn(ctx, namespace, targetVersionID, reason)
+}
+
 func TestGraphServiceBatchUpsertEntities(t *testing.T) {
 	svc := NewGraphService(&mockGraphUsecase{
 		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
@@ -159,7 +214,7 @@ func TestGraphServiceBatchUpsertEntities(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil)
+	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -189,7 +244,7 @@ func TestGraphServiceBatchUpsertEntities100(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil)
+	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -254,7 +309,7 @@ func TestGraphServiceHybridSearch(t *testing.T) {
 				TextScore:     0.89,
 			},
 		},
-	})
+	}, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -275,4 +330,91 @@ func TestGraphServiceHybridSearch(t *testing.T) {
 	if resp.Results[0].NodeId != "n1" || resp.Results[0].Score <= 0 {
 		t.Fatalf("unexpected result: %#v", resp.Results[0])
 	}
+}
+
+func TestGraphServiceOverlayAndVersionRPCs(t *testing.T) {
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return nil, nil
+		},
+	}, nil, nil, &fakeOverlayManager{
+		createFn: func(ctx context.Context, namespace, sessionID, baseVersionID string) (*overlay.OverlayGraph, error) {
+			return &overlay.OverlayGraph{
+				OverlayID:     "ov-1",
+				Status:        overlay.StatusActive,
+				BaseVersionID: "v1",
+				CreatedAt:     fixedTime(0),
+				ExpiresAt:     fixedTime(3600),
+			}, nil
+		},
+		commitFn: func(ctx context.Context, overlayID, conflictPolicy string) (*overlay.CommitResult, error) {
+			return &overlay.CommitResult{
+				NewVersionID:      "v2",
+				EntitiesCommitted: 2,
+				EdgesCommitted:    1,
+				ConflictsResolved: 1,
+			}, nil
+		},
+		discardFn: func(ctx context.Context, overlayID string) error {
+			return nil
+		},
+	}, &fakeVersionManager{
+		listFn: func(ctx context.Context, namespace string) ([]version.GraphVersion, error) {
+			return []version.GraphVersion{
+				{ID: "v2", ParentID: "v1", CommitMessage: "commit", CreatedAt: fixedTime(10)},
+			}, nil
+		},
+		diffFn: func(ctx context.Context, namespace, fromVersionID, toVersionID string) (*version.DiffResult, error) {
+			return &version.DiffResult{
+				FromVersionID: fromVersionID,
+				ToVersionID:   toVersionID,
+				EntitiesAdded: 5,
+			}, nil
+		},
+		rollbackFn: func(ctx context.Context, namespace, targetVersionID, reason string) (string, error) {
+			return "v3", nil
+		},
+	})
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-1",
+		TenantID: "tenant-1",
+		Scopes:   "read,write",
+	})
+
+	createResp, err := svc.CreateOverlay(ctx, &pb.CreateOverlayRequest{SessionId: "s1", BaseVersion: "current"})
+	if err != nil || createResp.OverlayId != "ov-1" {
+		t.Fatalf("CreateOverlay failed resp=%#v err=%v", createResp, err)
+	}
+
+	commitResp, err := svc.CommitOverlay(ctx, &pb.CommitOverlayRequest{OverlayId: "ov-1", ConflictPolicy: "KEEP_OVERLAY"})
+	if err != nil || commitResp.NewVersionId != "v2" {
+		t.Fatalf("CommitOverlay failed resp=%#v err=%v", commitResp, err)
+	}
+
+	if _, err := svc.DiscardOverlay(ctx, &pb.DiscardOverlayRequest{OverlayId: "ov-1"}); err != nil {
+		t.Fatalf("DiscardOverlay failed: %v", err)
+	}
+
+	versionsResp, err := svc.ListVersions(ctx, &pb.ListVersionsRequest{})
+	if err != nil || len(versionsResp.Versions) != 1 {
+		t.Fatalf("ListVersions failed resp=%#v err=%v", versionsResp, err)
+	}
+
+	diffResp, err := svc.DiffVersions(ctx, &pb.DiffVersionsRequest{FromVersionId: "v1", ToVersionId: "v2"})
+	if err != nil || diffResp.EntitiesAdded != 5 {
+		t.Fatalf("DiffVersions failed resp=%#v err=%v", diffResp, err)
+	}
+
+	rollbackResp, err := svc.RollbackVersion(ctx, &pb.RollbackVersionRequest{VersionId: "v1", Reason: "test"})
+	if err != nil || rollbackResp.RollbackVersionId != "v3" {
+		t.Fatalf("RollbackVersion failed resp=%#v err=%v", rollbackResp, err)
+	}
+}
+
+func fixedTime(offsetSec int64) time.Time {
+	return time.Unix(1700000000+offsetSec, 0).UTC()
 }

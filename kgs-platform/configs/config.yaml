@@ -27,3 +27,6 @@ data:
     port: 6333
     collection: kgs-vectors-default
     vector_size: 1536
+  nats:
+    url: ""
+    stream: kgs-events

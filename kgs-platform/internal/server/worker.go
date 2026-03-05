@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"kgs-platform/internal/biz"
+	"kgs-platform/internal/overlay"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/transport"
@@ -11,18 +12,26 @@ import (
 
 // WorkerServer implements transport.Server for background workers in Kratos
 type WorkerServer struct {
-	scheduler  *biz.RuleRunner
-	events     *biz.EventRunner
-	policySync *biz.PolicySyncRunner
-	log        *log.Helper
+	scheduler       *biz.RuleRunner
+	events          *biz.EventRunner
+	policySync      *biz.PolicySyncRunner
+	overlayListener *overlay.SessionCloseListener
+	log             *log.Helper
 }
 
-func NewWorkerServer(scheduler *biz.RuleRunner, events *biz.EventRunner, policySync *biz.PolicySyncRunner, logger log.Logger) *WorkerServer {
+func NewWorkerServer(
+	scheduler *biz.RuleRunner,
+	events *biz.EventRunner,
+	policySync *biz.PolicySyncRunner,
+	overlayListener *overlay.SessionCloseListener,
+	logger log.Logger,
+) *WorkerServer {
 	return &WorkerServer{
-		scheduler:  scheduler,
-		events:     events,
-		policySync: policySync,
-		log:        log.NewHelper(logger),
+		scheduler:       scheduler,
+		events:          events,
+		policySync:      policySync,
+		overlayListener: overlayListener,
+		log:             log.NewHelper(logger),
 	}
 }
 
@@ -38,6 +47,11 @@ func (s *WorkerServer) Start(ctx context.Context) error {
 	if err := s.policySync.Start(ctx); err != nil {
 		return err
 	}
+	if s.overlayListener != nil {
+		if err := s.overlayListener.Start(ctx); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -46,6 +60,11 @@ func (s *WorkerServer) Stop(ctx context.Context) error {
 	s.log.Info("[WorkerServer] stopping...")
 	if err := s.policySync.Stop(ctx); err != nil {
 		s.log.Errorf("failed to stop policy sync runner: %v", err)
+	}
+	if s.overlayListener != nil {
+		if err := s.overlayListener.Stop(ctx); err != nil {
+			s.log.Errorf("failed to stop overlay listener: %v", err)
+		}
 	}
 	if err := s.events.Stop(ctx); err != nil {
 		s.log.Errorf("failed to stop event runner: %v", err)

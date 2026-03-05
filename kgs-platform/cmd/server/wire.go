@@ -11,9 +11,11 @@ import (
 	"kgs-platform/internal/conf"
 	"kgs-platform/internal/data"
 	"kgs-platform/internal/lock"
+	"kgs-platform/internal/overlay"
 	"kgs-platform/internal/search"
 	"kgs-platform/internal/server"
 	"kgs-platform/internal/service"
+	"kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -22,5 +24,5 @@ import (
 
 // wireApp init kratos application.
 func wireApp(*conf.Server, *conf.Data, log.Logger) (*kratos.App, func(), error) {
-	panic(wire.Build(server.ProviderSet, data.ProviderSet, lock.ProviderSet, batch.ProviderSet, search.ProviderSet, biz.ProviderSet, service.ProviderSet, newApp))
+	panic(wire.Build(server.ProviderSet, data.ProviderSet, lock.ProviderSet, batch.ProviderSet, search.ProviderSet, version.ProviderSet, overlay.ProviderSet, biz.ProviderSet, service.ProviderSet, newApp))
 }

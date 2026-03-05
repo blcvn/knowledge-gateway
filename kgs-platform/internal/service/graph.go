@@ -8,8 +8,10 @@ import (
 	pb "kgs-platform/api/graph/v1"
 	"kgs-platform/internal/batch"
 	"kgs-platform/internal/biz"
+	"kgs-platform/internal/overlay"
 	"kgs-platform/internal/search"
 	"kgs-platform/internal/server/middleware"
+	"kgs-platform/internal/version"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/transport"
@@ -21,6 +23,8 @@ type GraphService struct {
 	uc       GraphUsecase
 	batchUC  *batch.Usecase
 	searchUC search.SearchEngine
+	overlay  overlay.OverlayManager
+	version  version.VersionManager
 }
 
 type GraphUsecase interface {
@@ -33,11 +37,19 @@ type GraphUsecase interface {
 	GetSubgraph(ctx context.Context, appID, tenantID string, nodeIDs []string) (map[string]any, error)
 }
 
-func NewGraphService(uc GraphUsecase, batchUC *batch.Usecase, searchUC search.SearchEngine) *GraphService {
+func NewGraphService(
+	uc GraphUsecase,
+	batchUC *batch.Usecase,
+	searchUC search.SearchEngine,
+	overlayMgr overlay.OverlayManager,
+	versionMgr version.VersionManager,
+) *GraphService {
 	return &GraphService{
 		uc:       uc,
 		batchUC:  batchUC,
 		searchUC: searchUC,
+		overlay:  overlayMgr,
+		version:  versionMgr,
 	}
 }
 
@@ -235,6 +247,126 @@ func (s *GraphService) HybridSearch(ctx context.Context, req *pb.HybridSearchReq
 		})
 	}
 	return reply, nil
+}
+
+func (s *GraphService) CreateOverlay(ctx context.Context, req *pb.CreateOverlayRequest) (*pb.CreateOverlayReply, error) {
+	if s.overlay == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "overlay manager is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	item, err := s.overlay.Create(ctx, namespace, req.SessionId, req.BaseVersion)
+	if err != nil {
+		return nil, err
+	}
+	ttl := item.ExpiresAt.Sub(item.CreatedAt).String()
+	return &pb.CreateOverlayReply{
+		OverlayId:     item.OverlayID,
+		Status:        string(item.Status),
+		BaseVersionId: item.BaseVersionID,
+		Ttl:           ttl,
+	}, nil
+}
+
+func (s *GraphService) CommitOverlay(ctx context.Context, req *pb.CommitOverlayRequest) (*pb.CommitOverlayReply, error) {
+	if s.overlay == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "overlay manager is not configured")
+	}
+	result, err := s.overlay.Commit(ctx, req.OverlayId, req.ConflictPolicy)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CommitOverlayReply{
+		NewVersionId:      result.NewVersionID,
+		EntitiesCommitted: int32(result.EntitiesCommitted),
+		EdgesCommitted:    int32(result.EdgesCommitted),
+		ConflictsResolved: int32(result.ConflictsResolved),
+	}, nil
+}
+
+func (s *GraphService) DiscardOverlay(ctx context.Context, req *pb.DiscardOverlayRequest) (*pb.DiscardOverlayReply, error) {
+	if s.overlay == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "overlay manager is not configured")
+	}
+	if err := s.overlay.Discard(ctx, req.OverlayId); err != nil {
+		return nil, err
+	}
+	return &pb.DiscardOverlayReply{
+		OverlayId: req.OverlayId,
+		Status:    string(overlay.StatusDiscarded),
+	}, nil
+}
+
+func (s *GraphService) ListVersions(ctx context.Context, req *pb.ListVersionsRequest) (*pb.ListVersionsReply, error) {
+	_ = req
+	if s.version == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "version manager is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	items, err := s.version.ListVersions(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	reply := &pb.ListVersionsReply{
+		Versions: make([]*pb.VersionInfo, 0, len(items)),
+	}
+	for _, item := range items {
+		reply.Versions = append(reply.Versions, &pb.VersionInfo{
+			VersionId:     item.ID,
+			ParentId:      item.ParentID,
+			CommitMessage: item.CommitMessage,
+			CreatedAtUnix: item.CreatedAt.Unix(),
+		})
+	}
+	return reply, nil
+}
+
+func (s *GraphService) DiffVersions(ctx context.Context, req *pb.DiffVersionsRequest) (*pb.DiffVersionsReply, error) {
+	if s.version == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "version manager is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	diff, err := s.version.DiffVersions(ctx, namespace, req.FromVersionId, req.ToVersionId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.DiffVersionsReply{
+		FromVersionId:    diff.FromVersionID,
+		ToVersionId:      diff.ToVersionID,
+		EntitiesAdded:    int32(diff.EntitiesAdded),
+		EntitiesModified: int32(diff.EntitiesModified),
+		EntitiesDeleted:  int32(diff.EntitiesDeleted),
+		EdgesAdded:       int32(diff.EdgesAdded),
+		EdgesModified:    int32(diff.EdgesModified),
+		EdgesDeleted:     int32(diff.EdgesDeleted),
+	}, nil
+}
+
+func (s *GraphService) RollbackVersion(ctx context.Context, req *pb.RollbackVersionRequest) (*pb.RollbackVersionReply, error) {
+	if s.version == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "version manager is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	versionID, err := s.version.Rollback(ctx, namespace, req.VersionId, req.Reason)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.RollbackVersionReply{RollbackVersionId: versionID}, nil
 }
 
 func getAppContext(ctx context.Context) (middleware.AppContext, error) {

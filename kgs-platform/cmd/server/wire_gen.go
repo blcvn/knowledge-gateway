@@ -14,9 +14,11 @@ import (
 	"kgs-platform/internal/conf"
 	"kgs-platform/internal/data"
 	"kgs-platform/internal/lock"
+	"kgs-platform/internal/overlay"
 	"kgs-platform/internal/search"
 	"kgs-platform/internal/server"
 	"kgs-platform/internal/service"
+	"kgs-platform/internal/version"
 )
 
 import (
@@ -42,10 +44,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	queryPlanner := biz.NewQueryPlanner()
 	opaClient := biz.NewOPAClient(logger)
 	client := data.NewRedisClient(dataData)
-	manager := lock.NewRedisLockManager(client)
-	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, client, manager, logger)
+	redisLockManager := lock.NewRedisLockManager(client)
 	contextDriver := data.NewNeo4jDriver(dataData)
 	qdrantClient := data.NewQdrantClient(dataData)
+	natsClient := data.NewNATSClient(dataData)
+	db := data.NewGormDB(dataData)
 	neo4jWriter := batch.NewNeo4jWriter(contextDriver)
 	semanticDeduper := batch.NewSemanticDeduper(qdrantClient)
 	qdrantIndexer := batch.NewQdrantIndexer(qdrantClient)
@@ -55,7 +58,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	textSearcher := search.NewTextSearcher(contextDriver, logger)
 	neo4jCentralityProvider := search.NewNeo4jCentralityProvider(contextDriver)
 	engine := search.NewEngine(vectorSearcher, textSearcher, neo4jCentralityProvider)
-	graphService := service.NewGraphService(graphUsecase, usecase, engine)
+	versionManager := version.NewManager(db, logger)
+	redisStore := overlay.NewRedisStore(client)
+	overlayManager := overlay.NewManager(redisStore, versionManager, natsClient, logger)
+	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, client, redisLockManager, overlayManager, logger)
+	graphService := service.NewGraphService(graphUsecase, usecase, engine, overlayManager, versionManager)
 	rulesRepo := data.NewRulesRepo(dataData, logger)
 	rulesUsecase := biz.NewRulesUsecase(rulesRepo, logger)
 	rulesService := service.NewRulesService(rulesUsecase)
@@ -67,7 +74,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	ruleRunner := biz.NewRuleRunner(rulesRepo, graphRepo, logger)
 	eventRunner := biz.NewEventRunner(rulesRepo, graphRepo, client, logger)
 	policySyncRunner := biz.NewPolicySyncRunner(policyRepo, opaClient, logger)
-	workerServer := server.NewWorkerServer(ruleRunner, eventRunner, policySyncRunner, logger)
+	sessionCloseListener := overlay.NewSessionCloseListener(natsClient, overlayManager, logger)
+	workerServer := server.NewWorkerServer(ruleRunner, eventRunner, policySyncRunner, sessionCloseListener, logger)
 	app := newApp(logger, grpcServer, httpServer, workerServer)
 	return app, func() {
 		cleanup()

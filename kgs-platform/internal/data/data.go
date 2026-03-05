@@ -4,6 +4,7 @@ import (
 	"context"
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/conf"
+	"kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
@@ -14,7 +15,7 @@ import (
 )
 
 // ProviderSet is data providers.
-var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewRegistryRepo, NewOntologyRepo, NewGraphRepo, NewRulesRepo, NewPolicyRepo, NewRedisClient, NewNeo4jDriver, NewQdrantClient)
+var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewRegistryRepo, NewOntologyRepo, NewGraphRepo, NewRulesRepo, NewPolicyRepo, NewRedisClient, NewNeo4jDriver, NewQdrantClient, NewNATSClient, NewGormDB)
 
 // NewRedisClient exposes the redis client to wire
 func NewRedisClient(data *Data) *redis.Client {
@@ -29,12 +30,21 @@ func NewQdrantClient(data *Data) *QdrantClient {
 	return data.qdrant
 }
 
+func NewNATSClient(data *Data) *NATSClient {
+	return data.nats
+}
+
+func NewGormDB(data *Data) *gorm.DB {
+	return data.db
+}
+
 // Data .
 type Data struct {
 	db     *gorm.DB
 	neo4j  neo4j.DriverWithContext
 	rc     *redis.Client
 	qdrant *QdrantClient
+	nats   *NATSClient
 	opa    string
 }
 
@@ -59,6 +69,7 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		&biz.Rule{},
 		&biz.RuleExecution{},
 		&biz.Policy{},
+		&version.GraphVersion{},
 	); err != nil {
 		helper.Errorf("failed to auto-migrate postgres schemas: %v", err)
 	}
@@ -104,6 +115,14 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 				helper.Errorf("failed to ensure qdrant collection %s: %v", qdrantCfg.GetCollection(), err)
 			}
 		}
+	}
+
+	if natsCfg := c.GetNats(); natsCfg != nil && natsCfg.GetUrl() != "" {
+		natsClient, err := NewNATSClientFromConfig(natsCfg, helper)
+		if err != nil {
+			helper.Fatalf("failed creating nats client: %v", err)
+		}
+		d.nats = natsClient
 	}
 
 	cleanup := func() {

@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"kgs-platform/internal/lock"
@@ -27,16 +28,31 @@ type GraphUsecase struct {
 	opa      *OPAClient
 	redisCli *redis.Client
 	lockMgr  lock.LockManager
+	overlay  OverlayDeltaWriter
 	log      *log.Helper
 }
 
-func NewGraphUsecase(repo GraphRepo, planner *QueryPlanner, opa *OPAClient, redisCli *redis.Client, lockMgr lock.LockManager, logger log.Logger) *GraphUsecase {
+type OverlayDeltaWriter interface {
+	AddEntityDelta(ctx context.Context, overlayID, namespace, label string, properties map[string]any) (map[string]any, error)
+	AddEdgeDelta(ctx context.Context, overlayID, namespace, relationType, sourceNodeID, targetNodeID string, properties map[string]any) (map[string]any, error)
+}
+
+func NewGraphUsecase(
+	repo GraphRepo,
+	planner *QueryPlanner,
+	opa *OPAClient,
+	redisCli *redis.Client,
+	lockMgr lock.LockManager,
+	overlay OverlayDeltaWriter,
+	logger log.Logger,
+) *GraphUsecase {
 	return &GraphUsecase{
 		repo:     repo,
 		planner:  planner,
 		opa:      opa,
 		redisCli: redisCli,
 		lockMgr:  lockMgr,
+		overlay:  overlay,
 		log:      log.NewHelper(logger),
 	}
 }
@@ -48,6 +64,14 @@ func (uc *GraphUsecase) CreateNode(ctx context.Context, appID, tenantID string, 
 	if _, ok := properties["id"].(string); !ok {
 		properties["id"] = uuid.NewString()
 	}
+	if overlayID := extractOverlayID(properties); overlayID != "" {
+		if uc.overlay == nil {
+			return nil, fmt.Errorf("overlay writer is not configured")
+		}
+		namespace := ComputeNamespace(appID, tenantID)
+		return uc.overlay.AddEntityDelta(ctx, overlayID, namespace, label, properties)
+	}
+
 	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
 	lockToken, err := uc.acquireNodeLock(lockCtx, appID, tenantID, properties["id"].(string))
 	if err != nil {
@@ -90,6 +114,14 @@ func (uc *GraphUsecase) GetNode(ctx context.Context, appID, tenantID, nodeID str
 }
 
 func (uc *GraphUsecase) CreateEdge(ctx context.Context, appID, tenantID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error) {
+	if overlayID := extractOverlayID(properties); overlayID != "" {
+		if uc.overlay == nil {
+			return nil, fmt.Errorf("overlay writer is not configured")
+		}
+		namespace := ComputeNamespace(appID, tenantID)
+		return uc.overlay.AddEdgeDelta(ctx, overlayID, namespace, relationType, sourceNodeID, targetNodeID, properties)
+	}
+
 	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
 	sourceToken, err := uc.acquireNodeLock(lockCtx, appID, tenantID, sourceNodeID)
 	if err != nil {
@@ -209,4 +241,20 @@ func (uc *GraphUsecase) executeBatchedTraversal(ctx context.Context, kind, appID
 		}
 	}
 	return map[string]any{"data": merged}, nil
+}
+
+func extractOverlayID(properties map[string]any) string {
+	if properties == nil {
+		return ""
+	}
+	raw, ok := properties["overlay_id"]
+	if !ok || raw == nil {
+		return ""
+	}
+	id, ok := raw.(string)
+	if !ok || id == "" {
+		return ""
+	}
+	delete(properties, "overlay_id")
+	return id
 }

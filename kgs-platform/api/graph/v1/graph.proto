@@ -73,6 +73,51 @@ service Graph {
       body: "*"
     };
   }
+
+  // Create an overlay graph for session-scoped writes
+  rpc CreateOverlay (CreateOverlayRequest) returns (CreateOverlayReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/overlays"
+      body: "*"
+    };
+  }
+
+  // Commit overlay changes into base graph and create new version
+  rpc CommitOverlay (CommitOverlayRequest) returns (CommitOverlayReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/overlays/{overlay_id}/commit"
+      body: "*"
+    };
+  }
+
+  // Discard an overlay graph
+  rpc DiscardOverlay (DiscardOverlayRequest) returns (DiscardOverlayReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/overlays/{overlay_id}"
+    };
+  }
+
+  // List versions in current namespace
+  rpc ListVersions (ListVersionsRequest) returns (ListVersionsReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/versions"
+    };
+  }
+
+  // Diff two versions in current namespace
+  rpc DiffVersions (DiffVersionsRequest) returns (DiffVersionsReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/versions/diff"
+    };
+  }
+
+  // Rollback current namespace to target version
+  rpc RollbackVersion (RollbackVersionRequest) returns (RollbackVersionReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/versions/{version_id}/rollback"
+      body: "*"
+    };
+  }
 }
 
 message CreateNodeRequest {
@@ -194,4 +239,75 @@ message HybridSearchResult {
 
 message HybridSearchReply {
   repeated HybridSearchResult results = 1;
+}
+
+message CreateOverlayRequest {
+  string session_id = 1;
+  string base_version = 2;
+}
+
+message CreateOverlayReply {
+  string overlay_id = 1;
+  string status = 2;
+  string base_version_id = 3;
+  string ttl = 4;
+}
+
+message CommitOverlayRequest {
+  string overlay_id = 1;
+  string conflict_policy = 2;
+}
+
+message CommitOverlayReply {
+  string new_version_id = 1;
+  int32 entities_committed = 2;
+  int32 edges_committed = 3;
+  int32 conflicts_resolved = 4;
+}
+
+message DiscardOverlayRequest {
+  string overlay_id = 1;
+}
+
+message DiscardOverlayReply {
+  string overlay_id = 1;
+  string status = 2;
+}
+
+message VersionInfo {
+  string version_id = 1;
+  string parent_id = 2;
+  string commit_message = 3;
+  int64 created_at_unix = 4;
+}
+
+message ListVersionsRequest {}
+
+message ListVersionsReply {
+  repeated VersionInfo versions = 1;
+}
+
+message DiffVersionsRequest {
+  string from_version_id = 1;
+  string to_version_id = 2;
+}
+
+message DiffVersionsReply {
+  string from_version_id = 1;
+  string to_version_id = 2;
+  int32 entities_added = 3;
+  int32 entities_modified = 4;
+  int32 entities_deleted = 5;
+  int32 edges_added = 6;
+  int32 edges_modified = 7;
+  int32 edges_deleted = 8;
+}
+
+message RollbackVersionRequest {
+  string version_id = 1;
+  string reason = 2;
+}
+
+message RollbackVersionReply {
+  string rollback_version_id = 1;
 }
