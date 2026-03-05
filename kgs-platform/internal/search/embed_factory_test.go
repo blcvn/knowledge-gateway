@@ -35,3 +35,23 @@ func TestNewEmbeddingClientOpenAIRequiresKey(t *testing.T) {
 		t.Fatalf("expected error when OpenAI key is missing")
 	}
 }
+
+func TestNewEmbeddingClientAIProxy(t *testing.T) {
+	cfg := &conf.Data{
+		Embedding: &conf.Data_Embedding{
+			Provider:   "ai-proxy",
+			BaseUrl:    "http://ai-proxy:8080",
+			Path:       "/ai/embeddings",
+			Model:      "text-embedding-3-small",
+			VectorSize: 1536,
+			Timeout:    durationpb.New(5),
+		},
+	}
+	client, err := NewEmbeddingClient(cfg, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("NewEmbeddingClient error: %v", err)
+	}
+	if _, ok := client.(*AIProxyEmbeddingClient); !ok {
+		t.Fatalf("expected ai-proxy client, got %T", client)
+	}
+}

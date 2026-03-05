@@ -14,7 +14,10 @@ import (
 const (
 	embeddingProviderDeterministic = "deterministic"
 	embeddingProviderOpenAI        = "openai"
+	embeddingProviderAIProxy       = "ai-proxy"
 	defaultOpenAIBaseURL           = "https://api.openai.com/v1"
+	defaultAIProxyBaseURL          = "http://ai-proxy:8080"
+	defaultAIProxyEmbedPath        = "/ai/embeddings"
 	defaultOpenAIModel             = "text-embedding-3-small"
 	defaultEmbeddingVectorSize     = 1536
 	defaultEmbeddingTimeout        = 15 * time.Second
@@ -39,6 +42,8 @@ func NewEmbeddingClient(cfg *conf.Data, logger log.Logger) (EmbeddingClient, err
 		return NewDeterministicEmbeddingClient(vectorSize), nil
 	case embeddingProviderOpenAI:
 		return newOpenAIEmbeddingClient(cfg, logger, vectorSize)
+	case embeddingProviderAIProxy:
+		return newAIProxyEmbeddingClient(cfg, logger, vectorSize)
 	default:
 		return nil, fmt.Errorf("unsupported embedding provider %q", provider)
 	}
@@ -78,6 +83,39 @@ func newOpenAIEmbeddingClient(cfg *conf.Data, logger log.Logger, vectorSize int)
 		helper.Infof("embedding provider configured: %s model=%s", embeddingProviderOpenAI, model)
 	}
 	return NewOpenAIEmbeddingClient(baseURL, apiKey, model, vectorSize, timeout), nil
+}
+
+func newAIProxyEmbeddingClient(cfg *conf.Data, logger log.Logger, vectorSize int) (EmbeddingClient, error) {
+	var emb *conf.Data_Embedding
+	if cfg != nil {
+		emb = cfg.GetEmbedding()
+	}
+	apiKey := ""
+	model := defaultOpenAIModel
+	baseURL := defaultAIProxyBaseURL
+	path := defaultAIProxyEmbedPath
+	timeout := defaultEmbeddingTimeout
+
+	if emb != nil {
+		apiKey = strings.TrimSpace(emb.GetApiKey())
+		if raw := strings.TrimSpace(emb.GetModel()); raw != "" {
+			model = raw
+		}
+		if raw := strings.TrimSpace(emb.GetBaseUrl()); raw != "" {
+			baseURL = raw
+		}
+		if raw := strings.TrimSpace(emb.GetPath()); raw != "" {
+			path = raw
+		}
+		if d := emb.GetTimeout(); d != nil && d.AsDuration() > 0 {
+			timeout = d.AsDuration()
+		}
+	}
+
+	if helper := log.NewHelper(logger); helper != nil {
+		helper.Infof("embedding provider configured: %s model=%s endpoint=%s%s", embeddingProviderAIProxy, model, strings.TrimRight(baseURL, "/"), path)
+	}
+	return NewAIProxyEmbeddingClient(baseURL, path, apiKey, model, vectorSize, timeout), nil
 }
 
 func defaultVectorSize(cfg *conf.Data) int {

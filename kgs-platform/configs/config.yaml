@@ -35,5 +35,6 @@ data:
     api_key: ""
     model: text-embedding-3-small
     base_url: https://api.openai.com/v1
+    path: /ai/embeddings
     vector_size: 1536
     timeout: 15s

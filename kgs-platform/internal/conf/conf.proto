@@ -63,6 +63,7 @@ message Data {
     string base_url = 4;
     int32 vector_size = 5;
     google.protobuf.Duration timeout = 6;
+    string path = 7;
   }
   Database database = 1;
   Redis redis = 2;
