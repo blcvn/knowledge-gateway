@@ -22,3 +22,11 @@ data:
     database: kgs
   opa:
     url: http://opa:8181
+  qdrant:
+    host: qdrant
+    port: 6333
+    collection: kgs-vectors-default
+    vector_size: 1536
+  nats:
+    url: nats://nats:4222
+    stream: kgs-events

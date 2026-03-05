@@ -1,0 +1,172 @@
+name: ai-kg-dev
+
+networks:
+  kgs-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: ai_kg_dev_postgres_data
+  redis_data:
+    name: ai_kg_dev_redis_data
+  neo4j_data:
+    name: ai_kg_dev_neo4j_data
+  neo4j_logs:
+    name: ai_kg_dev_neo4j_logs
+  qdrant_data:
+    name: ai_kg_dev_qdrant_data
+  opa_policies:
+    name: ai_kg_dev_opa_policies
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: kgs_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kgs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kgspassword}
+      POSTGRES_DB: ${POSTGRES_DB:-kgs_platform}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - kgs-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kgs} -d ${POSTGRES_DB:-kgs_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: kgs_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - kgs-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: kgs_neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-neo4jpassword}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_dbms_security_procedures_allowlist: apoc.*
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - kgs-net
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-neo4jpassword}", "RETURN 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    container_name: kgs_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - kgs-net
+    healthcheck:
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  opa:
+    image: openpolicyagent/opa:0.67.0
+    container_name: kgs_opa
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server"
+      - "--log-level=info"
+      - "--addr=0.0.0.0:8181"
+      - "--set=decision_logs.console=true"
+      - "/policies"
+    ports:
+      - "8181:8181"
+    volumes:
+      - opa_policies:/policies
+    networks:
+      - kgs-net
+    healthcheck:
+      test: ["CMD", "opa", "version"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: kgs_nats
+    restart: unless-stopped
+    command: ["-js", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - kgs-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kgs-platform:
+    build:
+      context: ../../kgs-platform
+      dockerfile: Dockerfile
+    image: kgs-platform:dev
+    container_name: kgs_platform
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      opa:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+    # Reuse the existing container-ready config for now.
+    volumes:
+      - ./config:/data/conf:ro
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kgs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kgspassword}
+      POSTGRES_DB: ${POSTGRES_DB:-kgs_platform}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4jpassword}
+      OPA_URL: ${OPA_URL:-http://opa:8181}
+    networks:
+      - kgs-net

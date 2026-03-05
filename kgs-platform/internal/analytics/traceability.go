@@ -3,12 +3,13 @@ package analytics
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 )
 
-const traceabilityQuery = `
-MATCH p=(s)-[*1..$max_hops]->(t)
+const traceabilityQueryTmpl = `
+MATCH p=(s)-[*1..%d]->(t)
 WHERE s.app_id = $app_id
   AND s.tenant_id = $tenant_id
   AND t.app_id = $app_id
@@ -55,12 +56,12 @@ func (e *Engine) TraceabilityMatrix(ctx context.Context, namespace string, sourc
 	}
 
 	start := time.Now()
-	result, err := e.query.ExecuteQuery(ctx, traceabilityQuery, map[string]any{
+	query := fmt.Sprintf(traceabilityQueryTmpl, maxHops)
+	result, err := e.query.ExecuteQuery(ctx, query, map[string]any{
 		"app_id":       appID,
 		"tenant_id":    tenantID,
 		"source_types": sourceTypes,
 		"target_types": targetTypes,
-		"max_hops":     maxHops,
 		"limit":        2000,
 	})
 	if err != nil {

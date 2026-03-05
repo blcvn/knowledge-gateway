@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
@@ -19,8 +21,16 @@ type OPAClient struct {
 // NewOPAClient initializes the OPA client
 // For KGS, OPA is typically deployed as a sidecar running at localhost:8181
 func NewOPAClient(logger log.Logger) *OPAClient {
+	base := strings.TrimSpace(os.Getenv("OPA_URL"))
+	if base == "" {
+		base = "http://localhost:8181"
+	}
+	base = strings.TrimSuffix(base, "/")
+	if !strings.Contains(base, "/v1/data/") {
+		base += "/v1/data/kgs/allow"
+	}
 	return &OPAClient{
-		baseURL: "http://localhost:8181/v1/data/kgs/allow",
+		baseURL: base,
 		log:     log.NewHelper(logger),
 	}
 }
