@@ -6,10 +6,12 @@ import (
 	"regexp"
 
 	"kgs-platform/internal/biz"
+	"kgs-platform/internal/observability"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type graphRepo struct {
@@ -31,7 +33,9 @@ func NewGraphRepo(data *Data, logger log.Logger) biz.GraphRepo {
 
 // CreateNode creates a new namespaced node in Neo4j
 func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
-	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.create_node", attribute.String("neo4j.label", label))
+	defer span.End()
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
 	cleanLabel, err := sanitizeCypherIdentifier(label)
@@ -41,7 +45,7 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, labe
 	props := cloneMap(properties)
 	nodeID := ensureID(props)
 
-	result, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	result, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
 		query := fmt.Sprintf(`
 			CREATE (n:%s {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
 			SET n += $props
@@ -54,12 +58,12 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, labe
 			"props":     props,
 		}
 
-		res, err := tx.Run(ctx, query, params)
+		res, err := tx.Run(traceCtx, query, params)
 		if err != nil {
 			return nil, err
 		}
 
-		if res.Next(ctx) {
+		if res.Next(traceCtx) {
 			node := res.Record().Values[0].(neo4j.Node)
 			return node.Props, nil
 		}
@@ -68,6 +72,7 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, labe
 	})
 
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		r.log.Errorf("Failed to create node: %v", err)
 		return nil, err
 	}
@@ -76,16 +81,18 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, labe
 }
 
 func (r *graphRepo) GetNode(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
-	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.get_node", attribute.String("neo4j.node_id", nodeID))
+	defer span.End()
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close(ctx)
 
-	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	result, err := session.ExecuteRead(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
 		query := `
 			MATCH (n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
 			RETURN n
 			LIMIT 1
 		`
-		res, err := tx.Run(ctx, query, map[string]any{
+		res, err := tx.Run(traceCtx, query, map[string]any{
 			"app_id":    appID,
 			"tenant_id": tenantID,
 			"node_id":   nodeID,
@@ -93,7 +100,7 @@ func (r *graphRepo) GetNode(ctx context.Context, appID, tenantID, nodeID string)
 		if err != nil {
 			return nil, err
 		}
-		if res.Next(ctx) {
+		if res.Next(traceCtx) {
 			node := res.Record().Values[0].(neo4j.Node)
 			return node.Props, nil
 		}
@@ -103,6 +110,7 @@ func (r *graphRepo) GetNode(ctx context.Context, appID, tenantID, nodeID string)
 		return nil, fmt.Errorf("node not found")
 	})
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		return nil, err
 	}
 	return result.(map[string]any), nil
@@ -141,15 +149,20 @@ func sanitizeCypherIdentifier(input string) (string, error) {
 }
 
 func (r *graphRepo) ensureGlobalFullTextIndex(ctx context.Context) error {
-	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.ensure_fulltext_index")
+	defer span.End()
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
-	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
-		_, err := tx.Run(ctx, "CREATE FULLTEXT INDEX kgs_fti_global IF NOT EXISTS FOR (n) ON EACH [n.name, n.content, n.description]", nil)
+	_, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
+		_, err := tx.Run(traceCtx, "CREATE FULLTEXT INDEX kgs_fti_global IF NOT EXISTS FOR (n) ON EACH [n.name, n.content, n.description]", nil)
 		if err != nil {
 			return nil, err
 		}
 		return nil, nil
 	})
+	if err != nil {
+		observability.RecordSpanError(span, err)
+	}
 	return err
 }

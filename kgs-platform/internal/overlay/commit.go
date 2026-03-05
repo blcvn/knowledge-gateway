@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"kgs-platform/internal/data"
+	"kgs-platform/internal/observability"
 	"kgs-platform/internal/version"
 )
 
@@ -55,6 +56,7 @@ func (m *Manager) commit(ctx context.Context, overlayID, conflictPolicy string, 
 	if overlay.SessionID != "" {
 		_ = m.store.UnbindSession(ctx, overlay.SessionID)
 	}
+	observability.DecOverlayActive(overlay.Namespace)
 
 	result := &CommitResult{
 		NewVersionID:      newVersionID,

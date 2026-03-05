@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"kgs-platform/internal/data"
+	"kgs-platform/internal/observability"
 	"kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -69,6 +70,7 @@ func (m *Manager) Create(ctx context.Context, namespace, sessionID, baseVersionI
 	if err := m.store.BindSession(ctx, sessionID, overlay.OverlayID, defaultOverlayTTL); err != nil {
 		return nil, err
 	}
+	observability.IncOverlayActive(namespace)
 	return overlay, nil
 }
 
@@ -88,6 +90,7 @@ func (m *Manager) Discard(ctx context.Context, overlayID string) error {
 	if overlay.SessionID != "" {
 		_ = m.store.UnbindSession(ctx, overlay.SessionID)
 	}
+	observability.DecOverlayActive(overlay.Namespace)
 	if m.publisher != nil {
 		payload, _ := json.Marshal(map[string]any{
 			"overlay_id": overlay.OverlayID,

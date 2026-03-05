@@ -14,6 +14,7 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/transport"
+	httpTransport "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -35,7 +36,7 @@ func Auth(registryUC RegistryValidator, redisCli *redis.Client) middleware.Middl
 			if !ok {
 				return handler(ctx, req)
 			}
-			if shouldSkipAuth(tr.Operation()) {
+			if shouldSkipAuth(tr.Operation()) || isObservabilityPath(tr) {
 				return handler(ctx, req)
 			}
 
@@ -81,6 +82,10 @@ func AppContextFromContext(ctx context.Context) (AppContext, bool) {
 }
 
 func shouldSkipAuth(operation string) bool {
+	op := strings.ToLower(strings.TrimSpace(operation))
+	if strings.Contains(op, "healthz") || strings.Contains(op, "readyz") || strings.Contains(op, "metrics") {
+		return true
+	}
 	return operation == registryv1.OperationRegistryCreateApp ||
 		operation == registryv1.OperationRegistryListApps ||
 		operation == registryv1.OperationRegistryIssueApiKey ||
@@ -89,6 +94,15 @@ func shouldSkipAuth(operation string) bool {
 		strings.HasSuffix(operation, "/ListApps") ||
 		strings.HasSuffix(operation, "/IssueApiKey") ||
 		strings.HasSuffix(operation, "/GetApp")
+}
+
+func isObservabilityPath(tr transport.Transporter) bool {
+	ht, ok := tr.(httpTransport.Transporter)
+	if !ok {
+		return false
+	}
+	path := strings.TrimSpace(ht.Request().URL.Path)
+	return path == "/healthz" || path == "/readyz" || path == "/metrics"
 }
 
 func extractRawAPIKey(authHeader, xAPIKey string) string {

@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"kgs-platform/internal/conf"
+	"kgs-platform/internal/observability"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -203,6 +205,13 @@ func (c *QdrantClient) DeleteVectors(ctx context.Context, collection string, ids
 	return c.doJSON(ctx, http.MethodPost, "/collections/"+url.PathEscape(collection)+"/points/delete", body, nil)
 }
 
+func (c *QdrantClient) Ping(ctx context.Context) error {
+	if c == nil {
+		return nil
+	}
+	return c.doJSON(ctx, http.MethodGet, "/collections", nil, nil)
+}
+
 type qdrantPoint struct {
 	ID      any            `json:"id"`
 	Score   float64        `json:"score"`
@@ -217,41 +226,60 @@ type qdrantEnvelope struct {
 }
 
 func (c *QdrantClient) doJSON(ctx context.Context, method, path string, reqBody any, out any) error {
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return err
+	traceCtx, span := observability.StartDependencySpan(ctx, "qdrant", "qdrant."+strings.ToLower(method), attribute.String("http.path", path))
+	defer span.End()
+
+	var bodyReader io.Reader
+	if reqBody != nil {
+		bodyBytes, err := json.Marshal(reqBody)
+		if err != nil {
+			return err
+		}
+		bodyReader = bytes.NewReader(bodyBytes)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(traceCtx, method, c.baseURL+path, bodyReader)
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		return err
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		return err
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("qdrant %s %s failed: status=%d body=%s", method, path, resp.StatusCode, strings.TrimSpace(string(raw)))
+		err := fmt.Errorf("qdrant %s %s failed: status=%d body=%s", method, path, resp.StatusCode, strings.TrimSpace(string(raw)))
+		observability.RecordSpanError(span, err)
+		return err
 	}
 	if out == nil {
 		return nil
 	}
 	var env qdrantEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
+		observability.RecordSpanError(span, err)
 		return err
 	}
 	if env.Error != "" {
-		return fmt.Errorf("qdrant error: %s", env.Error)
+		err := fmt.Errorf("qdrant error: %s", env.Error)
+		observability.RecordSpanError(span, err)
+		return err
 	}
 	if len(env.Result) == 0 {
 		return nil
 	}
-	return json.Unmarshal(env.Result, out)
+	if err := json.Unmarshal(env.Result, out); err != nil {
+		observability.RecordSpanError(span, err)
+		return err
+	}
+	return nil
 }
 
 func mapScoredPoints(points []qdrantPoint) []ScoredPoint {

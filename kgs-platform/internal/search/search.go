@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"time"
+
+	"kgs-platform/internal/observability"
 )
 
 const (
@@ -55,7 +58,7 @@ type Engine struct {
 	centrality CentralityScorer
 }
 
-func NewEngine(vector *VectorSearcher, text *TextSearcher, centrality *Neo4jCentralityProvider) *Engine {
+func NewEngine(vector VectorRetriever, text TextRetriever, centrality CentralityScorer) *Engine {
 	return &Engine{
 		vector:     vector,
 		text:       text,
@@ -64,6 +67,10 @@ func NewEngine(vector *VectorSearcher, text *TextSearcher, centrality *Neo4jCent
 }
 
 func (e *Engine) HybridSearch(ctx context.Context, namespace, query string, opts Options) ([]Result, error) {
+	started := time.Now()
+	defer func() {
+		observability.ObserveSearchDuration("hybrid", time.Since(started))
+	}()
 	if query == "" {
 		return nil, errors.New("query is required")
 	}

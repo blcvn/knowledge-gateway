@@ -82,6 +82,17 @@ func (c *NATSClient) Subscribe(subject string, handler NATSHandler) (func(), err
 	}, nil
 }
 
+func (c *NATSClient) Ping(ctx context.Context) error {
+	_ = ctx
+	if c == nil {
+		return nil
+	}
+	if strings.TrimSpace(c.url) == "" {
+		return fmt.Errorf("nats url is empty")
+	}
+	return nil
+}
+
 func subjectMatch(pattern, subject string) bool {
 	pattern = strings.TrimSpace(pattern)
 	subject = strings.TrimSpace(subject)

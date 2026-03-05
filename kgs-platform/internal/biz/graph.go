@@ -2,11 +2,10 @@ package biz
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"kgs-platform/internal/lock"
+	"kgs-platform/internal/observability"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
@@ -66,10 +65,14 @@ func (uc *GraphUsecase) CreateNode(ctx context.Context, appID, tenantID string, 
 	}
 	if overlayID := extractOverlayID(properties); overlayID != "" {
 		if uc.overlay == nil {
-			return nil, fmt.Errorf("overlay writer is not configured")
+			err := ErrNotConfigured("overlay writer is not configured", map[string]string{"component": "overlay_writer"})
+			observability.ObserveEntityWrite("create_node_overlay", err)
+			return nil, err
 		}
 		namespace := ComputeNamespace(appID, tenantID)
-		return uc.overlay.AddEntityDelta(ctx, overlayID, namespace, label, properties)
+		result, err := uc.overlay.AddEntityDelta(ctx, overlayID, namespace, label, properties)
+		observability.ObserveEntityWrite("create_node_overlay", err)
+		return result, err
 	}
 
 	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
@@ -83,15 +86,22 @@ func (uc *GraphUsecase) CreateNode(ctx context.Context, appID, tenantID string, 
 	allowed, err := uc.opa.EvaluatePolicy(lockCtx, appID, "CREATE_NODE", label)
 	if err != nil {
 		uc.log.Errorf("OPA evaluation failed: %v", err)
+		observability.ObserveEntityWrite("create_node", err)
 		return nil, err
 	}
 	if !allowed {
-		return nil, errors.New("access denied by OPA policy")
+		err := ErrForbiddenWithMetadata("access denied by OPA policy", map[string]string{
+			"action": "CREATE_NODE",
+			"label":  label,
+		})
+		observability.ObserveEntityWrite("create_node", err)
+		return nil, err
 	}
 
 	// 2. Data Persistence
 	result, err := uc.repo.CreateNode(lockCtx, appID, tenantID, label, properties)
 	if err != nil {
+		observability.ObserveEntityWrite("create_node", err)
 		return nil, err
 	}
 
@@ -106,6 +116,7 @@ func (uc *GraphUsecase) CreateNode(ctx context.Context, appID, tenantID string, 
 		},
 	})
 
+	observability.ObserveEntityWrite("create_node", nil)
 	return result, nil
 }
 
@@ -116,10 +127,14 @@ func (uc *GraphUsecase) GetNode(ctx context.Context, appID, tenantID, nodeID str
 func (uc *GraphUsecase) CreateEdge(ctx context.Context, appID, tenantID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error) {
 	if overlayID := extractOverlayID(properties); overlayID != "" {
 		if uc.overlay == nil {
-			return nil, fmt.Errorf("overlay writer is not configured")
+			err := ErrNotConfigured("overlay writer is not configured", map[string]string{"component": "overlay_writer"})
+			observability.ObserveEntityWrite("create_edge_overlay", err)
+			return nil, err
 		}
 		namespace := ComputeNamespace(appID, tenantID)
-		return uc.overlay.AddEdgeDelta(ctx, overlayID, namespace, relationType, sourceNodeID, targetNodeID, properties)
+		result, err := uc.overlay.AddEdgeDelta(ctx, overlayID, namespace, relationType, sourceNodeID, targetNodeID, properties)
+		observability.ObserveEntityWrite("create_edge_overlay", err)
+		return result, err
 	}
 
 	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
@@ -136,7 +151,9 @@ func (uc *GraphUsecase) CreateEdge(ctx context.Context, appID, tenantID string, 
 	defer uc.releaseLock(lockCtx, targetToken)
 
 	// TODO: Validate relation whitelist
-	return uc.repo.CreateEdge(lockCtx, appID, tenantID, relationType, sourceNodeID, targetNodeID, properties)
+	result, err := uc.repo.CreateEdge(lockCtx, appID, tenantID, relationType, sourceNodeID, targetNodeID, properties)
+	observability.ObserveEntityWrite("create_edge", err)
+	return result, err
 }
 
 func (uc *GraphUsecase) GetContext(ctx context.Context, appID, tenantID string, nodeID string, depth int, direction string) (map[string]any, error) {

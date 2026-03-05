@@ -8,8 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"kgs-platform/internal/observability"
+
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -85,10 +88,13 @@ func (m *RedisLockManager) AcquireNamespaceLock(ctx context.Context, namespace s
 }
 
 func (m *RedisLockManager) Release(ctx context.Context, lockToken string) error {
+	traceCtx, span := observability.StartDependencySpan(ctx, "redis", "redis.lock.release")
+	defer span.End()
 	m.mu.Lock()
 	rec, ok := m.byToken[lockToken]
 	if !ok {
 		m.mu.Unlock()
+		observability.RecordSpanError(span, ErrUnknownLockToken)
 		return ErrUnknownLockToken
 	}
 	if rec.count > 1 {
@@ -110,8 +116,10 @@ func (m *RedisLockManager) Release(ctx context.Context, lockToken string) error 
 	}
 	m.mu.Unlock()
 
-	res, err := m.store.Eval(ctx, releaseScript, []string{rec.key}, rec.token).Result()
+	span.SetAttributes(attribute.String("redis.key", rec.key))
+	res, err := m.store.Eval(traceCtx, releaseScript, []string{rec.key}, rec.token).Result()
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		return err
 	}
 	switch v := res.(type) {
@@ -128,6 +136,10 @@ func (m *RedisLockManager) Release(ctx context.Context, lockToken string) error 
 }
 
 func (m *RedisLockManager) acquire(ctx context.Context, key string, level int, ttl time.Duration) (string, error) {
+	started := time.Now()
+	traceCtx, span := observability.StartDependencySpan(ctx, "redis", "redis.lock.acquire", attribute.String("redis.key", key))
+	defer span.End()
+
 	owner := ownerIDFromContext(ctx)
 
 	m.mu.Lock()
@@ -149,7 +161,7 @@ func (m *RedisLockManager) acquire(ctx context.Context, key string, level int, t
 	token := uuid.NewString()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		ok, err := m.store.SetNX(ctx, key, token, ttl).Result()
+		ok, err := m.store.SetNX(traceCtx, key, token, ttl).Result()
 		if err == nil && ok {
 			m.mu.Lock()
 			rec := lockRecord{
@@ -168,12 +180,17 @@ func (m *RedisLockManager) acquire(ctx context.Context, key string, level int, t
 				m.ownerMax[owner] = level
 			}
 			m.mu.Unlock()
+			observability.ObserveLockAcquire(levelToMetricLabel(level), time.Since(started), nil)
 			return token, nil
 		}
 		if err != nil {
+			observability.RecordSpanError(span, err)
+			observability.ObserveLockAcquire(levelToMetricLabel(level), time.Since(started), err)
 			return "", err
 		}
 		if ctx.Err() != nil || time.Now().After(deadline) {
+			observability.RecordSpanError(span, ErrLockTimeout)
+			observability.ObserveLockAcquire(levelToMetricLabel(level), time.Since(started), ErrLockTimeout)
 			return "", ErrLockTimeout
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -200,6 +217,21 @@ func computeOwnerMax(lockMap map[string]lockRecord) int {
 		}
 	}
 	return maxLevel
+}
+
+func levelToMetricLabel(level int) string {
+	switch level {
+	case levelNode:
+		return "node"
+	case levelSubgraph:
+		return "subgraph"
+	case levelVersion:
+		return "version"
+	case levelNamespace:
+		return "namespace"
+	default:
+		return "unknown"
+	}
 }
 
 const releaseScript = `

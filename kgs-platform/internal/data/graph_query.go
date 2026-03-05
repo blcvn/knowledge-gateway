@@ -6,24 +6,30 @@ import (
 	"fmt"
 	"time"
 
+	"kgs-platform/internal/observability"
+
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"go.opentelemetry.io/otel/attribute"
 	"kgs-platform/internal/biz"
 )
 
 // The Graph Usecase relies on these methods to execute planned strings
 
 func (r *graphRepo) ExecuteQuery(ctx context.Context, cypher string, params map[string]any) (map[string]any, error) {
-	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.execute_query", attribute.String("neo4j.mode", "read"))
+	defer span.End()
+
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close(ctx)
 
-	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
-		res, err := tx.Run(ctx, cypher, params)
+	result, err := session.ExecuteRead(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
+		res, err := tx.Run(traceCtx, cypher, params)
 		if err != nil {
 			return nil, err
 		}
 
 		var rows []map[string]any
-		for res.Next(ctx) {
+		for res.Next(traceCtx) {
 			rows = append(rows, res.Record().AsMap())
 		}
 
@@ -35,6 +41,7 @@ func (r *graphRepo) ExecuteQuery(ctx context.Context, cypher string, params map[
 	})
 
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		r.log.Errorf("Failed to execute read query: %v\nCypher: %s", err, cypher)
 		return nil, err
 	}
@@ -53,21 +60,23 @@ func (r *graphRepo) GetPageRank(ctx context.Context, namespace string) (map[stri
 	}
 
 	graphName := "kgs-graph-" + namespace
-	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.gds.pagerank")
+	defer span.End()
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close(ctx)
 
 	out := map[string]float64{}
-	_, err = session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	_, err = session.ExecuteRead(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
 		query := `
 			CALL gds.pageRank.stream($graph_name)
 			YIELD nodeId, score
 			RETURN gds.util.asNode(nodeId).id AS id, score
 		`
-		res, err := tx.Run(ctx, query, map[string]any{"graph_name": graphName})
+		res, err := tx.Run(traceCtx, query, map[string]any{"graph_name": graphName})
 		if err != nil {
 			return nil, err
 		}
-		for res.Next(ctx) {
+		for res.Next(traceCtx) {
 			row := res.Record().AsMap()
 			id := fmt.Sprint(row["id"])
 			switch score := row["score"].(type) {
@@ -80,6 +89,7 @@ func (r *graphRepo) GetPageRank(ctx context.Context, namespace string) (map[stri
 		return nil, res.Err()
 	})
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		return nil, err
 	}
 
@@ -91,21 +101,23 @@ func (r *graphRepo) GetPageRank(ctx context.Context, namespace string) (map[stri
 
 func (r *graphRepo) GetDegreeCentrality(ctx context.Context, namespace string) (map[string]float64, error) {
 	graphName := "kgs-graph-" + namespace
-	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.gds.degree")
+	defer span.End()
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
 	defer session.Close(ctx)
 
 	out := map[string]float64{}
-	_, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	_, err := session.ExecuteRead(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
 		query := `
 			CALL gds.degree.stream($graph_name)
 			YIELD nodeId, score
 			RETURN gds.util.asNode(nodeId).id AS id, score
 		`
-		res, err := tx.Run(ctx, query, map[string]any{"graph_name": graphName})
+		res, err := tx.Run(traceCtx, query, map[string]any{"graph_name": graphName})
 		if err != nil {
 			return nil, err
 		}
-		for res.Next(ctx) {
+		for res.Next(traceCtx) {
 			row := res.Record().AsMap()
 			id := fmt.Sprint(row["id"])
 			switch score := row["score"].(type) {
@@ -118,6 +130,7 @@ func (r *graphRepo) GetDegreeCentrality(ctx context.Context, namespace string) (
 		return nil, res.Err()
 	})
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		return nil, err
 	}
 	return out, nil

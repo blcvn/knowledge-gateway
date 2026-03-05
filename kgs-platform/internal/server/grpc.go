@@ -22,6 +22,8 @@ import (
 func NewGRPCServer(c *conf.Server, greeter *service.GreeterService, registry *service.RegistryService, ont *service.OntologyService, g *service.GraphService, ruleSrv *service.RulesService, policySrv *service.PolicyService, registryUC *biz.RegistryUsecase, redisCli *redis.Client, logger log.Logger) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
+			middleware.Tracing(),
+			middleware.Metrics(),
 			recovery.Recovery(),
 			middleware.Auth(registryUC, redisCli),
 			middleware.Namespace(),

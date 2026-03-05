@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"strings"
 	"time"
 
@@ -16,12 +15,6 @@ import (
 const (
 	DefaultRequestsPerMinute = int64(1000)
 	quotaTypeRequestsPerMin  = "requests_per_minute"
-)
-
-var (
-	ErrAPIKeyNotFound = errors.New("api key not found")
-	ErrAPIKeyRevoked  = errors.New("api key revoked")
-	ErrAPIKeyExpired  = errors.New("api key expired")
 )
 
 type RegistryRepo interface {

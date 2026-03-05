@@ -74,10 +74,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	policyRepo := data.NewPolicyRepo(dataData, logger)
 	policyUsecase := biz.NewPolicyUsecase(policyRepo, logger)
 	policyService := service.NewPolicyService(policyUsecase)
+	healthService := service.NewHealthService(db, client, contextDriver, qdrantClient, natsClient, logger)
 	viewResolver := biz.NewViewResolver(engine2)
 	_ = viewResolver
 	grpcServer := server.NewGRPCServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, registryUsecase, client, logger)
-	httpServer := server.NewHTTPServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, registryUsecase, client, logger)
+	httpServer := server.NewHTTPServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, healthService, registryUsecase, client, logger)
 	ruleRunner := biz.NewRuleRunner(rulesRepo, graphRepo, logger)
 	eventRunner := biz.NewEventRunner(rulesRepo, graphRepo, client, logger)
 	policySyncRunner := biz.NewPolicySyncRunner(policyRepo, opaClient, logger)
