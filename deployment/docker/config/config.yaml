@@ -30,3 +30,10 @@ data:
   nats:
     url: nats://nats:4222
     stream: kgs-events
+  embedding:
+    provider: deterministic
+    api_key: ""
+    model: text-embedding-3-small
+    base_url: https://api.openai.com/v1
+    vector_size: 1536
+    timeout: 15s

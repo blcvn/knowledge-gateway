@@ -5,18 +5,23 @@ import (
 	"fmt"
 
 	"kgs-platform/internal/data"
+	"kgs-platform/internal/search"
 )
 
 type QdrantIndexer struct {
-	qdrant *data.QdrantClient
+	qdrant   *data.QdrantClient
+	embedder search.EmbeddingClient
 }
 
-func NewQdrantIndexer(qdrant *data.QdrantClient) *QdrantIndexer {
-	return &QdrantIndexer{qdrant: qdrant}
+func NewQdrantIndexer(qdrant *data.QdrantClient, embedder search.EmbeddingClient) *QdrantIndexer {
+	if embedder == nil {
+		embedder = search.NewDeterministicEmbeddingClient(1536)
+	}
+	return &QdrantIndexer{qdrant: qdrant, embedder: embedder}
 }
 
 func (i *QdrantIndexer) IndexEntities(ctx context.Context, appID, tenantID string, entities []Entity) error {
-	if i == nil || i.qdrant == nil || len(entities) == 0 {
+	if i == nil || i.qdrant == nil || i.embedder == nil || len(entities) == 0 {
 		return nil
 	}
 	_ = tenantID
@@ -31,7 +36,10 @@ func (i *QdrantIndexer) IndexEntities(ctx context.Context, appID, tenantID strin
 		if text == "" {
 			continue
 		}
-		vector := embedDeterministic(text, 1536)
+		vector, err := i.embedder.Embed(ctx, text)
+		if err != nil {
+			return fmt.Errorf("embed entity %s: %w", id, err)
+		}
 		points = append(points, data.VectorPoint{
 			ID:     id,
 			Vector: vector,

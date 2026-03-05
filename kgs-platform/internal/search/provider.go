@@ -3,7 +3,7 @@ package search
 import "github.com/google/wire"
 
 var ProviderSet = wire.NewSet(
-	NewDeterministicEmbeddingClient,
+	NewEmbeddingClient,
 	NewVectorSearcher,
 	NewTextSearcher,
 	NewNeo4jCentralityProvider,

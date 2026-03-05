@@ -53,12 +53,16 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	db := data.NewGormDB(dataData)
 	cache := analytics.NewCache(client)
 	engine1 := analytics.NewEngine(graphRepo, cache)
+	embeddingClient, err := search.NewEmbeddingClient(confData, logger)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	neo4jWriter := batch.NewNeo4jWriter(contextDriver)
-	semanticDeduper := batch.NewSemanticDeduper(qdrantClient)
-	qdrantIndexer := batch.NewQdrantIndexer(qdrantClient)
+	semanticDeduper := batch.NewSemanticDeduper(qdrantClient, embeddingClient)
+	qdrantIndexer := batch.NewQdrantIndexer(qdrantClient, embeddingClient)
 	usecase := batch.NewUsecaseWithIndexer(neo4jWriter, semanticDeduper, qdrantIndexer)
-	deterministicEmbeddingClient := search.NewDeterministicEmbeddingClient()
-	vectorSearcher := search.NewVectorSearcher(qdrantClient, deterministicEmbeddingClient)
+	vectorSearcher := search.NewVectorSearcher(qdrantClient, embeddingClient)
 	textSearcher := search.NewTextSearcher(contextDriver, logger)
 	neo4jCentralityProvider := search.NewNeo4jCentralityProvider(contextDriver)
 	engine := search.NewEngine(vectorSearcher, textSearcher, neo4jCentralityProvider)

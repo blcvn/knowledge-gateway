@@ -2,15 +2,12 @@ package batch
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"encoding/json"
-	"fmt"
-	"math"
 	"regexp"
 	"strings"
 
 	"kgs-platform/internal/data"
+	"kgs-platform/internal/search"
 )
 
 const semanticThreshold = 0.95
@@ -48,18 +45,23 @@ func (d *ExactDeduper) Dedup(ctx context.Context, appID, tenantID string, entiti
 type SemanticDeduper struct {
 	exact  *ExactDeduper
 	qdrant *data.QdrantClient
+	embed  search.EmbeddingClient
 }
 
-func NewSemanticDeduper(qdrant *data.QdrantClient) *SemanticDeduper {
+func NewSemanticDeduper(qdrant *data.QdrantClient, embed search.EmbeddingClient) *SemanticDeduper {
+	if embed == nil {
+		embed = search.NewDeterministicEmbeddingClient(1536)
+	}
 	return &SemanticDeduper{
 		exact:  NewExactDeduper(),
 		qdrant: qdrant,
+		embed:  embed,
 	}
 }
 
 func (d *SemanticDeduper) Dedup(ctx context.Context, appID, tenantID string, entities []Entity) ([]Entity, int, error) {
 	unique, skipped, err := d.exact.Dedup(ctx, appID, tenantID, entities)
-	if err != nil || d.qdrant == nil || appID == "" {
+	if err != nil || d.qdrant == nil || d.embed == nil || appID == "" {
 		return unique, skipped, err
 	}
 
@@ -71,7 +73,10 @@ func (d *SemanticDeduper) Dedup(ctx context.Context, appID, tenantID string, ent
 			final = append(final, entity)
 			continue
 		}
-		vector := embedDeterministic(text, 1536)
+		vector, err := d.embed.Embed(ctx, text)
+		if err != nil {
+			return nil, 0, err
+		}
 		if err := d.qdrant.EnsureCollection(ctx, collection, len(vector)); err != nil {
 			return nil, 0, err
 		}
@@ -98,34 +103,6 @@ func entityToText(entity Entity) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(parts, " "))
-}
-
-func embedDeterministic(text string, size int) []float32 {
-	if size <= 0 {
-		size = 1536
-	}
-	out := make([]float32, size)
-	for i := 0; i < size; i++ {
-		hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", text, i)))
-		raw := binary.BigEndian.Uint32(hash[:4])
-		out[i] = float32(raw%10000)/5000 - 1
-	}
-	normalize(out)
-	return out
-}
-
-func normalize(vector []float32) {
-	norm := 0.0
-	for _, value := range vector {
-		norm += float64(value * value)
-	}
-	if norm == 0 {
-		return
-	}
-	norm = math.Sqrt(norm)
-	for i := range vector {
-		vector[i] = float32(float64(vector[i]) / norm)
-	}
 }
 
 var sanitizePattern = regexp.MustCompile(`[^a-zA-Z0-9_]+`)

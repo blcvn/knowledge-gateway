@@ -19,8 +19,11 @@ type DeterministicEmbeddingClient struct {
 	vectorSize int
 }
 
-func NewDeterministicEmbeddingClient() *DeterministicEmbeddingClient {
-	return &DeterministicEmbeddingClient{vectorSize: 1536}
+func NewDeterministicEmbeddingClient(vectorSize int) *DeterministicEmbeddingClient {
+	if vectorSize <= 0 {
+		vectorSize = 1536
+	}
+	return &DeterministicEmbeddingClient{vectorSize: vectorSize}
 }
 
 func (c *DeterministicEmbeddingClient) Embed(ctx context.Context, text string) ([]float32, error) {
@@ -47,7 +50,7 @@ type VectorSearcher struct {
 	embedder EmbeddingClient
 }
 
-func NewVectorSearcher(qdrant *data.QdrantClient, embedder *DeterministicEmbeddingClient) *VectorSearcher {
+func NewVectorSearcher(qdrant *data.QdrantClient, embedder EmbeddingClient) *VectorSearcher {
 	return &VectorSearcher{
 		qdrant:   qdrant,
 		embedder: embedder,

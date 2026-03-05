@@ -56,10 +56,19 @@ message Data {
     string url = 1;
     string stream = 2;
   }
+  message Embedding {
+    string provider = 1;
+    string api_key = 2;
+    string model = 3;
+    string base_url = 4;
+    int32 vector_size = 5;
+    google.protobuf.Duration timeout = 6;
+  }
   Database database = 1;
   Redis redis = 2;
   Neo4j neo4j = 3;
   OPA opa = 4;
   Qdrant qdrant = 5;
   NATS nats = 6;
+  Embedding embedding = 7;
 }
