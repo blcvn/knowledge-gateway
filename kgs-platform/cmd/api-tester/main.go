@@ -47,6 +47,14 @@ type tester struct {
 	overlay2ID   string
 	versionFrom  string
 	versionTo    string
+	edgeID       string
+
+	createdAppName string
+	policyName     string
+	ruleName       string
+	viewRoleName   string
+	node1Name      string
+	node2Name      string
 
 	results []stepResult
 }
@@ -81,6 +89,12 @@ func main() {
 
 func (t *tester) runAll() {
 	suffix := strconv.FormatInt(time.Now().UnixNano()%1_000_000_000, 10)
+	t.createdAppName = "KGS API Tester " + suffix
+	t.policyName = "Allow " + suffix
+	t.ruleName = "rule-" + suffix
+	t.viewRoleName = "reader-" + suffix
+	t.node1Name = "REQ-1-" + suffix
+	t.node2Name = "REQ-2-" + suffix
 	t.entityType = "RequirementTest" + suffix
 	t.relationType = "DEPENDS_ON_" + suffix
 
@@ -96,7 +110,7 @@ func (t *tester) runAll() {
 
 	t.runStep("POST /v1/apps (CreateApp)", func() error {
 		resp, err := t.doJSON(http.MethodPost, "/v1/apps", map[string]any{
-			"app_name":    "KGS API Tester " + suffix,
+			"app_name":    t.createdAppName,
 			"description": "auto smoke test",
 			"owner":       "qa-bot",
 		}, false, nil, http.StatusOK)
@@ -106,6 +120,9 @@ func (t *tester) runAll() {
 		t.createdAppID = pickString(resp, "app_id", "appId")
 		if t.createdAppID == "" {
 			return fmt.Errorf("missing app_id in response")
+		}
+		if status := pickString(resp, "status"); status == "" {
+			return fmt.Errorf("missing app status in response")
 		}
 		return nil
 	})
@@ -119,20 +136,42 @@ func (t *tester) runAll() {
 		if len(apps) == 0 {
 			return fmt.Errorf("apps list is empty")
 		}
+		app, ok := findObjectByString(apps, t.createdAppID, "app_id", "appId")
+		if !ok {
+			return fmt.Errorf("created app_id=%s not found in apps list", t.createdAppID)
+		}
+		if name := pickString(app, "app_name", "appName"); name != t.createdAppName {
+			return fmt.Errorf("list apps mismatch app_name: got=%q want=%q", name, t.createdAppName)
+		}
 		return nil
 	})
 
 	t.runStep("GET /v1/apps/{app_id} (GetApp)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/apps/"+url.PathEscape(t.createdAppID), nil, false, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/apps/"+url.PathEscape(t.createdAppID), nil, false, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if got := pickString(resp, "app_id", "appId"); got != t.createdAppID {
+			return fmt.Errorf("get app mismatch app_id: got=%q want=%q", got, t.createdAppID)
+		}
+		if got := pickString(resp, "app_name", "appName"); got != t.createdAppName {
+			return fmt.Errorf("get app mismatch app_name: got=%q want=%q", got, t.createdAppName)
+		}
+		return nil
 	})
 
 	t.authAppID = t.createdAppID
 	if t.authAppIDFlag != "" {
 		t.authAppID = t.authAppIDFlag
 		t.runStep("GET /v1/apps/{auth_app_id} (Validate auth app)", func() error {
-			_, err := t.doJSON(http.MethodGet, "/v1/apps/"+url.PathEscape(t.authAppID), nil, false, nil, http.StatusOK)
-			return err
+			resp, err := t.doJSON(http.MethodGet, "/v1/apps/"+url.PathEscape(t.authAppID), nil, false, nil, http.StatusOK)
+			if err != nil {
+				return err
+			}
+			if got := pickString(resp, "app_id", "appId"); got != t.authAppID {
+				return fmt.Errorf("auth app mismatch app_id: got=%q want=%q", got, t.authAppID)
+			}
+			return nil
 		})
 	}
 
@@ -150,6 +189,19 @@ func (t *tester) runAll() {
 		if t.apiKey == "" || t.keyHash == "" {
 			return fmt.Errorf("missing api_key or key_hash in response")
 		}
+		if !strings.HasPrefix(t.apiKey, "kgs_ak_") {
+			return fmt.Errorf("api_key has unexpected format: %q", t.apiKey)
+		}
+		if !strings.HasPrefix(t.keyHash, "sha256_") {
+			return fmt.Errorf("key_hash has unexpected format: %q", t.keyHash)
+		}
+		keyPrefix := pickString(resp, "key_prefix", "keyPrefix")
+		if keyPrefix == "" {
+			return fmt.Errorf("missing key_prefix in response")
+		}
+		if !strings.HasPrefix(t.apiKey, keyPrefix) {
+			return fmt.Errorf("key_prefix=%q does not match api_key", keyPrefix)
+		}
 		t.namespace = fmt.Sprintf("graph/%s/default", t.authAppID)
 		return nil
 	})
@@ -162,7 +214,7 @@ func (t *tester) runAll() {
 
 	t.runStep("POST /v1/policies (CreatePolicy)", func() error {
 		resp, err := t.doJSON(http.MethodPost, "/v1/policies", map[string]any{
-			"name":        "Allow " + suffix,
+			"name":        t.policyName,
 			"description": "api-tester policy",
 			"rego_content": fmt.Sprintf(
 				"package kgs\nimport rego.v1\n\nallow if {\n  input.app_id == %q\n}\n",
@@ -176,6 +228,12 @@ func (t *tester) runAll() {
 		if t.policyID == "" {
 			return fmt.Errorf("missing policy id")
 		}
+		if got := pickString(resp, "name"); got != t.policyName {
+			return fmt.Errorf("policy name mismatch: got=%q want=%q", got, t.policyName)
+		}
+		if rego := pickString(resp, "rego_content", "regoContent"); !strings.Contains(rego, t.authAppID) {
+			return fmt.Errorf("policy rego_content does not reference auth app_id=%s", t.authAppID)
+		}
 		return nil
 	})
 
@@ -187,12 +245,24 @@ func (t *tester) runAll() {
 		if len(asSlice(resp["policies"])) == 0 {
 			return fmt.Errorf("policies list is empty")
 		}
+		if _, ok := findObjectByString(asSlice(resp["policies"]), t.policyID, "id"); !ok {
+			return fmt.Errorf("created policy id=%s not found in list", t.policyID)
+		}
 		return nil
 	})
 
 	t.runStep("GET /v1/policies/{id} (GetPolicy)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/policies/"+url.PathEscape(t.policyID), nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/policies/"+url.PathEscape(t.policyID), nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if got := pickString(resp, "id"); got != t.policyID {
+			return fmt.Errorf("get policy mismatch id: got=%q want=%q", got, t.policyID)
+		}
+		if got := pickString(resp, "name"); got != t.policyName {
+			return fmt.Errorf("get policy mismatch name: got=%q want=%q", got, t.policyName)
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/ontology/entities (CreateEntityType)", func() error {
@@ -206,6 +276,13 @@ func (t *tester) runAll() {
 		}
 		if asString(resp["name"]) == "" {
 			return fmt.Errorf("missing entity type name in response")
+		}
+		if got := pickString(resp, "name"); got != t.entityType {
+			return fmt.Errorf("create entity type mismatch name: got=%q want=%q", got, t.entityType)
+		}
+		status := pickString(resp, "status")
+		if status != "CREATED" && status != "EXISTS" {
+			return fmt.Errorf("unexpected entity type status=%q", status)
 		}
 		return nil
 	})
@@ -224,6 +301,13 @@ func (t *tester) runAll() {
 		if asString(resp["name"]) == "" {
 			return fmt.Errorf("missing relation type name in response")
 		}
+		if got := pickString(resp, "name"); got != t.relationType {
+			return fmt.Errorf("create relation type mismatch name: got=%q want=%q", got, t.relationType)
+		}
+		status := pickString(resp, "status")
+		if status != "CREATED" && status != "EXISTS" {
+			return fmt.Errorf("unexpected relation type status=%q", status)
+		}
 		return nil
 	})
 
@@ -234,6 +318,9 @@ func (t *tester) runAll() {
 		}
 		if len(asSlice(resp["entities"])) == 0 {
 			return fmt.Errorf("entity types list is empty")
+		}
+		if _, ok := findObjectByString(asSlice(resp["entities"]), t.entityType, "name"); !ok {
+			return fmt.Errorf("entity type %q not found in list", t.entityType)
 		}
 		return nil
 	})
@@ -246,12 +333,15 @@ func (t *tester) runAll() {
 		if len(asSlice(resp["relations"])) == 0 {
 			return fmt.Errorf("relation types list is empty")
 		}
+		if _, ok := findObjectByString(asSlice(resp["relations"]), t.relationType, "name"); !ok {
+			return fmt.Errorf("relation type %q not found in list", t.relationType)
+		}
 		return nil
 	})
 
 	t.runStep("POST /v1/rules (CreateRule)", func() error {
 		resp, err := t.doJSON(http.MethodPost, "/v1/rules", map[string]any{
-			"name":         "rule-" + suffix,
+			"name":         t.ruleName,
 			"description":  "api tester rule",
 			"trigger_type": "SCHEDULED",
 			"cron":         "0 */6 * * *",
@@ -266,6 +356,9 @@ func (t *tester) runAll() {
 		if t.ruleID == "" {
 			return fmt.Errorf("missing rule id")
 		}
+		if got := pickString(resp, "name"); got != t.ruleName {
+			return fmt.Errorf("create rule mismatch name: got=%q want=%q", got, t.ruleName)
+		}
 		return nil
 	})
 
@@ -277,18 +370,30 @@ func (t *tester) runAll() {
 		if len(asSlice(resp["rules"])) == 0 {
 			return fmt.Errorf("rules list is empty")
 		}
+		if _, ok := findObjectByString(asSlice(resp["rules"]), t.ruleID, "id"); !ok {
+			return fmt.Errorf("rule id=%s not found in list", t.ruleID)
+		}
 		return nil
 	})
 
 	t.runStep("GET /v1/rules/{id} (GetRule)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/rules/"+url.PathEscape(t.ruleID), nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/rules/"+url.PathEscape(t.ruleID), nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if got := pickString(resp, "id"); got != t.ruleID {
+			return fmt.Errorf("get rule mismatch id: got=%q want=%q", got, t.ruleID)
+		}
+		if got := pickString(resp, "name"); got != t.ruleName {
+			return fmt.Errorf("get rule mismatch name: got=%q want=%q", got, t.ruleName)
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/nodes (CreateNode #1)", func() error {
 		resp, err := t.doJSON(http.MethodPost, "/v1/graph/nodes", map[string]any{
 			"label":           t.entityType,
-			"properties_json": mustJSONString(map[string]any{"name": "REQ-1-" + suffix, "priority": "HIGH", "domain": "payment"}),
+			"properties_json": mustJSONString(map[string]any{"name": t.node1Name, "priority": "HIGH", "domain": "payment"}),
 		}, true, nil, http.StatusOK)
 		if err != nil {
 			return err
@@ -297,13 +402,23 @@ func (t *tester) runAll() {
 		if t.node1ID == "" {
 			return fmt.Errorf("missing node_id for node1")
 		}
+		if got := pickString(resp, "label"); got != t.entityType {
+			return fmt.Errorf("create node#1 mismatch label: got=%q want=%q", got, t.entityType)
+		}
+		props, err := parseJSONMap(pickString(resp, "properties_json", "propertiesJson"))
+		if err != nil {
+			return fmt.Errorf("create node#1 invalid properties_json: %w", err)
+		}
+		if got := pickString(props, "name"); got != t.node1Name {
+			return fmt.Errorf("create node#1 mismatch name: got=%q want=%q", got, t.node1Name)
+		}
 		return nil
 	})
 
 	t.runStep("POST /v1/graph/nodes (CreateNode #2)", func() error {
 		resp, err := t.doJSON(http.MethodPost, "/v1/graph/nodes", map[string]any{
 			"label":           t.entityType,
-			"properties_json": mustJSONString(map[string]any{"name": "REQ-2-" + suffix, "priority": "MEDIUM", "domain": "payment"}),
+			"properties_json": mustJSONString(map[string]any{"name": t.node2Name, "priority": "MEDIUM", "domain": "payment"}),
 		}, true, nil, http.StatusOK)
 		if err != nil {
 			return err
@@ -312,44 +427,121 @@ func (t *tester) runAll() {
 		if t.node2ID == "" {
 			return fmt.Errorf("missing node_id for node2")
 		}
+		if got := pickString(resp, "label"); got != t.entityType {
+			return fmt.Errorf("create node#2 mismatch label: got=%q want=%q", got, t.entityType)
+		}
+		props, err := parseJSONMap(pickString(resp, "properties_json", "propertiesJson"))
+		if err != nil {
+			return fmt.Errorf("create node#2 invalid properties_json: %w", err)
+		}
+		if got := pickString(props, "name"); got != t.node2Name {
+			return fmt.Errorf("create node#2 mismatch name: got=%q want=%q", got, t.node2Name)
+		}
 		return nil
 	})
 
 	t.runStep("GET /v1/graph/nodes/{node_id} (GetNode)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID), nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID), nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if got := pickString(resp, "node_id", "nodeId"); got != t.node1ID {
+			return fmt.Errorf("get node mismatch node_id: got=%q want=%q", got, t.node1ID)
+		}
+		props, err := parseJSONMap(pickString(resp, "properties_json", "propertiesJson"))
+		if err != nil {
+			return fmt.Errorf("get node invalid properties_json: %w", err)
+		}
+		if got := pickString(props, "name"); got != t.node1Name {
+			return fmt.Errorf("get node mismatch name: got=%q want=%q", got, t.node1Name)
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/edges (CreateEdge)", func() error {
-		_, err := t.doJSON(http.MethodPost, "/v1/graph/edges", map[string]any{
+		resp, err := t.doJSON(http.MethodPost, "/v1/graph/edges", map[string]any{
 			"source_node_id":  t.node1ID,
 			"target_node_id":  t.node2ID,
 			"relation_type":   t.relationType,
 			"properties_json": mustJSONString(map[string]any{"strength": 0.9}),
 		}, true, nil, http.StatusOK)
-		return err
+		if err != nil {
+			return err
+		}
+		t.edgeID = pickString(resp, "edge_id", "edgeId")
+		if t.edgeID == "" {
+			return fmt.Errorf("missing edge_id in create edge response")
+		}
+		if got := pickString(resp, "source_node_id", "sourceNodeId"); got != t.node1ID {
+			return fmt.Errorf("create edge mismatch source_node_id: got=%q want=%q", got, t.node1ID)
+		}
+		if got := pickString(resp, "target_node_id", "targetNodeId"); got != t.node2ID {
+			return fmt.Errorf("create edge mismatch target_node_id: got=%q want=%q", got, t.node2ID)
+		}
+		if got := pickString(resp, "relation_type", "relationType"); got != t.relationType {
+			return fmt.Errorf("create edge mismatch relation_type: got=%q want=%q", got, t.relationType)
+		}
+		return nil
 	})
 
 	t.runStep("GET /v1/graph/nodes/{node_id}/context (GetContext)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID)+"/context?depth=2&direction=BOTH&page_size=20", nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID)+"/context?depth=2&direction=BOTH&page_size=20", nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		nodes := asSlice(resp["nodes"])
+		if len(nodes) == 0 {
+			return fmt.Errorf("context response nodes is empty")
+		}
+		if _, ok := findObjectByString(nodes, t.node1ID, "id", "node_id", "nodeId"); !ok {
+			return fmt.Errorf("context nodes does not contain node1_id=%s", t.node1ID)
+		}
+		return nil
 	})
 
 	t.runStep("GET /v1/graph/nodes/{node_id}/impact (GetImpact)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID)+"/impact?max_depth=3&page_size=20", nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID)+"/impact?max_depth=3&page_size=20", nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if _, ok := resp["nodes"]; !ok {
+			return fmt.Errorf("impact response missing nodes field")
+		}
+		if _, ok := resp["edges"]; !ok {
+			return fmt.Errorf("impact response missing edges field")
+		}
+		return nil
 	})
 
 	t.runStep("GET /v1/graph/nodes/{node_id}/coverage (GetCoverage)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node2ID)+"/coverage?max_depth=3&page_size=20", nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node2ID)+"/coverage?max_depth=3&page_size=20", nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if _, ok := resp["nodes"]; !ok {
+			return fmt.Errorf("coverage response missing nodes field")
+		}
+		if _, ok := resp["edges"]; !ok {
+			return fmt.Errorf("coverage response missing edges field")
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/subgraph (GetSubgraph)", func() error {
-		_, err := t.doJSON(http.MethodPost, "/v1/graph/subgraph", map[string]any{
+		resp, err := t.doJSON(http.MethodPost, "/v1/graph/subgraph", map[string]any{
 			"node_ids": []string{t.node1ID, t.node2ID},
 		}, true, nil, http.StatusOK)
-		return err
+		if err != nil {
+			return err
+		}
+		nodes := asSlice(resp["nodes"])
+		if _, ok := findObjectByString(nodes, t.node1ID, "id", "node_id", "nodeId"); !ok {
+			return fmt.Errorf("subgraph missing node1_id=%s", t.node1ID)
+		}
+		if _, ok := findObjectByString(nodes, t.node2ID, "id", "node_id", "nodeId"); !ok {
+			return fmt.Errorf("subgraph missing node2_id=%s", t.node2ID)
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/entities/batch (BatchUpsertEntities)", func() error {
@@ -368,41 +560,88 @@ func (t *tester) runAll() {
 		if err != nil {
 			return err
 		}
-		if resp["created"] == nil {
-			return fmt.Errorf("missing created field")
+		created := asInt(resp["created"])
+		updated := asInt(resp["updated"])
+		skipped := asInt(resp["skipped"])
+		if created+updated+skipped != 2 {
+			return fmt.Errorf("batch counters mismatch: created=%d updated=%d skipped=%d expected_total=2", created, updated, skipped)
+		}
+		if created+updated <= 0 {
+			return fmt.Errorf("batch did not create/update any entity: created=%d updated=%d", created, updated)
 		}
 		return nil
 	})
 
 	t.runStep("POST /v1/graph/search/hybrid (HybridSearch)", func() error {
-		_, err := t.doJSON(http.MethodPost, "/v1/graph/search/hybrid", map[string]any{
+		payload := map[string]any{
 			"query":          "REQ " + suffix,
 			"top_k":          10,
 			"alpha":          0.6,
 			"beta":           0.2,
 			"entity_types":   []string{t.entityType},
 			"min_confidence": 0.0,
-		}, true, nil, http.StatusOK)
-		return err
+		}
+		var resp map[string]any
+		var err error
+		for attempt := 0; attempt < 2; attempt++ {
+			resp, err = t.doJSON(http.MethodPost, "/v1/graph/search/hybrid", payload, true, nil, http.StatusOK)
+			if err != nil {
+				return err
+			}
+			results := asSlice(resp["results"])
+			if len(results) > 0 {
+				for i, item := range results {
+					row := asMap(item)
+					if row == nil {
+						return fmt.Errorf("hybrid result[%d] is not object", i)
+					}
+					if pickString(row, "node_id", "nodeId") == "" {
+						return fmt.Errorf("hybrid result[%d] missing node_id", i)
+					}
+				}
+				return nil
+			}
+			time.Sleep(1 * time.Second)
+		}
+		return fmt.Errorf("hybrid search returned empty results after retry")
 	})
 
 	t.runStep("GET /v1/graph/coverage/{domain} (GetCoverageReport)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/graph/coverage/payment", nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/graph/coverage/payment", nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if got := pickString(resp, "domain"); got != "payment" {
+			return fmt.Errorf("coverage report mismatch domain: got=%q want=%q", got, "payment")
+		}
+		coverage := asFloat(resp["coverage_percent"])
+		if coverage < 0 || coverage > 100 {
+			return fmt.Errorf("coverage_percent out of range: %.2f", coverage)
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/traceability (GetTraceabilityMatrix)", func() error {
-		_, err := t.doJSON(http.MethodPost, "/v1/graph/traceability", map[string]any{
+		resp, err := t.doJSON(http.MethodPost, "/v1/graph/traceability", map[string]any{
 			"source_types": []string{t.entityType},
 			"target_types": []string{t.entityType},
 			"max_hops":     3,
 		}, true, nil, http.StatusOK)
-		return err
+		if err != nil {
+			return err
+		}
+		if _, ok := resp["matrix"]; !ok {
+			return fmt.Errorf("traceability response missing matrix field")
+		}
+		if asInt(resp["total_sources"]) < 0 || asInt(resp["total_targets"]) < 0 {
+			return fmt.Errorf("traceability totals must be non-negative")
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/views (CreateViewDefinition)", func() error {
 		resp, err := t.doJSON(http.MethodPost, "/v1/graph/views", map[string]any{
-			"role_name":            "reader-" + suffix,
+			"role_name":            t.viewRoleName,
 			"allowed_entity_types": []string{t.entityType},
 			"allowed_fields":       []string{"id", "name", "priority"},
 			"pii_mask_fields":      []string{"email", "phone"},
@@ -418,12 +657,31 @@ func (t *tester) runAll() {
 		if t.viewID == "" {
 			return fmt.Errorf("missing view_id")
 		}
+		if got := pickString(view, "role_name", "roleName"); got != t.viewRoleName {
+			return fmt.Errorf("create view mismatch role_name: got=%q want=%q", got, t.viewRoleName)
+		}
+		if !sliceContainsString(view["allowed_entity_types"], t.entityType) {
+			return fmt.Errorf("create view allowed_entity_types does not contain %q", t.entityType)
+		}
 		return nil
 	})
 
 	t.runStep("GET /v1/graph/views/{view_id} (GetViewDefinition)", func() error {
-		_, err := t.doJSON(http.MethodGet, "/v1/graph/views/"+url.PathEscape(t.viewID), nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, "/v1/graph/views/"+url.PathEscape(t.viewID), nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		view := asMap(resp["view"])
+		if view == nil {
+			return fmt.Errorf("get view missing view object")
+		}
+		if got := pickString(view, "view_id", "viewId"); got != t.viewID {
+			return fmt.Errorf("get view mismatch view_id: got=%q want=%q", got, t.viewID)
+		}
+		if got := pickString(view, "role_name", "roleName"); got != t.viewRoleName {
+			return fmt.Errorf("get view mismatch role_name: got=%q want=%q", got, t.viewRoleName)
+		}
+		return nil
 	})
 
 	t.runStep("GET /v1/graph/views (ListViewDefinitions)", func() error {
@@ -434,12 +692,21 @@ func (t *tester) runAll() {
 		if len(asSlice(resp["views"])) == 0 {
 			return fmt.Errorf("views list is empty")
 		}
+		if _, ok := findObjectByString(asSlice(resp["views"]), t.viewID, "view_id", "viewId"); !ok {
+			return fmt.Errorf("view id=%s not found in list", t.viewID)
+		}
 		return nil
 	})
 
 	t.runStep("DELETE /v1/graph/views/{view_id} (DeleteViewDefinition)", func() error {
-		_, err := t.doJSON(http.MethodDelete, "/v1/graph/views/"+url.PathEscape(t.viewID), nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodDelete, "/v1/graph/views/"+url.PathEscape(t.viewID), nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if got := pickString(resp, "view_id", "viewId"); got != t.viewID {
+			return fmt.Errorf("delete view mismatch view_id: got=%q want=%q", got, t.viewID)
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/overlays (CreateOverlay #1)", func() error {
@@ -454,11 +721,15 @@ func (t *tester) runAll() {
 		if t.overlay1ID == "" {
 			return fmt.Errorf("missing overlay_id")
 		}
+		status := pickString(resp, "status")
+		if status != "ACTIVE" && status != "CREATED" {
+			return fmt.Errorf("unexpected overlay #1 status=%q", status)
+		}
 		return nil
 	})
 
 	t.runStep("POST /v1/graph/nodes (CreateNode in Overlay)", func() error {
-		_, err := t.doJSON(http.MethodPost, "/v1/graph/nodes", map[string]any{
+		resp, err := t.doJSON(http.MethodPost, "/v1/graph/nodes", map[string]any{
 			"label": t.entityType,
 			"properties_json": mustJSONString(map[string]any{
 				"name":       "REQ-OVERLAY-" + suffix,
@@ -466,7 +737,13 @@ func (t *tester) runAll() {
 				"overlay_id": t.overlay1ID,
 			}),
 		}, true, nil, http.StatusOK)
-		return err
+		if err != nil {
+			return err
+		}
+		if pickString(resp, "node_id", "nodeId") == "" {
+			return fmt.Errorf("create overlay node missing node_id")
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/overlays/{overlay_id}/commit (CommitOverlay)", func() error {
@@ -477,7 +754,14 @@ func (t *tester) runAll() {
 		if err != nil {
 			return err
 		}
-		_ = pickString(resp, "new_version_id", "newVersionId")
+		newVersionID := pickString(resp, "new_version_id", "newVersionId")
+		if newVersionID == "" {
+			return fmt.Errorf("commit overlay missing new_version_id")
+		}
+		if asInt(resp["entities_committed"]) <= 0 {
+			return fmt.Errorf("commit overlay entities_committed must be > 0")
+		}
+		t.versionTo = newVersionID
 		return nil
 	})
 
@@ -499,6 +783,9 @@ func (t *tester) runAll() {
 		if t.versionFrom == "" || t.versionTo == "" {
 			return fmt.Errorf("unable to extract version ids")
 		}
+		if t.versionFrom == t.versionTo && len(versions) > 1 {
+			return fmt.Errorf("version_from and version_to should differ when >=2 versions")
+		}
 		return nil
 	})
 
@@ -508,16 +795,31 @@ func (t *tester) runAll() {
 			url.QueryEscape(t.versionFrom),
 			url.QueryEscape(t.versionTo),
 		)
-		_, err := t.doJSON(http.MethodGet, path, nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodGet, path, nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if got := pickString(resp, "from_version_id", "fromVersionId"); got != t.versionFrom {
+			return fmt.Errorf("diff mismatch from_version_id: got=%q want=%q", got, t.versionFrom)
+		}
+		if got := pickString(resp, "to_version_id", "toVersionId"); got != t.versionTo {
+			return fmt.Errorf("diff mismatch to_version_id: got=%q want=%q", got, t.versionTo)
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/versions/{version_id}/rollback (RollbackVersion)", func() error {
-		_, err := t.doJSON(http.MethodPost, "/v1/graph/versions/"+url.PathEscape(t.versionFrom)+"/rollback", map[string]any{
+		resp, err := t.doJSON(http.MethodPost, "/v1/graph/versions/"+url.PathEscape(t.versionFrom)+"/rollback", map[string]any{
 			"version_id": t.versionFrom,
 			"reason":     "api tester rollback check",
 		}, true, nil, http.StatusOK)
-		return err
+		if err != nil {
+			return err
+		}
+		if pickString(resp, "rollback_version_id", "rollbackVersionId") == "" {
+			return fmt.Errorf("rollback response missing rollback_version_id")
+		}
+		return nil
 	})
 
 	t.runStep("POST /v1/graph/overlays (CreateOverlay #2)", func() error {
@@ -532,12 +834,25 @@ func (t *tester) runAll() {
 		if t.overlay2ID == "" {
 			return fmt.Errorf("missing overlay_id for discard")
 		}
+		status := pickString(resp, "status")
+		if status != "ACTIVE" && status != "CREATED" {
+			return fmt.Errorf("unexpected overlay #2 status=%q", status)
+		}
 		return nil
 	})
 
 	t.runStep("DELETE /v1/graph/overlays/{overlay_id} (DiscardOverlay)", func() error {
-		_, err := t.doJSON(http.MethodDelete, "/v1/graph/overlays/"+url.PathEscape(t.overlay2ID), nil, true, nil, http.StatusOK)
-		return err
+		resp, err := t.doJSON(http.MethodDelete, "/v1/graph/overlays/"+url.PathEscape(t.overlay2ID), nil, true, nil, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if got := pickString(resp, "overlay_id", "overlayId"); got != t.overlay2ID {
+			return fmt.Errorf("discard overlay mismatch overlay_id: got=%q want=%q", got, t.overlay2ID)
+		}
+		if got := pickString(resp, "status"); got != "DISCARDED" {
+			return fmt.Errorf("discard overlay mismatch status: got=%q want=%q", got, "DISCARDED")
+		}
+		return nil
 	})
 
 	t.runStep("GET /metrics", func() error {
@@ -735,6 +1050,89 @@ func asSlice(v any) []any {
 		return out
 	}
 	return nil
+}
+
+func asMap(v any) map[string]any {
+	if v == nil {
+		return nil
+	}
+	if out, ok := v.(map[string]any); ok {
+		return out
+	}
+	return nil
+}
+
+func asInt(v any) int {
+	switch x := v.(type) {
+	case int:
+		return x
+	case int32:
+		return int(x)
+	case int64:
+		return int(x)
+	case float64:
+		return int(x)
+	case float32:
+		return int(x)
+	case string:
+		n, _ := strconv.Atoi(strings.TrimSpace(x))
+		return n
+	default:
+		return 0
+	}
+}
+
+func asFloat(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case float32:
+		return float64(x)
+	case int:
+		return float64(x)
+	case int32:
+		return float64(x)
+	case int64:
+		return float64(x)
+	case string:
+		f, _ := strconv.ParseFloat(strings.TrimSpace(x), 64)
+		return f
+	default:
+		return 0
+	}
+}
+
+func parseJSONMap(raw string) (map[string]any, error) {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]any{}, nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func findObjectByString(items []any, expected string, keys ...string) (map[string]any, bool) {
+	for _, item := range items {
+		row := asMap(item)
+		if row == nil {
+			continue
+		}
+		if got := pickString(row, keys...); got == expected {
+			return row, true
+		}
+	}
+	return nil, false
+}
+
+func sliceContainsString(v any, expected string) bool {
+	for _, item := range asSlice(v) {
+		if asString(item) == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func extractVersionID(v any) string {
