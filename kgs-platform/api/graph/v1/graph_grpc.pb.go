@@ -40,6 +40,10 @@ type GraphClient interface {
 	BatchUpsertEntities(ctx context.Context, in *BatchUpsertRequest, opts ...grpc.CallOption) (*BatchUpsertReply, error)
 	// Hybrid search across vector and full-text indexes
 	HybridSearch(ctx context.Context, in *HybridSearchRequest, opts ...grpc.CallOption) (*HybridSearchReply, error)
+	// Get coverage report by domain
+	GetCoverageReport(ctx context.Context, in *GetCoverageReportRequest, opts ...grpc.CallOption) (*GetCoverageReportReply, error)
+	// Get traceability matrix between source and target entity types
+	GetTraceabilityMatrix(ctx context.Context, in *GetTraceabilityMatrixRequest, opts ...grpc.CallOption) (*GetTraceabilityMatrixReply, error)
 	// Create an overlay graph for session-scoped writes
 	CreateOverlay(ctx context.Context, in *CreateOverlayRequest, opts ...grpc.CallOption) (*CreateOverlayReply, error)
 	// Commit overlay changes into base graph and create new version
@@ -52,6 +56,14 @@ type GraphClient interface {
 	DiffVersions(ctx context.Context, in *DiffVersionsRequest, opts ...grpc.CallOption) (*DiffVersionsReply, error)
 	// Rollback current namespace to target version
 	RollbackVersion(ctx context.Context, in *RollbackVersionRequest, opts ...grpc.CallOption) (*RollbackVersionReply, error)
+	// Create a view definition for role-based projection
+	CreateViewDefinition(ctx context.Context, in *CreateViewDefinitionRequest, opts ...grpc.CallOption) (*CreateViewDefinitionReply, error)
+	// Get a view definition by ID
+	GetViewDefinition(ctx context.Context, in *GetViewDefinitionRequest, opts ...grpc.CallOption) (*GetViewDefinitionReply, error)
+	// List all view definitions in namespace
+	ListViewDefinitions(ctx context.Context, in *ListViewDefinitionsRequest, opts ...grpc.CallOption) (*ListViewDefinitionsReply, error)
+	// Delete a view definition
+	DeleteViewDefinition(ctx context.Context, in *DeleteViewDefinitionRequest, opts ...grpc.CallOption) (*DeleteViewDefinitionReply, error)
 }
 
 type graphClient struct {
@@ -143,6 +155,24 @@ func (c *graphClient) HybridSearch(ctx context.Context, in *HybridSearchRequest,
 	return out, nil
 }
 
+func (c *graphClient) GetCoverageReport(ctx context.Context, in *GetCoverageReportRequest, opts ...grpc.CallOption) (*GetCoverageReportReply, error) {
+	out := new(GetCoverageReportReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/GetCoverageReport", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) GetTraceabilityMatrix(ctx context.Context, in *GetTraceabilityMatrixRequest, opts ...grpc.CallOption) (*GetTraceabilityMatrixReply, error) {
+	out := new(GetTraceabilityMatrixReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/GetTraceabilityMatrix", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *graphClient) CreateOverlay(ctx context.Context, in *CreateOverlayRequest, opts ...grpc.CallOption) (*CreateOverlayReply, error) {
 	out := new(CreateOverlayReply)
 	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/CreateOverlay", in, out, opts...)
@@ -197,6 +227,42 @@ func (c *graphClient) RollbackVersion(ctx context.Context, in *RollbackVersionRe
 	return out, nil
 }
 
+func (c *graphClient) CreateViewDefinition(ctx context.Context, in *CreateViewDefinitionRequest, opts ...grpc.CallOption) (*CreateViewDefinitionReply, error) {
+	out := new(CreateViewDefinitionReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/CreateViewDefinition", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) GetViewDefinition(ctx context.Context, in *GetViewDefinitionRequest, opts ...grpc.CallOption) (*GetViewDefinitionReply, error) {
+	out := new(GetViewDefinitionReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/GetViewDefinition", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) ListViewDefinitions(ctx context.Context, in *ListViewDefinitionsRequest, opts ...grpc.CallOption) (*ListViewDefinitionsReply, error) {
+	out := new(ListViewDefinitionsReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/ListViewDefinitions", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) DeleteViewDefinition(ctx context.Context, in *DeleteViewDefinitionRequest, opts ...grpc.CallOption) (*DeleteViewDefinitionReply, error) {
+	out := new(DeleteViewDefinitionReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/DeleteViewDefinition", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GraphServer is the server API for Graph service.
 // All implementations must embed UnimplementedGraphServer
 // for forward compatibility
@@ -219,6 +285,10 @@ type GraphServer interface {
 	BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error)
 	// Hybrid search across vector and full-text indexes
 	HybridSearch(context.Context, *HybridSearchRequest) (*HybridSearchReply, error)
+	// Get coverage report by domain
+	GetCoverageReport(context.Context, *GetCoverageReportRequest) (*GetCoverageReportReply, error)
+	// Get traceability matrix between source and target entity types
+	GetTraceabilityMatrix(context.Context, *GetTraceabilityMatrixRequest) (*GetTraceabilityMatrixReply, error)
 	// Create an overlay graph for session-scoped writes
 	CreateOverlay(context.Context, *CreateOverlayRequest) (*CreateOverlayReply, error)
 	// Commit overlay changes into base graph and create new version
@@ -231,6 +301,14 @@ type GraphServer interface {
 	DiffVersions(context.Context, *DiffVersionsRequest) (*DiffVersionsReply, error)
 	// Rollback current namespace to target version
 	RollbackVersion(context.Context, *RollbackVersionRequest) (*RollbackVersionReply, error)
+	// Create a view definition for role-based projection
+	CreateViewDefinition(context.Context, *CreateViewDefinitionRequest) (*CreateViewDefinitionReply, error)
+	// Get a view definition by ID
+	GetViewDefinition(context.Context, *GetViewDefinitionRequest) (*GetViewDefinitionReply, error)
+	// List all view definitions in namespace
+	ListViewDefinitions(context.Context, *ListViewDefinitionsRequest) (*ListViewDefinitionsReply, error)
+	// Delete a view definition
+	DeleteViewDefinition(context.Context, *DeleteViewDefinitionRequest) (*DeleteViewDefinitionReply, error)
 	mustEmbedUnimplementedGraphServer()
 }
 
@@ -265,6 +343,12 @@ func (UnimplementedGraphServer) BatchUpsertEntities(context.Context, *BatchUpser
 func (UnimplementedGraphServer) HybridSearch(context.Context, *HybridSearchRequest) (*HybridSearchReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HybridSearch not implemented")
 }
+func (UnimplementedGraphServer) GetCoverageReport(context.Context, *GetCoverageReportRequest) (*GetCoverageReportReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCoverageReport not implemented")
+}
+func (UnimplementedGraphServer) GetTraceabilityMatrix(context.Context, *GetTraceabilityMatrixRequest) (*GetTraceabilityMatrixReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTraceabilityMatrix not implemented")
+}
 func (UnimplementedGraphServer) CreateOverlay(context.Context, *CreateOverlayRequest) (*CreateOverlayReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateOverlay not implemented")
 }
@@ -282,6 +366,18 @@ func (UnimplementedGraphServer) DiffVersions(context.Context, *DiffVersionsReque
 }
 func (UnimplementedGraphServer) RollbackVersion(context.Context, *RollbackVersionRequest) (*RollbackVersionReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RollbackVersion not implemented")
+}
+func (UnimplementedGraphServer) CreateViewDefinition(context.Context, *CreateViewDefinitionRequest) (*CreateViewDefinitionReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateViewDefinition not implemented")
+}
+func (UnimplementedGraphServer) GetViewDefinition(context.Context, *GetViewDefinitionRequest) (*GetViewDefinitionReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetViewDefinition not implemented")
+}
+func (UnimplementedGraphServer) ListViewDefinitions(context.Context, *ListViewDefinitionsRequest) (*ListViewDefinitionsReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListViewDefinitions not implemented")
+}
+func (UnimplementedGraphServer) DeleteViewDefinition(context.Context, *DeleteViewDefinitionRequest) (*DeleteViewDefinitionReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteViewDefinition not implemented")
 }
 func (UnimplementedGraphServer) mustEmbedUnimplementedGraphServer() {}
 
@@ -458,6 +554,42 @@ func _Graph_HybridSearch_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Graph_GetCoverageReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCoverageReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).GetCoverageReport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/GetCoverageReport",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).GetCoverageReport(ctx, req.(*GetCoverageReportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_GetTraceabilityMatrix_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTraceabilityMatrixRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).GetTraceabilityMatrix(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/GetTraceabilityMatrix",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).GetTraceabilityMatrix(ctx, req.(*GetTraceabilityMatrixRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Graph_CreateOverlay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateOverlayRequest)
 	if err := dec(in); err != nil {
@@ -566,6 +698,78 @@ func _Graph_RollbackVersion_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Graph_CreateViewDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateViewDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).CreateViewDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/CreateViewDefinition",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).CreateViewDefinition(ctx, req.(*CreateViewDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_GetViewDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetViewDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).GetViewDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/GetViewDefinition",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).GetViewDefinition(ctx, req.(*GetViewDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_ListViewDefinitions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListViewDefinitionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).ListViewDefinitions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/ListViewDefinitions",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).ListViewDefinitions(ctx, req.(*ListViewDefinitionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_DeleteViewDefinition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteViewDefinitionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).DeleteViewDefinition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/DeleteViewDefinition",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).DeleteViewDefinition(ctx, req.(*DeleteViewDefinitionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Graph_ServiceDesc is the grpc.ServiceDesc for Graph service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -610,6 +814,14 @@ var Graph_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Graph_HybridSearch_Handler,
 		},
 		{
+			MethodName: "GetCoverageReport",
+			Handler:    _Graph_GetCoverageReport_Handler,
+		},
+		{
+			MethodName: "GetTraceabilityMatrix",
+			Handler:    _Graph_GetTraceabilityMatrix_Handler,
+		},
+		{
 			MethodName: "CreateOverlay",
 			Handler:    _Graph_CreateOverlay_Handler,
 		},
@@ -632,6 +844,22 @@ var Graph_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RollbackVersion",
 			Handler:    _Graph_RollbackVersion_Handler,
+		},
+		{
+			MethodName: "CreateViewDefinition",
+			Handler:    _Graph_CreateViewDefinition_Handler,
+		},
+		{
+			MethodName: "GetViewDefinition",
+			Handler:    _Graph_GetViewDefinition_Handler,
+		},
+		{
+			MethodName: "ListViewDefinitions",
+			Handler:    _Graph_ListViewDefinitions_Handler,
+		},
+		{
+			MethodName: "DeleteViewDefinition",
+			Handler:    _Graph_DeleteViewDefinition_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -74,6 +74,21 @@ service Graph {
     };
   }
 
+  // Get coverage report by domain
+  rpc GetCoverageReport (GetCoverageReportRequest) returns (GetCoverageReportReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/coverage/{domain}"
+    };
+  }
+
+  // Get traceability matrix between source and target entity types
+  rpc GetTraceabilityMatrix (GetTraceabilityMatrixRequest) returns (GetTraceabilityMatrixReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/traceability"
+      body: "*"
+    };
+  }
+
   // Create an overlay graph for session-scoped writes
   rpc CreateOverlay (CreateOverlayRequest) returns (CreateOverlayReply) {
     option (google.api.http) = {
@@ -116,6 +131,35 @@ service Graph {
     option (google.api.http) = {
       post: "/v1/graph/versions/{version_id}/rollback"
       body: "*"
+    };
+  }
+
+  // Create a view definition for role-based projection
+  rpc CreateViewDefinition (CreateViewDefinitionRequest) returns (CreateViewDefinitionReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/views"
+      body: "*"
+    };
+  }
+
+  // Get a view definition by ID
+  rpc GetViewDefinition (GetViewDefinitionRequest) returns (GetViewDefinitionReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/views/{view_id}"
+    };
+  }
+
+  // List all view definitions in namespace
+  rpc ListViewDefinitions (ListViewDefinitionsRequest) returns (ListViewDefinitionsReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/views"
+    };
+  }
+
+  // Delete a view definition
+  rpc DeleteViewDefinition (DeleteViewDefinitionRequest) returns (DeleteViewDefinitionReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/views/{view_id}"
     };
   }
 }
@@ -241,6 +285,55 @@ message HybridSearchReply {
   repeated HybridSearchResult results = 1;
 }
 
+message GetCoverageReportRequest {
+  string domain = 1;
+}
+
+message CoverageByType {
+  string entity_type = 1;
+  int32 total_entities = 2;
+  int32 covered_entities = 3;
+  double coverage_percent = 4;
+}
+
+message GetCoverageReportReply {
+  string domain = 1;
+  int32 total_entities = 2;
+  int32 covered_entities = 3;
+  double coverage_percent = 4;
+  repeated string uncovered_types = 5;
+  int64 generated_at_unix = 6;
+  repeated CoverageByType by_type = 7;
+}
+
+message GetTraceabilityMatrixRequest {
+  repeated string source_types = 1;
+  repeated string target_types = 2;
+  int32 max_hops = 3;
+}
+
+message TraceabilityTarget {
+  string entity_id = 1;
+  string name = 2;
+  string type = 3;
+  int32 hops = 4;
+  repeated string path = 5;
+}
+
+message TraceabilitySourceRow {
+  string entity_id = 1;
+  string name = 2;
+  string type = 3;
+  repeated TraceabilityTarget targets = 4;
+}
+
+message GetTraceabilityMatrixReply {
+  repeated TraceabilitySourceRow matrix = 1;
+  int32 total_sources = 2;
+  int32 total_targets = 3;
+  int64 compute_duration_ms = 4;
+}
+
 message CreateOverlayRequest {
   string session_id = 1;
   string base_version = 2;
@@ -310,4 +403,46 @@ message RollbackVersionRequest {
 
 message RollbackVersionReply {
   string rollback_version_id = 1;
+}
+
+message ViewDefinition {
+  string view_id = 1;
+  string role_name = 2;
+  repeated string allowed_entity_types = 3;
+  repeated string allowed_fields = 4;
+  repeated string pii_mask_fields = 5;
+  int64 created_at_unix = 6;
+}
+
+message CreateViewDefinitionRequest {
+  string role_name = 1;
+  repeated string allowed_entity_types = 2;
+  repeated string allowed_fields = 3;
+  repeated string pii_mask_fields = 4;
+}
+
+message CreateViewDefinitionReply {
+  ViewDefinition view = 1;
+}
+
+message GetViewDefinitionRequest {
+  string view_id = 1;
+}
+
+message GetViewDefinitionReply {
+  ViewDefinition view = 1;
+}
+
+message ListViewDefinitionsRequest {}
+
+message ListViewDefinitionsReply {
+  repeated ViewDefinition views = 1;
+}
+
+message DeleteViewDefinitionRequest {
+  string view_id = 1;
+}
+
+message DeleteViewDefinitionReply {
+  string view_id = 1;
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/conf"
+	"kgs-platform/internal/projection"
 	"kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -70,6 +71,7 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		&biz.RuleExecution{},
 		&biz.Policy{},
 		&version.GraphVersion{},
+		&projection.ViewDefinitionRecord{},
 	); err != nil {
 		helper.Errorf("failed to auto-migrate postgres schemas: %v", err)
 	}

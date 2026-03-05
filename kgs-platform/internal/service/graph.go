@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	pb "kgs-platform/api/graph/v1"
+	"kgs-platform/internal/analytics"
 	"kgs-platform/internal/batch"
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/overlay"
+	"kgs-platform/internal/projection"
 	"kgs-platform/internal/search"
 	"kgs-platform/internal/server/middleware"
 	"kgs-platform/internal/version"
@@ -20,11 +23,13 @@ import (
 
 type GraphService struct {
 	pb.UnimplementedGraphServer
-	uc       GraphUsecase
-	batchUC  *batch.Usecase
-	searchUC search.SearchEngine
-	overlay  overlay.OverlayManager
-	version  version.VersionManager
+	uc         GraphUsecase
+	batchUC    *batch.Usecase
+	searchUC   search.SearchEngine
+	overlay    overlay.OverlayManager
+	version    version.VersionManager
+	analytics  analytics.AnalyticsEngine
+	projection projection.ProjectionEngine
 }
 
 type GraphUsecase interface {
@@ -43,13 +48,17 @@ func NewGraphService(
 	searchUC search.SearchEngine,
 	overlayMgr overlay.OverlayManager,
 	versionMgr version.VersionManager,
+	analyticsEngine analytics.AnalyticsEngine,
+	projectionEngine projection.ProjectionEngine,
 ) *GraphService {
 	return &GraphService{
-		uc:       uc,
-		batchUC:  batchUC,
-		searchUC: searchUC,
-		overlay:  overlayMgr,
-		version:  versionMgr,
+		uc:         uc,
+		batchUC:    batchUC,
+		searchUC:   searchUC,
+		overlay:    overlayMgr,
+		version:    versionMgr,
+		analytics:  analyticsEngine,
+		projection: projectionEngine,
 	}
 }
 
@@ -78,6 +87,10 @@ func (s *GraphService) GetNode(ctx context.Context, req *pb.GetNodeRequest) (*pb
 		return nil, err
 	}
 	out, err := s.uc.GetNode(ctx, appCtx.AppID, appCtx.TenantID, req.NodeId)
+	if err != nil {
+		return nil, err
+	}
+	out, err = s.applyProjectionToSingleNode(ctx, appCtx, out)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +131,11 @@ func (s *GraphService) GetContext(ctx context.Context, req *pb.GetContextRequest
 	if err != nil {
 		return nil, err
 	}
-	reply, err := applyPagination(ctx, toGraphReply(result), req.PageSize, req.PageToken)
+	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	if err != nil {
+		return nil, err
+	}
+	reply, err := applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +151,11 @@ func (s *GraphService) GetImpact(ctx context.Context, req *pb.GetImpactRequest) 
 	if err != nil {
 		return nil, err
 	}
-	reply, err := applyPagination(ctx, toGraphReply(result), req.PageSize, req.PageToken)
+	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	if err != nil {
+		return nil, err
+	}
+	reply, err := applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +171,11 @@ func (s *GraphService) GetCoverage(ctx context.Context, req *pb.GetCoverageReque
 	if err != nil {
 		return nil, err
 	}
-	reply, err := applyPagination(ctx, toGraphReply(result), req.PageSize, req.PageToken)
+	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	if err != nil {
+		return nil, err
+	}
+	reply, err := applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +191,7 @@ func (s *GraphService) GetSubgraph(ctx context.Context, req *pb.GetSubgraphReque
 	if err != nil {
 		return nil, err
 	}
-	return toGraphReply(result), nil
+	return s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
 }
 
 func (s *GraphService) BatchUpsertEntities(ctx context.Context, req *pb.BatchUpsertRequest) (*pb.BatchUpsertReply, error) {
@@ -367,6 +392,324 @@ func (s *GraphService) RollbackVersion(ctx context.Context, req *pb.RollbackVers
 		return nil, err
 	}
 	return &pb.RollbackVersionReply{RollbackVersionId: versionID}, nil
+}
+
+func (s *GraphService) GetCoverageReport(ctx context.Context, req *pb.GetCoverageReportRequest) (*pb.GetCoverageReportReply, error) {
+	if s.analytics == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "analytics engine is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	report, err := s.analytics.CoverageReport(ctx, namespace, req.Domain)
+	if err != nil {
+		return nil, err
+	}
+	reply := &pb.GetCoverageReportReply{
+		Domain:          report.Domain,
+		TotalEntities:   int32(report.TotalEntities),
+		CoveredEntities: int32(report.CoveredEntities),
+		CoveragePercent: report.CoveragePercent,
+		UncoveredTypes:  report.UncoveredTypes,
+		GeneratedAtUnix: report.GeneratedAt.Unix(),
+		ByType:          make([]*pb.CoverageByType, 0, len(report.ByType)),
+	}
+	for _, item := range report.ByType {
+		reply.ByType = append(reply.ByType, &pb.CoverageByType{
+			EntityType:      item.EntityType,
+			TotalEntities:   int32(item.TotalEntities),
+			CoveredEntities: int32(item.CoveredEntities),
+			CoveragePercent: item.CoveragePercent,
+		})
+	}
+	return reply, nil
+}
+
+func (s *GraphService) GetTraceabilityMatrix(ctx context.Context, req *pb.GetTraceabilityMatrixRequest) (*pb.GetTraceabilityMatrixReply, error) {
+	if s.analytics == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "analytics engine is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	report, err := s.analytics.TraceabilityMatrix(ctx, namespace, req.SourceTypes, req.TargetTypes, int(req.MaxHops))
+	if err != nil {
+		return nil, err
+	}
+
+	reply := &pb.GetTraceabilityMatrixReply{
+		Matrix:            make([]*pb.TraceabilitySourceRow, 0, len(report.Matrix)),
+		TotalSources:      int32(report.TotalSources),
+		TotalTargets:      int32(report.TotalTargets),
+		ComputeDurationMs: report.ComputeDurationMs,
+	}
+	for _, row := range report.Matrix {
+		item := &pb.TraceabilitySourceRow{
+			EntityId: row.SourceID,
+			Name:     row.SourceName,
+			Type:     row.SourceType,
+			Targets:  make([]*pb.TraceabilityTarget, 0, len(row.Targets)),
+		}
+		for _, target := range row.Targets {
+			item.Targets = append(item.Targets, &pb.TraceabilityTarget{
+				EntityId: target.EntityID,
+				Name:     target.Name,
+				Type:     target.Type,
+				Hops:     int32(target.Hops),
+				Path:     target.Path,
+			})
+		}
+		reply.Matrix = append(reply.Matrix, item)
+	}
+	return reply, nil
+}
+
+func (s *GraphService) CreateViewDefinition(ctx context.Context, req *pb.CreateViewDefinitionRequest) (*pb.CreateViewDefinitionReply, error) {
+	if s.projection == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "projection engine is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	view, err := s.projection.CreateViewDefinition(ctx, namespace, projection.ViewDefinition{
+		RoleName:           req.RoleName,
+		AllowedEntityTypes: append([]string(nil), req.AllowedEntityTypes...),
+		AllowedFields:      append([]string(nil), req.AllowedFields...),
+		PIIMaskFields:      append([]string(nil), req.PiiMaskFields...),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CreateViewDefinitionReply{View: toPBViewDefinition(view)}, nil
+}
+
+func (s *GraphService) GetViewDefinition(ctx context.Context, req *pb.GetViewDefinitionRequest) (*pb.GetViewDefinitionReply, error) {
+	if s.projection == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "projection engine is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	view, err := s.projection.GetViewDefinition(ctx, namespace, req.ViewId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetViewDefinitionReply{View: toPBViewDefinition(view)}, nil
+}
+
+func (s *GraphService) ListViewDefinitions(ctx context.Context, req *pb.ListViewDefinitionsRequest) (*pb.ListViewDefinitionsReply, error) {
+	_ = req
+	if s.projection == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "projection engine is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	items, err := s.projection.ListViewDefinitions(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	reply := &pb.ListViewDefinitionsReply{
+		Views: make([]*pb.ViewDefinition, 0, len(items)),
+	}
+	for i := range items {
+		view := items[i]
+		reply.Views = append(reply.Views, toPBViewDefinition(&view))
+	}
+	return reply, nil
+}
+
+func (s *GraphService) DeleteViewDefinition(ctx context.Context, req *pb.DeleteViewDefinitionRequest) (*pb.DeleteViewDefinitionReply, error) {
+	if s.projection == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "projection engine is not configured")
+	}
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	if err := s.projection.DeleteViewDefinition(ctx, namespace, req.ViewId); err != nil {
+		return nil, err
+	}
+	return &pb.DeleteViewDefinitionReply{ViewId: req.ViewId}, nil
+}
+
+func (s *GraphService) applyProjectionToSingleNode(ctx context.Context, appCtx middleware.AppContext, raw map[string]any) (map[string]any, error) {
+	if s.projection == nil {
+		return raw, nil
+	}
+	role := projectionRole(ctx, appCtx)
+	if role == "" {
+		return raw, nil
+	}
+	label := mapString(raw, "label")
+	id := mapString(raw, "id")
+	nodeRaw := map[string]any{
+		"id":         id,
+		"label":      label,
+		"properties": raw,
+	}
+	projected, err := s.projection.Apply(ctx, biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID), role, map[string]any{
+		"nodes": []map[string]any{nodeRaw},
+		"edges": []map[string]any{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	nodes := projectionNodeMaps(projected["nodes"])
+	if len(nodes) == 0 {
+		return map[string]any{"id": id, "label": label}, nil
+	}
+	node := nodes[0]
+	props := projectionMap(node["properties"])
+	props["id"] = mapString(props, "id")
+	if props["id"] == "" {
+		props["id"] = node["id"]
+	}
+	props["label"] = mapString(node, "label")
+	return props, nil
+}
+
+func (s *GraphService) applyProjectionToGraphReply(ctx context.Context, appCtx middleware.AppContext, reply *pb.GraphReply) (*pb.GraphReply, error) {
+	if s.projection == nil || reply == nil {
+		return reply, nil
+	}
+	role := projectionRole(ctx, appCtx)
+	if role == "" {
+		return reply, nil
+	}
+
+	nodes := make([]map[string]any, 0, len(reply.Nodes))
+	for _, node := range reply.Nodes {
+		properties, err := parseJSON(node.PropertiesJson)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, map[string]any{
+			"id":         node.Id,
+			"label":      node.Label,
+			"properties": properties,
+		})
+	}
+	edges := make([]map[string]any, 0, len(reply.Edges))
+	for _, edge := range reply.Edges {
+		properties, err := parseJSON(edge.PropertiesJson)
+		if err != nil {
+			return nil, err
+		}
+		edges = append(edges, map[string]any{
+			"id":         edge.Id,
+			"source":     edge.Source,
+			"target":     edge.Target,
+			"type":       edge.Type,
+			"properties": properties,
+		})
+	}
+
+	projected, err := s.projection.Apply(ctx, biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID), role, map[string]any{
+		"nodes": nodes,
+		"edges": edges,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := &pb.GraphReply{
+		Nodes: make([]*pb.GraphNode, 0),
+		Edges: make([]*pb.GraphEdge, 0),
+	}
+	for _, node := range projectionNodeMaps(projected["nodes"]) {
+		out.Nodes = append(out.Nodes, &pb.GraphNode{
+			Id:             projectionString(node, "id"),
+			Label:          projectionString(node, "label"),
+			PropertiesJson: mustJSON(projectionMap(node["properties"])),
+		})
+	}
+	for _, edge := range projectionNodeMaps(projected["edges"]) {
+		out.Edges = append(out.Edges, &pb.GraphEdge{
+			Id:             projectionString(edge, "id"),
+			Source:         projectionString(edge, "source"),
+			Target:         projectionString(edge, "target"),
+			Type:           projectionString(edge, "type"),
+			PropertiesJson: mustJSON(projectionMap(edge["properties"])),
+		})
+	}
+	return out, nil
+}
+
+func projectionRole(ctx context.Context, appCtx middleware.AppContext) string {
+	if tr, ok := transport.FromServerContext(ctx); ok {
+		role := strings.TrimSpace(tr.RequestHeader().Get("X-KG-Role"))
+		if role != "" {
+			return role
+		}
+	}
+	parts := strings.Split(appCtx.Scopes, ",")
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parts[0])
+}
+
+func projectionNodeMaps(raw any) []map[string]any {
+	if raw == nil {
+		return []map[string]any{}
+	}
+	if nodes, ok := raw.([]map[string]any); ok {
+		return nodes
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return []map[string]any{}
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if node, ok := item.(map[string]any); ok {
+			out = append(out, node)
+		}
+	}
+	return out
+}
+
+func projectionMap(raw any) map[string]any {
+	if raw == nil {
+		return map[string]any{}
+	}
+	if out, ok := raw.(map[string]any); ok {
+		return out
+	}
+	return map[string]any{}
+}
+
+func projectionString(raw map[string]any, key string) string {
+	if raw == nil {
+		return ""
+	}
+	return fmt.Sprint(raw[key])
+}
+
+func toPBViewDefinition(view *projection.ViewDefinition) *pb.ViewDefinition {
+	if view == nil {
+		return nil
+	}
+	return &pb.ViewDefinition{
+		ViewId:             view.ID,
+		RoleName:           view.RoleName,
+		AllowedEntityTypes: append([]string(nil), view.AllowedEntityTypes...),
+		AllowedFields:      append([]string(nil), view.AllowedFields...),
+		PiiMaskFields:      append([]string(nil), view.PIIMaskFields...),
+		CreatedAtUnix:      view.CreatedAt.Unix(),
+	}
 }
 
 func getAppContext(ctx context.Context) (middleware.AppContext, error) {

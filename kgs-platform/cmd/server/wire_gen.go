@@ -9,12 +9,14 @@ package main
 import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	"kgs-platform/internal/analytics"
 	"kgs-platform/internal/batch"
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/conf"
 	"kgs-platform/internal/data"
 	"kgs-platform/internal/lock"
 	"kgs-platform/internal/overlay"
+	"kgs-platform/internal/projection"
 	"kgs-platform/internal/search"
 	"kgs-platform/internal/server"
 	"kgs-platform/internal/service"
@@ -49,6 +51,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	qdrantClient := data.NewQdrantClient(dataData)
 	natsClient := data.NewNATSClient(dataData)
 	db := data.NewGormDB(dataData)
+	cache := analytics.NewCache(client)
+	engine1 := analytics.NewEngine(graphRepo, cache)
 	neo4jWriter := batch.NewNeo4jWriter(contextDriver)
 	semanticDeduper := batch.NewSemanticDeduper(qdrantClient)
 	qdrantIndexer := batch.NewQdrantIndexer(qdrantClient)
@@ -61,14 +65,17 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	versionManager := version.NewManager(db, logger)
 	redisStore := overlay.NewRedisStore(client)
 	overlayManager := overlay.NewManager(redisStore, versionManager, natsClient, logger)
+	engine2 := projection.NewEngine(db, logger)
 	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, client, redisLockManager, overlayManager, logger)
-	graphService := service.NewGraphService(graphUsecase, usecase, engine, overlayManager, versionManager)
+	graphService := service.NewGraphService(graphUsecase, usecase, engine, overlayManager, versionManager, engine1, engine2)
 	rulesRepo := data.NewRulesRepo(dataData, logger)
 	rulesUsecase := biz.NewRulesUsecase(rulesRepo, logger)
 	rulesService := service.NewRulesService(rulesUsecase)
 	policyRepo := data.NewPolicyRepo(dataData, logger)
 	policyUsecase := biz.NewPolicyUsecase(policyRepo, logger)
 	policyService := service.NewPolicyService(policyUsecase)
+	viewResolver := biz.NewViewResolver(engine2)
+	_ = viewResolver
 	grpcServer := server.NewGRPCServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, registryUsecase, client, logger)
 	httpServer := server.NewHTTPServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, registryUsecase, client, logger)
 	ruleRunner := biz.NewRuleRunner(rulesRepo, graphRepo, logger)

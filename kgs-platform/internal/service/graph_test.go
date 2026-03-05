@@ -8,9 +8,11 @@ import (
 	"time"
 
 	pb "kgs-platform/api/graph/v1"
+	"kgs-platform/internal/analytics"
 	"kgs-platform/internal/batch"
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/overlay"
+	"kgs-platform/internal/projection"
 	"kgs-platform/internal/search"
 	"kgs-platform/internal/server/middleware"
 	"kgs-platform/internal/version"
@@ -64,7 +66,7 @@ func TestGraphServiceCreateNode(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -108,7 +110,7 @@ func TestGraphServiceGetNode(t *testing.T) {
 				"name":  "alice",
 			}, nil
 		},
-	}, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -152,6 +154,66 @@ type fakeSearchEngine struct {
 
 func (f *fakeSearchEngine) HybridSearch(ctx context.Context, namespace, query string, opts search.Options) ([]search.Result, error) {
 	return f.results, f.err
+}
+
+type fakeAnalyticsEngine struct {
+	coverageFn     func(ctx context.Context, namespace, domain string) (*analytics.CoverageReport, error)
+	traceabilityFn func(ctx context.Context, namespace string, sourceTypes, targetTypes []string, maxHops int) (*analytics.TraceabilityMatrix, error)
+}
+
+func (f *fakeAnalyticsEngine) CoverageReport(ctx context.Context, namespace, domain string) (*analytics.CoverageReport, error) {
+	return f.coverageFn(ctx, namespace, domain)
+}
+
+func (f *fakeAnalyticsEngine) TraceabilityMatrix(ctx context.Context, namespace string, sourceTypes, targetTypes []string, maxHops int) (*analytics.TraceabilityMatrix, error) {
+	return f.traceabilityFn(ctx, namespace, sourceTypes, targetTypes, maxHops)
+}
+
+func (f *fakeAnalyticsEngine) ClusterAnalysis(ctx context.Context, namespace, entityType string) (*analytics.ClusterReport, error) {
+	return &analytics.ClusterReport{}, nil
+}
+
+type fakeProjectionEngine struct {
+	applyFn  func(ctx context.Context, namespace, role string, rawData map[string]any) (map[string]any, error)
+	createFn func(ctx context.Context, namespace string, view projection.ViewDefinition) (*projection.ViewDefinition, error)
+	getFn    func(ctx context.Context, namespace, viewID string) (*projection.ViewDefinition, error)
+	listFn   func(ctx context.Context, namespace string) ([]projection.ViewDefinition, error)
+	deleteFn func(ctx context.Context, namespace, viewID string) error
+}
+
+func (f *fakeProjectionEngine) Apply(ctx context.Context, namespace, role string, rawData map[string]any) (map[string]any, error) {
+	if f.applyFn == nil {
+		return rawData, nil
+	}
+	return f.applyFn(ctx, namespace, role, rawData)
+}
+
+func (f *fakeProjectionEngine) CreateViewDefinition(ctx context.Context, namespace string, view projection.ViewDefinition) (*projection.ViewDefinition, error) {
+	if f.createFn == nil {
+		return &view, nil
+	}
+	return f.createFn(ctx, namespace, view)
+}
+
+func (f *fakeProjectionEngine) GetViewDefinition(ctx context.Context, namespace, viewID string) (*projection.ViewDefinition, error) {
+	if f.getFn == nil {
+		return &projection.ViewDefinition{ID: viewID}, nil
+	}
+	return f.getFn(ctx, namespace, viewID)
+}
+
+func (f *fakeProjectionEngine) ListViewDefinitions(ctx context.Context, namespace string) ([]projection.ViewDefinition, error) {
+	if f.listFn == nil {
+		return []projection.ViewDefinition{}, nil
+	}
+	return f.listFn(ctx, namespace)
+}
+
+func (f *fakeProjectionEngine) DeleteViewDefinition(ctx context.Context, namespace, viewID string) error {
+	if f.deleteFn == nil {
+		return nil
+	}
+	return f.deleteFn(ctx, namespace, viewID)
 }
 
 type fakeOverlayManager struct {
@@ -214,7 +276,7 @@ func TestGraphServiceBatchUpsertEntities(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil)
+	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -244,7 +306,7 @@ func TestGraphServiceBatchUpsertEntities100(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil)
+	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -309,7 +371,7 @@ func TestGraphServiceHybridSearch(t *testing.T) {
 				TextScore:     0.89,
 			},
 		},
-	}, nil, nil)
+	}, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -377,7 +439,7 @@ func TestGraphServiceOverlayAndVersionRPCs(t *testing.T) {
 		rollbackFn: func(ctx context.Context, namespace, targetVersionID, reason string) (string, error) {
 			return "v3", nil
 		},
-	})
+	}, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -417,4 +479,84 @@ func TestGraphServiceOverlayAndVersionRPCs(t *testing.T) {
 
 func fixedTime(offsetSec int64) time.Time {
 	return time.Unix(1700000000+offsetSec, 0).UTC()
+}
+
+func TestGraphServiceCoverageAndTraceabilityAPI(t *testing.T) {
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return nil, nil
+		},
+	}, nil, nil, nil, nil, &fakeAnalyticsEngine{
+		coverageFn: func(ctx context.Context, namespace, domain string) (*analytics.CoverageReport, error) {
+			if namespace != "graph/app-1/tenant-1" || domain != "payment" {
+				t.Fatalf("unexpected coverage args namespace=%s domain=%s", namespace, domain)
+			}
+			return &analytics.CoverageReport{
+				Domain:          "payment",
+				TotalEntities:   10,
+				CoveredEntities: 8,
+				CoveragePercent: 80,
+				UncoveredTypes:  []string{"NFR"},
+				GeneratedAt:     fixedTime(0),
+				ByType: []analytics.CoverageByType{
+					{EntityType: "Requirement", TotalEntities: 10, CoveredEntities: 8, CoveragePercent: 80},
+				},
+			}, nil
+		},
+		traceabilityFn: func(ctx context.Context, namespace string, sourceTypes, targetTypes []string, maxHops int) (*analytics.TraceabilityMatrix, error) {
+			if namespace != "graph/app-1/tenant-1" || maxHops != 3 {
+				t.Fatalf("unexpected trace args namespace=%s maxHops=%d", namespace, maxHops)
+			}
+			return &analytics.TraceabilityMatrix{
+				Matrix: []analytics.TraceabilityRow{
+					{
+						SourceID:   "S1",
+						SourceName: "FR-001",
+						SourceType: "Requirement",
+						Targets: []analytics.TraceabilityTarget{
+							{EntityID: "T1", Name: "UC-001", Type: "UseCase", Hops: 1, Path: []string{"IMPLEMENTS"}},
+						},
+					},
+				},
+				TotalSources:      1,
+				TotalTargets:      1,
+				ComputeDurationMs: 120,
+			}, nil
+		},
+	}, nil)
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-1",
+		TenantID: "tenant-1",
+		Scopes:   "read",
+	})
+
+	coverageResp, err := svc.GetCoverageReport(ctx, &pb.GetCoverageReportRequest{Domain: "payment"})
+	if err != nil {
+		t.Fatalf("GetCoverageReport error: %v", err)
+	}
+	if coverageResp.TotalEntities != 10 || coverageResp.CoveredEntities != 8 || coverageResp.CoveragePercent != 80 {
+		t.Fatalf("unexpected coverage response: %#v", coverageResp)
+	}
+	if len(coverageResp.ByType) != 1 || coverageResp.ByType[0].EntityType != "Requirement" {
+		t.Fatalf("unexpected coverage by_type: %#v", coverageResp.ByType)
+	}
+
+	traceResp, err := svc.GetTraceabilityMatrix(ctx, &pb.GetTraceabilityMatrixRequest{
+		SourceTypes: []string{"Requirement"},
+		TargetTypes: []string{"UseCase"},
+		MaxHops:     3,
+	})
+	if err != nil {
+		t.Fatalf("GetTraceabilityMatrix error: %v", err)
+	}
+	if traceResp.TotalSources != 1 || traceResp.TotalTargets != 1 {
+		t.Fatalf("unexpected traceability totals: %#v", traceResp)
+	}
+	if len(traceResp.Matrix) != 1 || len(traceResp.Matrix[0].Targets) != 1 {
+		t.Fatalf("unexpected traceability matrix: %#v", traceResp.Matrix)
+	}
 }
