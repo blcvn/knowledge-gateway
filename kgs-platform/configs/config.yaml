@@ -22,3 +22,8 @@ data:
     database: kgs
   opa:
     url: http://localhost:8181
+  qdrant:
+    host: localhost
+    port: 6333
+    collection: kgs-vectors-default
+    vector_size: 1536

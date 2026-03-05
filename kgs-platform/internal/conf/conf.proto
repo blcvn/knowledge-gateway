@@ -46,8 +46,15 @@ message Data {
   message OPA {
     string url = 1;
   }
+  message Qdrant {
+    string host = 1;
+    int32 port = 2;
+    string collection = 3;
+    int32 vector_size = 4;
+  }
   Database database = 1;
   Redis redis = 2;
   Neo4j neo4j = 3;
   OPA opa = 4;
+  Qdrant qdrant = 5;
 }

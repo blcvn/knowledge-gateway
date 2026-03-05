@@ -1,0 +1,211 @@
+package lock
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+)
+
+const (
+	levelNode = iota + 1
+	levelSubgraph
+	levelVersion
+	levelNamespace
+)
+
+var (
+	ErrLockTimeout       = errors.New("lock acquisition timeout")
+	ErrLockHierarchy     = errors.New("lock hierarchy violation")
+	ErrUnknownLockToken  = errors.New("unknown lock token")
+	ErrLockReleaseFailed = errors.New("lock release failed")
+)
+
+type redisLockStore interface {
+	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) *redis.BoolCmd
+	Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
+}
+
+type RedisLockManager struct {
+	store redisLockStore
+
+	mu       sync.Mutex
+	byToken  map[string]lockRecord
+	byOwner  map[string]map[string]lockRecord // owner -> key -> lock
+	ownerMax map[string]int
+}
+
+type lockRecord struct {
+	token string
+	key   string
+	owner string
+	level int
+	count int
+}
+
+func NewRedisLockManager(redisCli *redis.Client) LockManager {
+	return NewRedisLockManagerWithStore(redisCli)
+}
+
+func NewRedisLockManagerWithStore(store redisLockStore) LockManager {
+	if store == nil {
+		return nil
+	}
+	return &RedisLockManager{
+		store:    store,
+		byToken:  make(map[string]lockRecord),
+		byOwner:  make(map[string]map[string]lockRecord),
+		ownerMax: make(map[string]int),
+	}
+}
+
+func (m *RedisLockManager) AcquireNodeLock(ctx context.Context, namespace, nodeID string, ttl time.Duration) (string, error) {
+	key := fmt.Sprintf("kgs:lock:node:%s:%s", sanitizeNamespace(namespace), nodeID)
+	return m.acquire(ctx, key, levelNode, ttl)
+}
+
+func (m *RedisLockManager) AcquireSubgraphLock(ctx context.Context, namespace, rootID string, depth int, ttl time.Duration) (string, error) {
+	key := fmt.Sprintf("kgs:lock:subgraph:%s:%s:%d", sanitizeNamespace(namespace), rootID, depth)
+	return m.acquire(ctx, key, levelSubgraph, ttl)
+}
+
+func (m *RedisLockManager) AcquireVersionLock(ctx context.Context, namespace string, ttl time.Duration) (string, error) {
+	key := fmt.Sprintf("kgs:lock:version:%s", sanitizeNamespace(namespace))
+	return m.acquire(ctx, key, levelVersion, ttl)
+}
+
+func (m *RedisLockManager) AcquireNamespaceLock(ctx context.Context, namespace string, ttl time.Duration) (string, error) {
+	key := fmt.Sprintf("kgs:lock:ns:%s", sanitizeNamespace(namespace))
+	return m.acquire(ctx, key, levelNamespace, ttl)
+}
+
+func (m *RedisLockManager) Release(ctx context.Context, lockToken string) error {
+	m.mu.Lock()
+	rec, ok := m.byToken[lockToken]
+	if !ok {
+		m.mu.Unlock()
+		return ErrUnknownLockToken
+	}
+	if rec.count > 1 {
+		rec.count--
+		m.byToken[lockToken] = rec
+		ownerLocks := m.byOwner[rec.owner]
+		ownerLocks[rec.key] = rec
+		m.mu.Unlock()
+		return nil
+	}
+	delete(m.byToken, lockToken)
+	ownerLocks := m.byOwner[rec.owner]
+	delete(ownerLocks, rec.key)
+	if len(ownerLocks) == 0 {
+		delete(m.byOwner, rec.owner)
+		delete(m.ownerMax, rec.owner)
+	} else {
+		m.ownerMax[rec.owner] = computeOwnerMax(ownerLocks)
+	}
+	m.mu.Unlock()
+
+	res, err := m.store.Eval(ctx, releaseScript, []string{rec.key}, rec.token).Result()
+	if err != nil {
+		return err
+	}
+	switch v := res.(type) {
+	case int64:
+		if v == 1 {
+			return nil
+		}
+	case string:
+		if v == "1" {
+			return nil
+		}
+	}
+	return ErrLockReleaseFailed
+}
+
+func (m *RedisLockManager) acquire(ctx context.Context, key string, level int, ttl time.Duration) (string, error) {
+	owner := ownerIDFromContext(ctx)
+
+	m.mu.Lock()
+	if m.ownerMax[owner] > level {
+		m.mu.Unlock()
+		return "", ErrLockHierarchy
+	}
+	if ownerLocks, ok := m.byOwner[owner]; ok {
+		if rec, ok := ownerLocks[key]; ok {
+			rec.count++
+			m.byToken[rec.token] = rec
+			ownerLocks[key] = rec
+			m.mu.Unlock()
+			return rec.token, nil
+		}
+	}
+	m.mu.Unlock()
+
+	token := uuid.NewString()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		ok, err := m.store.SetNX(ctx, key, token, ttl).Result()
+		if err == nil && ok {
+			m.mu.Lock()
+			rec := lockRecord{
+				token: token,
+				key:   key,
+				owner: owner,
+				level: level,
+				count: 1,
+			}
+			m.byToken[token] = rec
+			if _, exists := m.byOwner[owner]; !exists {
+				m.byOwner[owner] = make(map[string]lockRecord)
+			}
+			m.byOwner[owner][key] = rec
+			if m.ownerMax[owner] < level {
+				m.ownerMax[owner] = level
+			}
+			m.mu.Unlock()
+			return token, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		if ctx.Err() != nil || time.Now().After(deadline) {
+			return "", ErrLockTimeout
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func ownerIDFromContext(ctx context.Context) string {
+	if owner, ok := ctx.Value(OwnerContextKey).(string); ok && owner != "" {
+		return owner
+	}
+	return "owner-" + uuid.NewString()
+}
+
+func sanitizeNamespace(namespace string) string {
+	replacer := strings.NewReplacer("/", ":", " ", "_")
+	return replacer.Replace(namespace)
+}
+
+func computeOwnerMax(lockMap map[string]lockRecord) int {
+	maxLevel := 0
+	for _, rec := range lockMap {
+		if rec.level > maxLevel {
+			maxLevel = rec.level
+		}
+	}
+	return maxLevel
+}
+
+const releaseScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("DEL", KEYS[1])
+else
+	return 0
+end
+`

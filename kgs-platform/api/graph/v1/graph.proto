@@ -57,6 +57,22 @@ service Graph {
       body: "*"
     };
   }
+
+  // Batch upsert entities
+  rpc BatchUpsertEntities (BatchUpsertRequest) returns (BatchUpsertReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/entities/batch"
+      body: "*"
+    };
+  }
+
+  // Hybrid search across vector and full-text indexes
+  rpc HybridSearch (HybridSearchRequest) returns (HybridSearchReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/search/hybrid"
+      body: "*"
+    };
+  }
 }
 
 message CreateNodeRequest {
@@ -99,16 +115,22 @@ message GetContextRequest {
   string node_id = 1;
   int32 depth = 2;
   string direction = 3; // INCOMING, OUTGOING, BOTH (default)
+  int32 page_size = 4;
+  string page_token = 5;
 }
 
 message GetImpactRequest {
   string node_id = 1;
   int32 max_depth = 2;
+  int32 page_size = 3;
+  string page_token = 4;
 }
 
 message GetCoverageRequest {
   string node_id = 1;
   int32 max_depth = 2;
+  int32 page_size = 3;
+  string page_token = 4;
 }
 
 message GetSubgraphRequest {
@@ -132,4 +154,44 @@ message GraphEdge {
 message GraphReply {
   repeated GraphNode nodes = 1;
   repeated GraphEdge edges = 2;
+}
+
+message BatchEntity {
+  string label = 1;
+  string properties_json = 2;
+}
+
+message BatchUpsertRequest {
+  repeated BatchEntity entities = 1;
+}
+
+message BatchUpsertReply {
+  int32 created = 1;
+  int32 updated = 2;
+  int32 skipped = 3;
+}
+
+message HybridSearchRequest {
+  string query = 1;
+  int32 top_k = 2;
+  double alpha = 3;
+  double beta = 4;
+  repeated string entity_types = 5;
+  repeated string domains = 6;
+  double min_confidence = 7;
+  repeated string provenance_types = 8;
+}
+
+message HybridSearchResult {
+  string node_id = 1;
+  string label = 2;
+  string properties_json = 3;
+  double score = 4;
+  double semantic_score = 5;
+  double text_score = 6;
+  double centrality = 7;
+}
+
+message HybridSearchReply {
+  repeated HybridSearchResult results = 1;
 }

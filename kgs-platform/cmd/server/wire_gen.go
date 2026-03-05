@@ -9,9 +9,12 @@ package main
 import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	"kgs-platform/internal/batch"
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/conf"
 	"kgs-platform/internal/data"
+	"kgs-platform/internal/lock"
+	"kgs-platform/internal/search"
 	"kgs-platform/internal/server"
 	"kgs-platform/internal/service"
 )
@@ -31,22 +34,36 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	greeterRepo := data.NewGreeterRepo(dataData, logger)
 	greeterUsecase := biz.NewGreeterUsecase(greeterRepo)
 	greeterService := service.NewGreeterService(greeterUsecase)
-	registryService := service.NewRegistryService()
+	registryRepo := data.NewRegistryRepo(dataData, logger)
+	registryUsecase := biz.NewRegistryUsecase(registryRepo, logger)
+	registryService := service.NewRegistryService(registryUsecase)
 	ontologyService := service.NewOntologyService()
 	graphRepo := data.NewGraphRepo(dataData, logger)
 	queryPlanner := biz.NewQueryPlanner()
 	opaClient := biz.NewOPAClient(logger)
 	client := data.NewRedisClient(dataData)
-	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, client, logger)
-	graphService := service.NewGraphService(graphUsecase)
+	manager := lock.NewRedisLockManager(client)
+	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, client, manager, logger)
+	contextDriver := data.NewNeo4jDriver(dataData)
+	qdrantClient := data.NewQdrantClient(dataData)
+	neo4jWriter := batch.NewNeo4jWriter(contextDriver)
+	semanticDeduper := batch.NewSemanticDeduper(qdrantClient)
+	qdrantIndexer := batch.NewQdrantIndexer(qdrantClient)
+	usecase := batch.NewUsecaseWithIndexer(neo4jWriter, semanticDeduper, qdrantIndexer)
+	deterministicEmbeddingClient := search.NewDeterministicEmbeddingClient()
+	vectorSearcher := search.NewVectorSearcher(qdrantClient, deterministicEmbeddingClient)
+	textSearcher := search.NewTextSearcher(contextDriver, logger)
+	neo4jCentralityProvider := search.NewNeo4jCentralityProvider(contextDriver)
+	engine := search.NewEngine(vectorSearcher, textSearcher, neo4jCentralityProvider)
+	graphService := service.NewGraphService(graphUsecase, usecase, engine)
 	rulesRepo := data.NewRulesRepo(dataData, logger)
 	rulesUsecase := biz.NewRulesUsecase(rulesRepo, logger)
 	rulesService := service.NewRulesService(rulesUsecase)
 	policyRepo := data.NewPolicyRepo(dataData, logger)
 	policyUsecase := biz.NewPolicyUsecase(policyRepo, logger)
 	policyService := service.NewPolicyService(policyUsecase)
-	grpcServer := server.NewGRPCServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, logger)
-	httpServer := server.NewHTTPServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, logger)
+	grpcServer := server.NewGRPCServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, registryUsecase, client, logger)
+	httpServer := server.NewHTTPServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, registryUsecase, client, logger)
 	ruleRunner := biz.NewRuleRunner(rulesRepo, graphRepo, logger)
 	eventRunner := biz.NewEventRunner(rulesRepo, graphRepo, client, logger)
 	policySyncRunner := biz.NewPolicySyncRunner(policyRepo, opaClient, logger)

@@ -14,19 +14,28 @@ import (
 )
 
 // ProviderSet is data providers.
-var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewRegistryRepo, NewOntologyRepo, NewGraphRepo, NewRulesRepo, NewPolicyRepo, NewRedisClient)
+var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewRegistryRepo, NewOntologyRepo, NewGraphRepo, NewRulesRepo, NewPolicyRepo, NewRedisClient, NewNeo4jDriver, NewQdrantClient)
 
 // NewRedisClient exposes the redis client to wire
 func NewRedisClient(data *Data) *redis.Client {
 	return data.rc
 }
 
+func NewNeo4jDriver(data *Data) neo4j.DriverWithContext {
+	return data.neo4j
+}
+
+func NewQdrantClient(data *Data) *QdrantClient {
+	return data.qdrant
+}
+
 // Data .
 type Data struct {
-	db    *gorm.DB
-	neo4j neo4j.DriverWithContext
-	rc    *redis.Client
-	opa   string
+	db     *gorm.DB
+	neo4j  neo4j.DriverWithContext
+	rc     *redis.Client
+	qdrant *QdrantClient
+	opa    string
 }
 
 // NewData .
@@ -82,6 +91,19 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		neo4j: driver,
 		rc:    rdb,
 		opa:   c.Opa.Url,
+	}
+
+	if qdrantCfg := c.GetQdrant(); qdrantCfg != nil && qdrantCfg.GetHost() != "" {
+		qdrantClient, err := NewQdrantClientFromConfig(qdrantCfg, helper)
+		if err != nil {
+			helper.Fatalf("failed creating qdrant client: %v", err)
+		}
+		d.qdrant = qdrantClient
+		if qdrantCfg.GetCollection() != "" {
+			if err := qdrantClient.EnsureCollection(context.Background(), qdrantCfg.GetCollection(), int(qdrantCfg.GetVectorSize())); err != nil {
+				helper.Errorf("failed to ensure qdrant collection %s: %v", qdrantCfg.GetCollection(), err)
+			}
+		}
 	}
 
 	cleanup := func() {

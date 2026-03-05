@@ -2,10 +2,13 @@ package data
 
 import (
 	"context"
+	"fmt"
+	"regexp"
 
 	"kgs-platform/internal/biz"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/google/uuid"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
@@ -16,28 +19,39 @@ type graphRepo struct {
 
 // NewGraphRepo .
 func NewGraphRepo(data *Data, logger log.Logger) biz.GraphRepo {
-	return &graphRepo{
+	repo := &graphRepo{
 		data: data,
 		log:  log.NewHelper(logger),
 	}
+	if err := repo.ensureGlobalFullTextIndex(context.Background()); err != nil {
+		repo.log.Warnf("failed to ensure global fulltext index: %v", err)
+	}
+	return repo
 }
 
 // CreateNode creates a new namespaced node in Neo4j
-func (r *graphRepo) CreateNode(ctx context.Context, appID string, label string, properties map[string]any) (map[string]any, error) {
+func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
 	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
+	cleanLabel, err := sanitizeCypherIdentifier(label)
+	if err != nil {
+		return nil, err
+	}
+	props := cloneMap(properties)
+	nodeID := ensureID(props)
+
 	result, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
-		// DYNAMIC CYPHER - safe because parameterization
-		// We add the namespace prefix to both label and id properties
-		query := `
-			CREATE (n:` + label + ` {app_id: $app_id})
+		query := fmt.Sprintf(`
+			CREATE (n:%s {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
 			SET n += $props
 			RETURN n
-		`
+		`, cleanLabel)
 		params := map[string]interface{}{
-			"app_id": appID,
-			"props":  properties,
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"node_id":   nodeID,
+			"props":     props,
 		}
 
 		res, err := tx.Run(ctx, query, params)
@@ -59,4 +73,83 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID string, label string, 
 	}
 
 	return result.(map[string]any), nil
+}
+
+func (r *graphRepo) GetNode(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		query := `
+			MATCH (n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
+			RETURN n
+			LIMIT 1
+		`
+		res, err := tx.Run(ctx, query, map[string]any{
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"node_id":   nodeID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if res.Next(ctx) {
+			node := res.Record().Values[0].(neo4j.Node)
+			return node.Props, nil
+		}
+		if err := res.Err(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("node not found")
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(map[string]any), nil
+}
+
+func ensureID(props map[string]any) string {
+	if props == nil {
+		return uuid.NewString()
+	}
+	if id, ok := props["id"].(string); ok && id != "" {
+		return id
+	}
+	id := uuid.NewString()
+	props["id"] = id
+	return id
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	if in == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+var cypherIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func sanitizeCypherIdentifier(input string) (string, error) {
+	if !cypherIdentifierPattern.MatchString(input) {
+		return "", fmt.Errorf("invalid cypher identifier: %q", input)
+	}
+	return input, nil
+}
+
+func (r *graphRepo) ensureGlobalFullTextIndex(ctx context.Context) error {
+	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close(ctx)
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		_, err := tx.Run(ctx, "CREATE FULLTEXT INDEX kgs_fti_global IF NOT EXISTS FOR (n) ON EACH [n.name, n.content, n.description]", nil)
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	})
+	return err
 }

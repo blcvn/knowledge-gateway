@@ -19,6 +19,7 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationGraphBatchUpsertEntities = "/api.graph.v1.Graph/BatchUpsertEntities"
 const OperationGraphCreateEdge = "/api.graph.v1.Graph/CreateEdge"
 const OperationGraphCreateNode = "/api.graph.v1.Graph/CreateNode"
 const OperationGraphGetContext = "/api.graph.v1.Graph/GetContext"
@@ -26,8 +27,11 @@ const OperationGraphGetCoverage = "/api.graph.v1.Graph/GetCoverage"
 const OperationGraphGetImpact = "/api.graph.v1.Graph/GetImpact"
 const OperationGraphGetNode = "/api.graph.v1.Graph/GetNode"
 const OperationGraphGetSubgraph = "/api.graph.v1.Graph/GetSubgraph"
+const OperationGraphHybridSearch = "/api.graph.v1.Graph/HybridSearch"
 
 type GraphHTTPServer interface {
+	// BatchUpsertEntities Batch upsert entities
+	BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error)
 	// CreateEdge Create an edge between two nodes
 	CreateEdge(context.Context, *CreateEdgeRequest) (*CreateEdgeReply, error)
 	// CreateNode Create a new node in the Knowledge Graph
@@ -42,6 +46,8 @@ type GraphHTTPServer interface {
 	GetNode(context.Context, *GetNodeRequest) (*GetNodeReply, error)
 	// GetSubgraph Get subgraph for a list of node IDs
 	GetSubgraph(context.Context, *GetSubgraphRequest) (*GraphReply, error)
+	// HybridSearch Hybrid search across vector and full-text indexes
+	HybridSearch(context.Context, *HybridSearchRequest) (*HybridSearchReply, error)
 }
 
 func RegisterGraphHTTPServer(s *http.Server, srv GraphHTTPServer) {
@@ -53,6 +59,8 @@ func RegisterGraphHTTPServer(s *http.Server, srv GraphHTTPServer) {
 	r.GET("/v1/graph/nodes/{node_id}/impact", _Graph_GetImpact0_HTTP_Handler(srv))
 	r.GET("/v1/graph/nodes/{node_id}/coverage", _Graph_GetCoverage0_HTTP_Handler(srv))
 	r.POST("/v1/graph/subgraph", _Graph_GetSubgraph0_HTTP_Handler(srv))
+	r.POST("/v1/graph/entities/batch", _Graph_BatchUpsertEntities0_HTTP_Handler(srv))
+	r.POST("/v1/graph/search/hybrid", _Graph_HybridSearch0_HTTP_Handler(srv))
 }
 
 func _Graph_CreateNode0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
@@ -209,7 +217,53 @@ func _Graph_GetSubgraph0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context
 	}
 }
 
+func _Graph_BatchUpsertEntities0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in BatchUpsertRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphBatchUpsertEntities)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.BatchUpsertEntities(ctx, req.(*BatchUpsertRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*BatchUpsertReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_HybridSearch0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in HybridSearchRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphHybridSearch)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.HybridSearch(ctx, req.(*HybridSearchRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*HybridSearchReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type GraphHTTPClient interface {
+	// BatchUpsertEntities Batch upsert entities
+	BatchUpsertEntities(ctx context.Context, req *BatchUpsertRequest, opts ...http.CallOption) (rsp *BatchUpsertReply, err error)
 	// CreateEdge Create an edge between two nodes
 	CreateEdge(ctx context.Context, req *CreateEdgeRequest, opts ...http.CallOption) (rsp *CreateEdgeReply, err error)
 	// CreateNode Create a new node in the Knowledge Graph
@@ -224,6 +278,8 @@ type GraphHTTPClient interface {
 	GetNode(ctx context.Context, req *GetNodeRequest, opts ...http.CallOption) (rsp *GetNodeReply, err error)
 	// GetSubgraph Get subgraph for a list of node IDs
 	GetSubgraph(ctx context.Context, req *GetSubgraphRequest, opts ...http.CallOption) (rsp *GraphReply, err error)
+	// HybridSearch Hybrid search across vector and full-text indexes
+	HybridSearch(ctx context.Context, req *HybridSearchRequest, opts ...http.CallOption) (rsp *HybridSearchReply, err error)
 }
 
 type GraphHTTPClientImpl struct {
@@ -232,6 +288,20 @@ type GraphHTTPClientImpl struct {
 
 func NewGraphHTTPClient(client *http.Client) GraphHTTPClient {
 	return &GraphHTTPClientImpl{client}
+}
+
+// BatchUpsertEntities Batch upsert entities
+func (c *GraphHTTPClientImpl) BatchUpsertEntities(ctx context.Context, in *BatchUpsertRequest, opts ...http.CallOption) (*BatchUpsertReply, error) {
+	var out BatchUpsertReply
+	pattern := "/v1/graph/entities/batch"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphBatchUpsertEntities))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // CreateEdge Create an edge between two nodes
@@ -324,6 +394,20 @@ func (c *GraphHTTPClientImpl) GetSubgraph(ctx context.Context, in *GetSubgraphRe
 	pattern := "/v1/graph/subgraph"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationGraphGetSubgraph))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// HybridSearch Hybrid search across vector and full-text indexes
+func (c *GraphHTTPClientImpl) HybridSearch(ctx context.Context, in *HybridSearchRequest, opts ...http.CallOption) (*HybridSearchReply, error) {
+	var out HybridSearchReply
+	pattern := "/v1/graph/search/hybrid"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphHybridSearch))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
