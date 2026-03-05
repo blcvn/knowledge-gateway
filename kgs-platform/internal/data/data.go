@@ -2,6 +2,12 @@ package data
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/conf"
 	"kgs-platform/internal/projection"
@@ -58,6 +64,13 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	if err != nil {
 		helper.Fatalf("failed opening connection to postgres: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		helper.Fatalf("failed to get postgres sql DB handle: %v", err)
+	}
+	if err := sqlDB.PingContext(context.Background()); err != nil {
+		helper.Fatalf("failed pinging postgres: %v", err)
+	}
 
 	// Auto-Migrate Schemas
 	if err := db.AutoMigrate(
@@ -83,6 +96,9 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	)
 	if err != nil {
 		helper.Fatalf("failed creating neo4j driver: %v", err)
+	}
+	if err := driver.VerifyConnectivity(context.Background()); err != nil {
+		helper.Fatalf("failed verifying neo4j connectivity: %v", err)
 	}
 
 	// Redis Setup
@@ -114,8 +130,11 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		d.qdrant = qdrantClient
 		if qdrantCfg.GetCollection() != "" {
 			if err := qdrantClient.EnsureCollection(context.Background(), qdrantCfg.GetCollection(), int(qdrantCfg.GetVectorSize())); err != nil {
-				helper.Errorf("failed to ensure qdrant collection %s: %v", qdrantCfg.GetCollection(), err)
+				helper.Fatalf("failed to ensure qdrant collection %s: %v", qdrantCfg.GetCollection(), err)
 			}
+		}
+		if err := qdrantClient.Ping(context.Background()); err != nil {
+			helper.Fatalf("failed verifying qdrant connectivity: %v", err)
 		}
 	}
 
@@ -125,6 +144,17 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 			helper.Fatalf("failed creating nats client: %v", err)
 		}
 		d.nats = natsClient
+		if err := natsClient.Ping(context.Background()); err != nil {
+			helper.Fatalf("failed verifying nats connectivity: %v", err)
+		}
+	}
+
+	opaURL := ""
+	if c.GetOpa() != nil {
+		opaURL = c.GetOpa().GetUrl()
+	}
+	if err := verifyOPAConnectivity(context.Background(), opaURL); err != nil {
+		helper.Fatalf("failed verifying OPA connectivity: %v", err)
 	}
 
 	cleanup := func() {
@@ -138,4 +168,37 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	}
 
 	return d, cleanup, nil
+}
+
+func verifyOPAConnectivity(ctx context.Context, raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	if !strings.Contains(trimmed, "://") {
+		trimmed = "http://" + trimmed
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return fmt.Errorf("invalid OPA url %q: %w", raw, err)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("invalid OPA url %q", raw)
+	}
+
+	healthURL := parsed.Scheme + "://" + parsed.Host + "/health"
+	client := &http.Client{Timeout: 2 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("opa health check returned status %d", resp.StatusCode)
+	}
+	return nil
 }

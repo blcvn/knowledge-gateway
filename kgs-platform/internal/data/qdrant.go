@@ -97,7 +97,11 @@ func (c *QdrantClient) EnsureCollection(ctx context.Context, collection string, 
 			"distance": "Cosine",
 		},
 	}
-	return c.doJSON(ctx, http.MethodPut, "/collections/"+url.PathEscape(collection), body, nil)
+	err := c.doJSON(ctx, http.MethodPut, "/collections/"+url.PathEscape(collection), body, nil)
+	if err != nil && isCollectionAlreadyExistsError(err) {
+		return nil
+	}
+	return err
 }
 
 func (c *QdrantClient) UpsertVectors(ctx context.Context, collection string, points []VectorPoint) error {
@@ -300,4 +304,12 @@ func (c *QdrantClient) normalizeCollection(collection string) string {
 		return trimmed
 	}
 	return strings.TrimSpace(c.defaultCollection)
+}
+
+func isCollectionAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "status=409") && strings.Contains(msg, "already exists")
 }

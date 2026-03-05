@@ -165,7 +165,7 @@ func (t *tester) runAll() {
 			"name":        "Allow " + suffix,
 			"description": "api-tester policy",
 			"rego_content": fmt.Sprintf(
-				"package kgs\nimport rego.v1\n\ndefault allow := false\n\nallow if {\n  input.app_id == %q\n}\n",
+				"package kgs\nimport rego.v1\n\nallow if {\n  input.app_id == %q\n}\n",
 				t.authAppID,
 			),
 		}, true, nil, http.StatusOK)
@@ -652,7 +652,7 @@ func (t *tester) pushOPAPolicyForApp(appID string) error {
 	if appID == "" {
 		return errors.New("empty appID for OPA policy")
 	}
-	policy := fmt.Sprintf("package kgs\nimport rego.v1\n\ndefault allow := false\n\nallow if {\n  input.app_id == %q\n}\n", appID)
+	policy := fmt.Sprintf("package kgs\nimport rego.v1\n\nallow if {\n  input.app_id == %q\n}\n", appID)
 	req, err := http.NewRequest(http.MethodPut, t.opaURL+"/v1/policies/kgs_api_tester_allow", strings.NewReader(policy))
 	if err != nil {
 		return err

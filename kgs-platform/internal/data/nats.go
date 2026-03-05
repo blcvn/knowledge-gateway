@@ -3,8 +3,11 @@ package data
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"kgs-platform/internal/conf"
 
@@ -83,13 +86,37 @@ func (c *NATSClient) Subscribe(subject string, handler NATSHandler) (func(), err
 }
 
 func (c *NATSClient) Ping(ctx context.Context) error {
-	_ = ctx
 	if c == nil {
 		return nil
 	}
-	if strings.TrimSpace(c.url) == "" {
+	raw := strings.TrimSpace(c.url)
+	if raw == "" {
 		return fmt.Errorf("nats url is empty")
 	}
+	if !strings.Contains(raw, "://") {
+		raw = "nats://" + raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid nats url %q: %w", c.url, err)
+	}
+	host := parsed.Host
+	if host == "" {
+		host = parsed.Path
+	}
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return fmt.Errorf("invalid nats url %q", c.url)
+	}
+	if !strings.Contains(host, ":") {
+		host += ":4222"
+	}
+	dialer := &net.Dialer{Timeout: 2 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", host)
+	if err != nil {
+		return fmt.Errorf("nats tcp check failed %s: %w", host, err)
+	}
+	_ = conn.Close()
 	return nil
 }
 
