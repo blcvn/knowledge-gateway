@@ -165,6 +165,11 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		}
 		_ = driver.Close(context.Background())
 		_ = rdb.Close()
+		if d.nats != nil {
+			if err := d.nats.Close(); err != nil {
+				helper.Warnf("failed closing nats client: %v", err)
+			}
+		}
 	}
 
 	return d, cleanup, nil

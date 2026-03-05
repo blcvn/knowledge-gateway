@@ -2,13 +2,16 @@ package overlay
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"kgs-platform/internal/conf"
 	"kgs-platform/internal/data"
 	"kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
+	natsserver "github.com/nats-io/nats-server/v2/server"
 )
 
 func TestSessionCloseListener(t *testing.T) {
@@ -24,12 +27,13 @@ func TestSessionCloseListener(t *testing.T) {
 	}
 
 	natsClient, err := data.NewNATSClientFromConfig(&conf.Data_NATS{
-		Url:    "nats://localhost:4222",
+		Url:    runNATSServerURL(t),
 		Stream: "kgs-events",
 	}, log.NewHelper(log.DefaultLogger))
 	if err != nil {
 		t.Fatalf("new nats client: %v", err)
 	}
+	defer natsClient.Close()
 	listener := &SessionCloseListener{
 		nats:    natsClient,
 		manager: manager,
@@ -43,7 +47,10 @@ func TestSessionCloseListener(t *testing.T) {
 		t.Fatalf("publish: %v", err)
 	}
 
-	if _, ok := store.items[item.OverlayID]; ok {
+	if !waitFor(2*time.Second, func() bool {
+		_, ok := store.items[item.OverlayID]
+		return !ok
+	}) {
 		t.Fatalf("overlay should be auto-discarded on session close")
 	}
 }
@@ -67,12 +74,13 @@ func TestSessionCloseListenerCommitWhenOverlayHasDelta(t *testing.T) {
 	}
 
 	natsClient, err := data.NewNATSClientFromConfig(&conf.Data_NATS{
-		Url:    "nats://localhost:4222",
+		Url:    runNATSServerURL(t),
 		Stream: "kgs-events",
 	}, log.NewHelper(log.DefaultLogger))
 	if err != nil {
 		t.Fatalf("new nats client: %v", err)
 	}
+	defer natsClient.Close()
 	listener := NewSessionCloseListener(natsClient, manager, log.DefaultLogger)
 	if err := listener.Start(ctx); err != nil {
 		t.Fatalf("listener start: %v", err)
@@ -83,12 +91,11 @@ func TestSessionCloseListenerCommitWhenOverlayHasDelta(t *testing.T) {
 		t.Fatalf("publish: %v", err)
 	}
 
-	updated, err := store.Get(ctx, item.OverlayID)
-	if err != nil {
-		t.Fatalf("get overlay: %v", err)
-	}
-	if updated.Status != StatusCommitted {
-		t.Fatalf("expected committed status, got %s", updated.Status)
+	if !waitFor(2*time.Second, func() bool {
+		updated, getErr := store.Get(ctx, item.OverlayID)
+		return getErr == nil && updated.Status == StatusCommitted
+	}) {
+		t.Fatalf("expected committed status")
 	}
 }
 
@@ -111,12 +118,13 @@ func TestBudgetStopListenerCommitPartial(t *testing.T) {
 	}
 
 	natsClient, err := data.NewNATSClientFromConfig(&conf.Data_NATS{
-		Url:    "nats://localhost:4222",
+		Url:    runNATSServerURL(t),
 		Stream: "kgs-events",
 	}, log.NewHelper(log.DefaultLogger))
 	if err != nil {
 		t.Fatalf("new nats client: %v", err)
 	}
+	defer natsClient.Close()
 	listener := NewSessionCloseListener(natsClient, manager, log.DefaultLogger)
 	if err := listener.Start(ctx); err != nil {
 		t.Fatalf("listener start: %v", err)
@@ -127,11 +135,42 @@ func TestBudgetStopListenerCommitPartial(t *testing.T) {
 		t.Fatalf("publish: %v", err)
 	}
 
-	updated, err := store.Get(ctx, item.OverlayID)
+	if !waitFor(2*time.Second, func() bool {
+		updated, getErr := store.Get(ctx, item.OverlayID)
+		return getErr == nil && updated.Status == StatusPartial
+	}) {
+		t.Fatalf("expected partial status")
+	}
+}
+
+func runNATSServerURL(t *testing.T) string {
+	t.Helper()
+	opts := &natsserver.Options{
+		Host:      "127.0.0.1",
+		Port:      -1,
+		JetStream: true,
+		NoLog:     true,
+		NoSigs:    true,
+	}
+	srv, err := natsserver.NewServer(opts)
 	if err != nil {
-		t.Fatalf("get overlay: %v", err)
+		t.Fatalf("new nats server: %v", err)
 	}
-	if updated.Status != StatusPartial {
-		t.Fatalf("expected partial status, got %s", updated.Status)
+	go srv.Start()
+	if !srv.ReadyForConnections(5 * time.Second) {
+		t.Fatalf("nats server not ready")
 	}
+	t.Cleanup(srv.Shutdown)
+	return fmt.Sprintf("nats://%s", srv.Addr().String())
+}
+
+func waitFor(timeout time.Duration, fn func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if fn() {
+			return true
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return fn()
 }

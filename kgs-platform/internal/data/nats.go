@@ -2,9 +2,8 @@ package data
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -12,34 +11,50 @@ import (
 	"kgs-platform/internal/conf"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/nats-io/nats.go"
 )
 
 type NATSHandler func(context.Context, []byte)
-
-type natsSubscription struct {
-	id      string
-	subject string
-	handler NATSHandler
-}
 
 type NATSClient struct {
 	url    string
 	stream string
 	log    *log.Helper
 
-	mu   sync.RWMutex
-	subs map[string]natsSubscription
+	mu sync.RWMutex
+	nc *nats.Conn
 }
 
 func NewNATSClientFromConfig(cfg *conf.Data_NATS, logger *log.Helper) (*NATSClient, error) {
 	if cfg == nil || strings.TrimSpace(cfg.GetUrl()) == "" {
 		return nil, nil
 	}
+	if logger == nil {
+		logger = log.NewHelper(log.DefaultLogger)
+	}
+
+	url := strings.TrimSpace(cfg.GetUrl())
+	nc, err := nats.Connect(url,
+		nats.Timeout(3*time.Second),
+		nats.ReconnectWait(500*time.Millisecond),
+		nats.MaxReconnects(5),
+		nats.DisconnectErrHandler(func(_ *nats.Conn, disconnectErr error) {
+			if disconnectErr != nil {
+				logger.Warnf("nats disconnected from %s: %v", url, disconnectErr)
+				return
+			}
+			logger.Warnf("nats disconnected from %s", url)
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &NATSClient{
-		url:    strings.TrimSpace(cfg.GetUrl()),
+		url:    url,
 		stream: strings.TrimSpace(cfg.GetStream()),
 		log:    logger,
-		subs:   map[string]natsSubscription{},
+		nc:     nc,
 	}, nil
 }
 
@@ -47,41 +62,54 @@ func (c *NATSClient) Publish(ctx context.Context, subject string, payload []byte
 	if c == nil {
 		return nil
 	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, sub := range c.subs {
-		if subjectMatch(sub.subject, subject) {
-			sub.handler(ctx, payload)
-		}
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return fmt.Errorf("subject is required")
 	}
-	return nil
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	c.mu.RLock()
+	nc := c.nc
+	c.mu.RUnlock()
+	if nc == nil || nc.IsClosed() {
+		return errors.New("nats connection is closed")
+	}
+
+	return nc.Publish(subject, payload)
 }
 
 func (c *NATSClient) Subscribe(subject string, handler NATSHandler) (func(), error) {
 	if c == nil {
 		return func() {}, nil
 	}
-	if strings.TrimSpace(subject) == "" {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
 		return nil, fmt.Errorf("subject is required")
 	}
 	if handler == nil {
 		return nil, fmt.Errorf("handler is required")
 	}
 
-	id := strings.TrimSpace(subject) + fmt.Sprintf("-%p", handler)
-	sub := natsSubscription{
-		id:      id,
-		subject: subject,
-		handler: handler,
+	c.mu.RLock()
+	nc := c.nc
+	c.mu.RUnlock()
+	if nc == nil || nc.IsClosed() {
+		return nil, errors.New("nats connection is closed")
 	}
 
-	c.mu.Lock()
-	c.subs[id] = sub
-	c.mu.Unlock()
+	sub, err := nc.Subscribe(subject, func(msg *nats.Msg) {
+		handler(context.Background(), msg.Data)
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return func() {
-		c.mu.Lock()
-		delete(c.subs, id)
-		c.mu.Unlock()
+		_ = sub.Unsubscribe()
 	}, nil
 }
 
@@ -89,46 +117,34 @@ func (c *NATSClient) Ping(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
-	raw := strings.TrimSpace(c.url)
-	if raw == "" {
-		return fmt.Errorf("nats url is empty")
+	c.mu.RLock()
+	nc := c.nc
+	c.mu.RUnlock()
+	if nc == nil || nc.IsClosed() {
+		return errors.New("nats connection is closed")
 	}
-	if !strings.Contains(raw, "://") {
-		raw = "nats://" + raw
+
+	timeout := 2 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 {
+			timeout = remaining
+		}
 	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return fmt.Errorf("invalid nats url %q: %w", c.url, err)
-	}
-	host := parsed.Host
-	if host == "" {
-		host = parsed.Path
-	}
-	host = strings.TrimSpace(host)
-	if host == "" {
-		return fmt.Errorf("invalid nats url %q", c.url)
-	}
-	if !strings.Contains(host, ":") {
-		host += ":4222"
-	}
-	dialer := &net.Dialer{Timeout: 2 * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", host)
-	if err != nil {
-		return fmt.Errorf("nats tcp check failed %s: %w", host, err)
-	}
-	_ = conn.Close()
-	return nil
+	return nc.FlushTimeout(timeout)
 }
 
-func subjectMatch(pattern, subject string) bool {
-	pattern = strings.TrimSpace(pattern)
-	subject = strings.TrimSpace(subject)
-	if pattern == subject {
-		return true
+func (c *NATSClient) Close() error {
+	if c == nil {
+		return nil
 	}
-	if strings.HasSuffix(pattern, ".*") {
-		prefix := strings.TrimSuffix(pattern, "*")
-		return strings.HasPrefix(subject, prefix)
+	c.mu.Lock()
+	nc := c.nc
+	c.nc = nil
+	c.mu.Unlock()
+	if nc == nil || nc.IsClosed() {
+		return nil
 	}
-	return false
+	err := nc.Drain()
+	nc.Close()
+	return err
 }

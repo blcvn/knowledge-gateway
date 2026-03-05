@@ -26,6 +26,7 @@ type AppContext struct {
 	AppID    string
 	Scopes   string
 	TenantID string
+	OrgID    string
 }
 
 // Auth API key middleware for Kratos
@@ -46,6 +47,7 @@ func Auth(registryUC RegistryValidator, redisCli *redis.Client) middleware.Middl
 			}
 
 			tenantID := extractTenantID(rawAPIKey)
+			orgID := strings.TrimSpace(tr.RequestHeader().Get("X-Org-ID"))
 			appCtx, ok := readCachedAppContext(ctx, redisCli, rawAPIKey)
 			if !ok {
 				apiKey, err := registryUC.ValidateAPIKey(ctx, rawAPIKey)
@@ -56,11 +58,13 @@ func Auth(registryUC RegistryValidator, redisCli *redis.Client) middleware.Middl
 					AppID:    apiKey.AppID,
 					Scopes:   apiKey.Scopes,
 					TenantID: tenantID,
+					OrgID:    orgID,
 				}
-				cacheAppContext(ctx, redisCli, rawAPIKey, appCtx)
 			} else {
 				appCtx.TenantID = tenantID
+				appCtx.OrgID = orgID
 			}
+			cacheAppContext(ctx, redisCli, rawAPIKey, appCtx)
 
 			ctx = context.WithValue(ctx, AppContextKey, appCtx)
 			return handler(ctx, req)
@@ -126,22 +130,26 @@ func readCachedAppContext(ctx context.Context, redisCli *redis.Client, rawAPIKey
 		return AppContext{}, false
 	}
 
-	parts := strings.SplitN(cached, "|", 2)
-	if len(parts) != 2 || parts[0] == "" {
+	var appCtx AppContext
+	if err := json.Unmarshal([]byte(cached), &appCtx); err != nil {
 		return AppContext{}, false
 	}
-	return AppContext{
-		AppID:  parts[0],
-		Scopes: parts[1],
-	}, true
+	if strings.TrimSpace(appCtx.AppID) == "" {
+		return AppContext{}, false
+	}
+	return appCtx, true
 }
 
 func cacheAppContext(ctx context.Context, redisCli *redis.Client, rawAPIKey string, appCtx AppContext) {
 	if redisCli == nil {
 		return
 	}
+	payload, err := json.Marshal(appCtx)
+	if err != nil {
+		return
+	}
 	cacheKey := "kgs:apikey:" + biz.HashAPIKey(rawAPIKey)
-	_ = redisCli.Set(ctx, cacheKey, appCtx.AppID+"|"+appCtx.Scopes, 5*time.Minute).Err()
+	_ = redisCli.Set(ctx, cacheKey, payload, 5*time.Minute).Err()
 }
 
 func extractTenantID(rawToken string) string {

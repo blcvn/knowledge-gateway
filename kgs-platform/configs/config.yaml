@@ -28,5 +28,5 @@ data:
     collection: kgs-vectors-default
     vector_size: 1536
   nats:
-    url: ""
+    url: "nats://localhost:4222"
     stream: kgs-events

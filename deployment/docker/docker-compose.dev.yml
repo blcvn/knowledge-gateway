@@ -168,5 +168,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-kgs_platform}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4jpassword}
       OPA_URL: ${OPA_URL:-http://opa:8181}
+      NATS_URL: ${NATS_URL:-nats://nats:4222}
     networks:
       - kgs-net

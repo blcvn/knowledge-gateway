@@ -29,6 +29,8 @@ type tester struct {
 	syncOPAPolicy bool
 	opaURL        string
 	authAppIDFlag string
+	tenantID      string
+	orgID         string
 
 	createdAppID string
 	authAppID    string
@@ -67,6 +69,7 @@ func main() {
 	authAppID := flag.String("auth-app-id", "", "Existing app_id to issue API key for auth-protected APIs (optional)")
 	syncOPAPolicy := flag.Bool("sync-opa-policy", true, "Push temporary allow policy to OPA for auth app_id")
 	opaURL := flag.String("opa-url", "http://localhost:8181", "OPA base URL")
+	orgID := flag.String("org-id", "", "Optional X-Org-ID for authenticated requests")
 	flag.Parse()
 
 	t := &tester{
@@ -77,6 +80,8 @@ func main() {
 		syncOPAPolicy: *syncOPAPolicy,
 		opaURL:        strings.TrimRight(*opaURL, "/"),
 		authAppIDFlag: strings.TrimSpace(*authAppID),
+		tenantID:      "default",
+		orgID:         strings.TrimSpace(*orgID),
 		results:       make([]stepResult, 0, 64),
 	}
 
@@ -202,7 +207,7 @@ func (t *tester) runAll() {
 		if !strings.HasPrefix(t.apiKey, keyPrefix) {
 			return fmt.Errorf("key_prefix=%q does not match api_key", keyPrefix)
 		}
-		t.namespace = fmt.Sprintf("graph/%s/default", t.authAppID)
+		t.namespace = t.namespaceFor(t.orgID)
 		return nil
 	})
 
@@ -325,6 +330,28 @@ func (t *tester) runAll() {
 		return nil
 	})
 
+	t.runStep("GET /v1/ontology/entities (X-Org-ID round-trip)", func() error {
+		probeOrgID := t.orgID
+		if probeOrgID == "" {
+			probeOrgID = "org-" + suffix
+		}
+		headers := map[string]string{
+			"X-Org-ID":       probeOrgID,
+			"X-KG-Namespace": t.namespaceFor(probeOrgID),
+		}
+		resp, err := t.doJSON(http.MethodGet, "/v1/ontology/entities", nil, true, headers, http.StatusOK)
+		if err != nil {
+			return err
+		}
+		if len(asSlice(resp["entities"])) == 0 {
+			return fmt.Errorf("entity types list is empty for org=%q", probeOrgID)
+		}
+		if _, ok := findObjectByString(asSlice(resp["entities"]), t.entityType, "name"); !ok {
+			return fmt.Errorf("entity type %q not found in org-scoped list", t.entityType)
+		}
+		return nil
+	})
+
 	t.runStep("GET /v1/ontology/relations (ListRelationTypes)", func() error {
 		resp, err := t.doJSON(http.MethodGet, "/v1/ontology/relations", nil, true, nil, http.StatusOK)
 		if err != nil {
@@ -441,6 +468,9 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("GET /v1/graph/nodes/{node_id} (GetNode)", func() error {
+		if err := requireID(t.node1ID, "node1_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID), nil, true, nil, http.StatusOK)
 		if err != nil {
 			return err
@@ -459,6 +489,12 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("POST /v1/graph/edges (CreateEdge)", func() error {
+		if err := requireID(t.node1ID, "node1_id"); err != nil {
+			return err
+		}
+		if err := requireID(t.node2ID, "node2_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodPost, "/v1/graph/edges", map[string]any{
 			"source_node_id":  t.node1ID,
 			"target_node_id":  t.node2ID,
@@ -485,6 +521,9 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("GET /v1/graph/nodes/{node_id}/context (GetContext)", func() error {
+		if err := requireID(t.node1ID, "node1_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID)+"/context?depth=2&direction=BOTH&page_size=20", nil, true, nil, http.StatusOK)
 		if err != nil {
 			return err
@@ -500,6 +539,9 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("GET /v1/graph/nodes/{node_id}/impact (GetImpact)", func() error {
+		if err := requireID(t.node1ID, "node1_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node1ID)+"/impact?max_depth=3&page_size=20", nil, true, nil, http.StatusOK)
 		if err != nil {
 			return err
@@ -514,6 +556,9 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("GET /v1/graph/nodes/{node_id}/coverage (GetCoverage)", func() error {
+		if err := requireID(t.node2ID, "node2_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodGet, "/v1/graph/nodes/"+url.PathEscape(t.node2ID)+"/coverage?max_depth=3&page_size=20", nil, true, nil, http.StatusOK)
 		if err != nil {
 			return err
@@ -528,6 +573,12 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("POST /v1/graph/subgraph (GetSubgraph)", func() error {
+		if err := requireID(t.node1ID, "node1_id"); err != nil {
+			return err
+		}
+		if err := requireID(t.node2ID, "node2_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodPost, "/v1/graph/subgraph", map[string]any{
 			"node_ids": []string{t.node1ID, t.node2ID},
 		}, true, nil, http.StatusOK)
@@ -660,7 +711,8 @@ func (t *tester) runAll() {
 		if got := pickString(view, "role_name", "roleName"); got != t.viewRoleName {
 			return fmt.Errorf("create view mismatch role_name: got=%q want=%q", got, t.viewRoleName)
 		}
-		if !sliceContainsString(view["allowed_entity_types"], t.entityType) {
+		allowedEntityTypes := pickFirstNonNil(view, "allowed_entity_types", "allowedEntityTypes")
+		if !sliceContainsString(allowedEntityTypes, t.entityType) {
 			return fmt.Errorf("create view allowed_entity_types does not contain %q", t.entityType)
 		}
 		return nil
@@ -729,6 +781,9 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("POST /v1/graph/nodes (CreateNode in Overlay)", func() error {
+		if err := requireID(t.overlay1ID, "overlay1_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodPost, "/v1/graph/nodes", map[string]any{
 			"label": t.entityType,
 			"properties_json": mustJSONString(map[string]any{
@@ -747,6 +802,9 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("POST /v1/graph/overlays/{overlay_id}/commit (CommitOverlay)", func() error {
+		if err := requireID(t.overlay1ID, "overlay1_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodPost, "/v1/graph/overlays/"+url.PathEscape(t.overlay1ID)+"/commit", map[string]any{
 			"overlay_id":      t.overlay1ID,
 			"conflict_policy": "KEEP_OVERLAY",
@@ -758,7 +816,8 @@ func (t *tester) runAll() {
 		if newVersionID == "" {
 			return fmt.Errorf("commit overlay missing new_version_id")
 		}
-		if asInt(resp["entities_committed"]) <= 0 {
+		entitiesCommitted := asInt(pickFirstNonNil(resp, "entities_committed", "entitiesCommitted"))
+		if entitiesCommitted <= 0 {
 			return fmt.Errorf("commit overlay entities_committed must be > 0")
 		}
 		t.versionTo = newVersionID
@@ -842,6 +901,9 @@ func (t *tester) runAll() {
 	})
 
 	t.runStep("DELETE /v1/graph/overlays/{overlay_id} (DiscardOverlay)", func() error {
+		if err := requireID(t.overlay2ID, "overlay2_id"); err != nil {
+			return err
+		}
 		resp, err := t.doJSON(http.MethodDelete, "/v1/graph/overlays/"+url.PathEscape(t.overlay2ID), nil, true, nil, http.StatusOK)
 		if err != nil {
 			return err
@@ -935,8 +997,15 @@ func (t *tester) doRaw(method, path string, body any, auth bool, headers map[str
 	}
 	if auth {
 		req.Header.Set("Authorization", "Bearer "+t.apiKey)
-		if t.namespace != "" {
-			req.Header.Set("X-KG-Namespace", t.namespace)
+		namespace := strings.TrimSpace(t.namespace)
+		if namespace == "" {
+			namespace = t.namespaceFor(t.orgID)
+		}
+		if namespace != "" {
+			req.Header.Set("X-KG-Namespace", namespace)
+		}
+		if t.orgID != "" {
+			req.Header.Set("X-Org-ID", t.orgID)
 		}
 	}
 	for k, v := range headers {
@@ -999,10 +1068,10 @@ func (t *tester) printSummary() {
 	passed := 0
 	failed := 0
 	for _, r := range t.results {
-		if r.Err == nil {
-			passed++
-		} else {
+		if r.Err != nil {
 			failed++
+		} else {
+			passed++
 		}
 	}
 	fmt.Println()
@@ -1017,6 +1086,29 @@ func (t *tester) printSummary() {
 		}
 	}
 	fmt.Println("==============================================================")
+}
+
+func requireID(id, name string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("missing prerequisite %s", name)
+	}
+	return nil
+}
+
+func (t *tester) namespaceFor(orgID string) string {
+	appID := strings.TrimSpace(t.authAppID)
+	if appID == "" {
+		return ""
+	}
+	tenantID := strings.TrimSpace(t.tenantID)
+	if tenantID == "" {
+		tenantID = "default"
+	}
+	orgID = strings.TrimSpace(orgID)
+	if orgID != "" {
+		return fmt.Sprintf("graph/%s/%s/%s", orgID, appID, tenantID)
+	}
+	return fmt.Sprintf("graph/%s/%s", appID, tenantID)
 }
 
 func mustJSONString(v any) string {
@@ -1155,4 +1247,16 @@ func pickString(m map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func pickFirstNonNil(m map[string]any, keys ...string) any {
+	if m == nil {
+		return nil
+	}
+	for _, key := range keys {
+		if val, ok := m[key]; ok && val != nil {
+			return val
+		}
+	}
+	return nil
 }

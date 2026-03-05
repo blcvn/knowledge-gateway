@@ -29,7 +29,7 @@ func Namespace() middleware.Middleware {
 				return handler(ctx, req)
 			}
 
-			expected := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+			expected := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID, appCtx.OrgID)
 			if namespaceHeader != expected {
 				return nil, kerrors.Forbidden("ERR_FORBIDDEN", "namespace does not match application context")
 			}

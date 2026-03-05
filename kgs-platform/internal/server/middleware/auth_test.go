@@ -8,8 +8,10 @@ import (
 	registryv1 "kgs-platform/api/registry/v1"
 	"kgs-platform/internal/biz"
 
+	"github.com/alicebob/miniredis/v2"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/transport"
+	"github.com/redis/go-redis/v9"
 )
 
 type fakeRegistryValidator struct {
@@ -163,5 +165,75 @@ func TestAuthMiddleware(t *testing.T) {
 				t.Fatalf("expected app id %s, got %s", tc.wantAppID, got.AppID)
 			}
 		})
+	}
+}
+
+func TestAuthMiddlewareOrgIDHeaderVariants(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+		want   string
+	}{
+		{name: "present", header: "org-123", want: "org-123"},
+		{name: "missing", header: "", want: ""},
+		{name: "empty", header: "   ", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := &testTransport{
+				operation: "/api.graph.v1.Graph/CreateNode",
+				request:   testHeader{},
+				reply:     testHeader{},
+			}
+			tr.request.Set("Authorization", "Bearer valid-key")
+			if tc.header != "" {
+				tr.request.Set("X-Org-ID", tc.header)
+			}
+
+			ctx := transport.NewServerContext(context.Background(), tr)
+			handler := Auth(&fakeRegistryValidator{
+				validateFn: func(ctx context.Context, rawAPIKey string) (*biz.APIKey, error) {
+					return &biz.APIKey{AppID: "app-1", Scopes: "read,write"}, nil
+				},
+			}, nil)(func(ctx context.Context, req any) (any, error) {
+				appCtx, _ := AppContextFromContext(ctx)
+				return appCtx, nil
+			})
+
+			resp, err := handler(ctx, nil)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got := resp.(AppContext)
+			if got.OrgID != tc.want {
+				t.Fatalf("OrgID mismatch: got=%q want=%q", got.OrgID, tc.want)
+			}
+		})
+	}
+}
+
+func TestAuthCacheRoundTripWithOrgID(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rc.Close() })
+
+	ctx := context.Background()
+	rawKey := "kgs_ak_test"
+	expected := AppContext{
+		AppID:    "app-1",
+		Scopes:   "read,write",
+		TenantID: "tenant-1",
+		OrgID:    "org-123",
+	}
+
+	cacheAppContext(ctx, rc, rawKey, expected)
+
+	got, ok := readCachedAppContext(ctx, rc, rawKey)
+	if !ok {
+		t.Fatalf("expected cached app context")
+	}
+	if got.AppID != expected.AppID || got.Scopes != expected.Scopes || got.OrgID != expected.OrgID {
+		t.Fatalf("cache round-trip mismatch: got=%+v want=%+v", got, expected)
 	}
 }
