@@ -22,3 +22,19 @@ data:
     database: kgs
   opa:
     url: http://localhost:8181
+  qdrant:
+    host: localhost
+    port: 6333
+    collection: kgs-vectors-default
+    vector_size: 1536
+  nats:
+    url: "nats://localhost:4222"
+    stream: kgs-events
+  embedding:
+    provider: deterministic
+    api_key: ""
+    model: text-embedding-3-small
+    base_url: https://api.openai.com/v1
+    path: /ai/embeddings
+    vector_size: 1536
+    timeout: 15s

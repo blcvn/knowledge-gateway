@@ -1,7 +1,6 @@
 package biz
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -38,5 +37,5 @@ func ValidatePayloadAgainstSchema(schemaStr string, payloadStr string) error {
 		errMsgs = append(errMsgs, fmt.Sprintf("- %s", desc))
 	}
 
-	return errors.New("payload validation failed:\n" + strings.Join(errMsgs, "\n"))
+	return ErrSchemaInvalid("payload validation failed:\n"+strings.Join(errMsgs, "\n"), nil)
 }

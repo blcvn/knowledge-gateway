@@ -19,29 +19,71 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationGraphBatchUpsertEntities = "/api.graph.v1.Graph/BatchUpsertEntities"
+const OperationGraphCommitOverlay = "/api.graph.v1.Graph/CommitOverlay"
 const OperationGraphCreateEdge = "/api.graph.v1.Graph/CreateEdge"
 const OperationGraphCreateNode = "/api.graph.v1.Graph/CreateNode"
+const OperationGraphCreateOverlay = "/api.graph.v1.Graph/CreateOverlay"
+const OperationGraphCreateViewDefinition = "/api.graph.v1.Graph/CreateViewDefinition"
+const OperationGraphDeleteViewDefinition = "/api.graph.v1.Graph/DeleteViewDefinition"
+const OperationGraphDiffVersions = "/api.graph.v1.Graph/DiffVersions"
+const OperationGraphDiscardOverlay = "/api.graph.v1.Graph/DiscardOverlay"
 const OperationGraphGetContext = "/api.graph.v1.Graph/GetContext"
 const OperationGraphGetCoverage = "/api.graph.v1.Graph/GetCoverage"
+const OperationGraphGetCoverageReport = "/api.graph.v1.Graph/GetCoverageReport"
 const OperationGraphGetImpact = "/api.graph.v1.Graph/GetImpact"
 const OperationGraphGetNode = "/api.graph.v1.Graph/GetNode"
 const OperationGraphGetSubgraph = "/api.graph.v1.Graph/GetSubgraph"
+const OperationGraphGetTraceabilityMatrix = "/api.graph.v1.Graph/GetTraceabilityMatrix"
+const OperationGraphGetViewDefinition = "/api.graph.v1.Graph/GetViewDefinition"
+const OperationGraphHybridSearch = "/api.graph.v1.Graph/HybridSearch"
+const OperationGraphListVersions = "/api.graph.v1.Graph/ListVersions"
+const OperationGraphListViewDefinitions = "/api.graph.v1.Graph/ListViewDefinitions"
+const OperationGraphRollbackVersion = "/api.graph.v1.Graph/RollbackVersion"
 
 type GraphHTTPServer interface {
+	// BatchUpsertEntities Batch upsert entities
+	BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error)
+	// CommitOverlay Commit overlay changes into base graph and create new version
+	CommitOverlay(context.Context, *CommitOverlayRequest) (*CommitOverlayReply, error)
 	// CreateEdge Create an edge between two nodes
 	CreateEdge(context.Context, *CreateEdgeRequest) (*CreateEdgeReply, error)
 	// CreateNode Create a new node in the Knowledge Graph
 	CreateNode(context.Context, *CreateNodeRequest) (*CreateNodeReply, error)
+	// CreateOverlay Create an overlay graph for session-scoped writes
+	CreateOverlay(context.Context, *CreateOverlayRequest) (*CreateOverlayReply, error)
+	// CreateViewDefinition Create a view definition for role-based projection
+	CreateViewDefinition(context.Context, *CreateViewDefinitionRequest) (*CreateViewDefinitionReply, error)
+	// DeleteViewDefinition Delete a view definition
+	DeleteViewDefinition(context.Context, *DeleteViewDefinitionRequest) (*DeleteViewDefinitionReply, error)
+	// DiffVersions Diff two versions in current namespace
+	DiffVersions(context.Context, *DiffVersionsRequest) (*DiffVersionsReply, error)
+	// DiscardOverlay Discard an overlay graph
+	DiscardOverlay(context.Context, *DiscardOverlayRequest) (*DiscardOverlayReply, error)
 	// GetContext Get contextual neighborhood around a node
 	GetContext(context.Context, *GetContextRequest) (*GraphReply, error)
 	// GetCoverage Get upstream coverage of a node
 	GetCoverage(context.Context, *GetCoverageRequest) (*GraphReply, error)
+	// GetCoverageReport Get coverage report by domain
+	GetCoverageReport(context.Context, *GetCoverageReportRequest) (*GetCoverageReportReply, error)
 	// GetImpact Get downstream impact of a node
 	GetImpact(context.Context, *GetImpactRequest) (*GraphReply, error)
 	// GetNode Get a node by ID
 	GetNode(context.Context, *GetNodeRequest) (*GetNodeReply, error)
 	// GetSubgraph Get subgraph for a list of node IDs
 	GetSubgraph(context.Context, *GetSubgraphRequest) (*GraphReply, error)
+	// GetTraceabilityMatrix Get traceability matrix between source and target entity types
+	GetTraceabilityMatrix(context.Context, *GetTraceabilityMatrixRequest) (*GetTraceabilityMatrixReply, error)
+	// GetViewDefinition Get a view definition by ID
+	GetViewDefinition(context.Context, *GetViewDefinitionRequest) (*GetViewDefinitionReply, error)
+	// HybridSearch Hybrid search across vector and full-text indexes
+	HybridSearch(context.Context, *HybridSearchRequest) (*HybridSearchReply, error)
+	// ListVersions List versions in current namespace
+	ListVersions(context.Context, *ListVersionsRequest) (*ListVersionsReply, error)
+	// ListViewDefinitions List all view definitions in namespace
+	ListViewDefinitions(context.Context, *ListViewDefinitionsRequest) (*ListViewDefinitionsReply, error)
+	// RollbackVersion Rollback current namespace to target version
+	RollbackVersion(context.Context, *RollbackVersionRequest) (*RollbackVersionReply, error)
 }
 
 func RegisterGraphHTTPServer(s *http.Server, srv GraphHTTPServer) {
@@ -53,6 +95,20 @@ func RegisterGraphHTTPServer(s *http.Server, srv GraphHTTPServer) {
 	r.GET("/v1/graph/nodes/{node_id}/impact", _Graph_GetImpact0_HTTP_Handler(srv))
 	r.GET("/v1/graph/nodes/{node_id}/coverage", _Graph_GetCoverage0_HTTP_Handler(srv))
 	r.POST("/v1/graph/subgraph", _Graph_GetSubgraph0_HTTP_Handler(srv))
+	r.POST("/v1/graph/entities/batch", _Graph_BatchUpsertEntities0_HTTP_Handler(srv))
+	r.POST("/v1/graph/search/hybrid", _Graph_HybridSearch0_HTTP_Handler(srv))
+	r.GET("/v1/graph/coverage/{domain}", _Graph_GetCoverageReport0_HTTP_Handler(srv))
+	r.POST("/v1/graph/traceability", _Graph_GetTraceabilityMatrix0_HTTP_Handler(srv))
+	r.POST("/v1/graph/overlays", _Graph_CreateOverlay0_HTTP_Handler(srv))
+	r.POST("/v1/graph/overlays/{overlay_id}/commit", _Graph_CommitOverlay0_HTTP_Handler(srv))
+	r.DELETE("/v1/graph/overlays/{overlay_id}", _Graph_DiscardOverlay0_HTTP_Handler(srv))
+	r.GET("/v1/graph/versions", _Graph_ListVersions0_HTTP_Handler(srv))
+	r.GET("/v1/graph/versions/diff", _Graph_DiffVersions0_HTTP_Handler(srv))
+	r.POST("/v1/graph/versions/{version_id}/rollback", _Graph_RollbackVersion0_HTTP_Handler(srv))
+	r.POST("/v1/graph/views", _Graph_CreateViewDefinition0_HTTP_Handler(srv))
+	r.GET("/v1/graph/views/{view_id}", _Graph_GetViewDefinition0_HTTP_Handler(srv))
+	r.GET("/v1/graph/views", _Graph_ListViewDefinitions0_HTTP_Handler(srv))
+	r.DELETE("/v1/graph/views/{view_id}", _Graph_DeleteViewDefinition0_HTTP_Handler(srv))
 }
 
 func _Graph_CreateNode0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
@@ -209,21 +265,354 @@ func _Graph_GetSubgraph0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context
 	}
 }
 
+func _Graph_BatchUpsertEntities0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in BatchUpsertRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphBatchUpsertEntities)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.BatchUpsertEntities(ctx, req.(*BatchUpsertRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*BatchUpsertReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_HybridSearch0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in HybridSearchRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphHybridSearch)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.HybridSearch(ctx, req.(*HybridSearchRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*HybridSearchReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_GetCoverageReport0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetCoverageReportRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphGetCoverageReport)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetCoverageReport(ctx, req.(*GetCoverageReportRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetCoverageReportReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_GetTraceabilityMatrix0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetTraceabilityMatrixRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphGetTraceabilityMatrix)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetTraceabilityMatrix(ctx, req.(*GetTraceabilityMatrixRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetTraceabilityMatrixReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_CreateOverlay0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CreateOverlayRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphCreateOverlay)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CreateOverlay(ctx, req.(*CreateOverlayRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*CreateOverlayReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_CommitOverlay0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CommitOverlayRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphCommitOverlay)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CommitOverlay(ctx, req.(*CommitOverlayRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*CommitOverlayReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_DiscardOverlay0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DiscardOverlayRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphDiscardOverlay)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DiscardOverlay(ctx, req.(*DiscardOverlayRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DiscardOverlayReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_ListVersions0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListVersionsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphListVersions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListVersions(ctx, req.(*ListVersionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListVersionsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_DiffVersions0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DiffVersionsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphDiffVersions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DiffVersions(ctx, req.(*DiffVersionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DiffVersionsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_RollbackVersion0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RollbackVersionRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphRollbackVersion)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RollbackVersion(ctx, req.(*RollbackVersionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*RollbackVersionReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_CreateViewDefinition0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CreateViewDefinitionRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphCreateViewDefinition)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CreateViewDefinition(ctx, req.(*CreateViewDefinitionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*CreateViewDefinitionReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_GetViewDefinition0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetViewDefinitionRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphGetViewDefinition)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetViewDefinition(ctx, req.(*GetViewDefinitionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetViewDefinitionReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_ListViewDefinitions0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListViewDefinitionsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphListViewDefinitions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListViewDefinitions(ctx, req.(*ListViewDefinitionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListViewDefinitionsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_DeleteViewDefinition0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteViewDefinitionRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphDeleteViewDefinition)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteViewDefinition(ctx, req.(*DeleteViewDefinitionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DeleteViewDefinitionReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type GraphHTTPClient interface {
+	// BatchUpsertEntities Batch upsert entities
+	BatchUpsertEntities(ctx context.Context, req *BatchUpsertRequest, opts ...http.CallOption) (rsp *BatchUpsertReply, err error)
+	// CommitOverlay Commit overlay changes into base graph and create new version
+	CommitOverlay(ctx context.Context, req *CommitOverlayRequest, opts ...http.CallOption) (rsp *CommitOverlayReply, err error)
 	// CreateEdge Create an edge between two nodes
 	CreateEdge(ctx context.Context, req *CreateEdgeRequest, opts ...http.CallOption) (rsp *CreateEdgeReply, err error)
 	// CreateNode Create a new node in the Knowledge Graph
 	CreateNode(ctx context.Context, req *CreateNodeRequest, opts ...http.CallOption) (rsp *CreateNodeReply, err error)
+	// CreateOverlay Create an overlay graph for session-scoped writes
+	CreateOverlay(ctx context.Context, req *CreateOverlayRequest, opts ...http.CallOption) (rsp *CreateOverlayReply, err error)
+	// CreateViewDefinition Create a view definition for role-based projection
+	CreateViewDefinition(ctx context.Context, req *CreateViewDefinitionRequest, opts ...http.CallOption) (rsp *CreateViewDefinitionReply, err error)
+	// DeleteViewDefinition Delete a view definition
+	DeleteViewDefinition(ctx context.Context, req *DeleteViewDefinitionRequest, opts ...http.CallOption) (rsp *DeleteViewDefinitionReply, err error)
+	// DiffVersions Diff two versions in current namespace
+	DiffVersions(ctx context.Context, req *DiffVersionsRequest, opts ...http.CallOption) (rsp *DiffVersionsReply, err error)
+	// DiscardOverlay Discard an overlay graph
+	DiscardOverlay(ctx context.Context, req *DiscardOverlayRequest, opts ...http.CallOption) (rsp *DiscardOverlayReply, err error)
 	// GetContext Get contextual neighborhood around a node
 	GetContext(ctx context.Context, req *GetContextRequest, opts ...http.CallOption) (rsp *GraphReply, err error)
 	// GetCoverage Get upstream coverage of a node
 	GetCoverage(ctx context.Context, req *GetCoverageRequest, opts ...http.CallOption) (rsp *GraphReply, err error)
+	// GetCoverageReport Get coverage report by domain
+	GetCoverageReport(ctx context.Context, req *GetCoverageReportRequest, opts ...http.CallOption) (rsp *GetCoverageReportReply, err error)
 	// GetImpact Get downstream impact of a node
 	GetImpact(ctx context.Context, req *GetImpactRequest, opts ...http.CallOption) (rsp *GraphReply, err error)
 	// GetNode Get a node by ID
 	GetNode(ctx context.Context, req *GetNodeRequest, opts ...http.CallOption) (rsp *GetNodeReply, err error)
 	// GetSubgraph Get subgraph for a list of node IDs
 	GetSubgraph(ctx context.Context, req *GetSubgraphRequest, opts ...http.CallOption) (rsp *GraphReply, err error)
+	// GetTraceabilityMatrix Get traceability matrix between source and target entity types
+	GetTraceabilityMatrix(ctx context.Context, req *GetTraceabilityMatrixRequest, opts ...http.CallOption) (rsp *GetTraceabilityMatrixReply, err error)
+	// GetViewDefinition Get a view definition by ID
+	GetViewDefinition(ctx context.Context, req *GetViewDefinitionRequest, opts ...http.CallOption) (rsp *GetViewDefinitionReply, err error)
+	// HybridSearch Hybrid search across vector and full-text indexes
+	HybridSearch(ctx context.Context, req *HybridSearchRequest, opts ...http.CallOption) (rsp *HybridSearchReply, err error)
+	// ListVersions List versions in current namespace
+	ListVersions(ctx context.Context, req *ListVersionsRequest, opts ...http.CallOption) (rsp *ListVersionsReply, err error)
+	// ListViewDefinitions List all view definitions in namespace
+	ListViewDefinitions(ctx context.Context, req *ListViewDefinitionsRequest, opts ...http.CallOption) (rsp *ListViewDefinitionsReply, err error)
+	// RollbackVersion Rollback current namespace to target version
+	RollbackVersion(ctx context.Context, req *RollbackVersionRequest, opts ...http.CallOption) (rsp *RollbackVersionReply, err error)
 }
 
 type GraphHTTPClientImpl struct {
@@ -232,6 +621,34 @@ type GraphHTTPClientImpl struct {
 
 func NewGraphHTTPClient(client *http.Client) GraphHTTPClient {
 	return &GraphHTTPClientImpl{client}
+}
+
+// BatchUpsertEntities Batch upsert entities
+func (c *GraphHTTPClientImpl) BatchUpsertEntities(ctx context.Context, in *BatchUpsertRequest, opts ...http.CallOption) (*BatchUpsertReply, error) {
+	var out BatchUpsertReply
+	pattern := "/v1/graph/entities/batch"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphBatchUpsertEntities))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CommitOverlay Commit overlay changes into base graph and create new version
+func (c *GraphHTTPClientImpl) CommitOverlay(ctx context.Context, in *CommitOverlayRequest, opts ...http.CallOption) (*CommitOverlayReply, error) {
+	var out CommitOverlayReply
+	pattern := "/v1/graph/overlays/{overlay_id}/commit"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphCommitOverlay))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // CreateEdge Create an edge between two nodes
@@ -262,6 +679,76 @@ func (c *GraphHTTPClientImpl) CreateNode(ctx context.Context, in *CreateNodeRequ
 	return &out, nil
 }
 
+// CreateOverlay Create an overlay graph for session-scoped writes
+func (c *GraphHTTPClientImpl) CreateOverlay(ctx context.Context, in *CreateOverlayRequest, opts ...http.CallOption) (*CreateOverlayReply, error) {
+	var out CreateOverlayReply
+	pattern := "/v1/graph/overlays"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphCreateOverlay))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CreateViewDefinition Create a view definition for role-based projection
+func (c *GraphHTTPClientImpl) CreateViewDefinition(ctx context.Context, in *CreateViewDefinitionRequest, opts ...http.CallOption) (*CreateViewDefinitionReply, error) {
+	var out CreateViewDefinitionReply
+	pattern := "/v1/graph/views"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphCreateViewDefinition))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteViewDefinition Delete a view definition
+func (c *GraphHTTPClientImpl) DeleteViewDefinition(ctx context.Context, in *DeleteViewDefinitionRequest, opts ...http.CallOption) (*DeleteViewDefinitionReply, error) {
+	var out DeleteViewDefinitionReply
+	pattern := "/v1/graph/views/{view_id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphDeleteViewDefinition))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DiffVersions Diff two versions in current namespace
+func (c *GraphHTTPClientImpl) DiffVersions(ctx context.Context, in *DiffVersionsRequest, opts ...http.CallOption) (*DiffVersionsReply, error) {
+	var out DiffVersionsReply
+	pattern := "/v1/graph/versions/diff"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphDiffVersions))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DiscardOverlay Discard an overlay graph
+func (c *GraphHTTPClientImpl) DiscardOverlay(ctx context.Context, in *DiscardOverlayRequest, opts ...http.CallOption) (*DiscardOverlayReply, error) {
+	var out DiscardOverlayReply
+	pattern := "/v1/graph/overlays/{overlay_id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphDiscardOverlay))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GetContext Get contextual neighborhood around a node
 func (c *GraphHTTPClientImpl) GetContext(ctx context.Context, in *GetContextRequest, opts ...http.CallOption) (*GraphReply, error) {
 	var out GraphReply
@@ -282,6 +769,20 @@ func (c *GraphHTTPClientImpl) GetCoverage(ctx context.Context, in *GetCoverageRe
 	pattern := "/v1/graph/nodes/{node_id}/coverage"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationGraphGetCoverage))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetCoverageReport Get coverage report by domain
+func (c *GraphHTTPClientImpl) GetCoverageReport(ctx context.Context, in *GetCoverageReportRequest, opts ...http.CallOption) (*GetCoverageReportReply, error) {
+	var out GetCoverageReportReply
+	pattern := "/v1/graph/coverage/{domain}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphGetCoverageReport))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -324,6 +825,90 @@ func (c *GraphHTTPClientImpl) GetSubgraph(ctx context.Context, in *GetSubgraphRe
 	pattern := "/v1/graph/subgraph"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationGraphGetSubgraph))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetTraceabilityMatrix Get traceability matrix between source and target entity types
+func (c *GraphHTTPClientImpl) GetTraceabilityMatrix(ctx context.Context, in *GetTraceabilityMatrixRequest, opts ...http.CallOption) (*GetTraceabilityMatrixReply, error) {
+	var out GetTraceabilityMatrixReply
+	pattern := "/v1/graph/traceability"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphGetTraceabilityMatrix))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetViewDefinition Get a view definition by ID
+func (c *GraphHTTPClientImpl) GetViewDefinition(ctx context.Context, in *GetViewDefinitionRequest, opts ...http.CallOption) (*GetViewDefinitionReply, error) {
+	var out GetViewDefinitionReply
+	pattern := "/v1/graph/views/{view_id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphGetViewDefinition))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// HybridSearch Hybrid search across vector and full-text indexes
+func (c *GraphHTTPClientImpl) HybridSearch(ctx context.Context, in *HybridSearchRequest, opts ...http.CallOption) (*HybridSearchReply, error) {
+	var out HybridSearchReply
+	pattern := "/v1/graph/search/hybrid"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphHybridSearch))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListVersions List versions in current namespace
+func (c *GraphHTTPClientImpl) ListVersions(ctx context.Context, in *ListVersionsRequest, opts ...http.CallOption) (*ListVersionsReply, error) {
+	var out ListVersionsReply
+	pattern := "/v1/graph/versions"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphListVersions))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListViewDefinitions List all view definitions in namespace
+func (c *GraphHTTPClientImpl) ListViewDefinitions(ctx context.Context, in *ListViewDefinitionsRequest, opts ...http.CallOption) (*ListViewDefinitionsReply, error) {
+	var out ListViewDefinitionsReply
+	pattern := "/v1/graph/views"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphListViewDefinitions))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RollbackVersion Rollback current namespace to target version
+func (c *GraphHTTPClientImpl) RollbackVersion(ctx context.Context, in *RollbackVersionRequest, opts ...http.CallOption) (*RollbackVersionReply, error) {
+	var out RollbackVersionReply
+	pattern := "/v1/graph/versions/{version_id}/rollback"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphRollbackVersion))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

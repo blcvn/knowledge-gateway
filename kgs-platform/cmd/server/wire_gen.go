@@ -9,11 +9,18 @@ package main
 import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	"kgs-platform/internal/analytics"
+	"kgs-platform/internal/batch"
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/conf"
 	"kgs-platform/internal/data"
+	"kgs-platform/internal/lock"
+	"kgs-platform/internal/overlay"
+	"kgs-platform/internal/projection"
+	"kgs-platform/internal/search"
 	"kgs-platform/internal/server"
 	"kgs-platform/internal/service"
+	"kgs-platform/internal/version"
 )
 
 import (
@@ -31,26 +38,56 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	greeterRepo := data.NewGreeterRepo(dataData, logger)
 	greeterUsecase := biz.NewGreeterUsecase(greeterRepo)
 	greeterService := service.NewGreeterService(greeterUsecase)
-	registryService := service.NewRegistryService()
+	registryRepo := data.NewRegistryRepo(dataData, logger)
+	registryUsecase := biz.NewRegistryUsecase(registryRepo, logger)
+	registryService := service.NewRegistryService(registryUsecase)
 	ontologyService := service.NewOntologyService()
 	graphRepo := data.NewGraphRepo(dataData, logger)
 	queryPlanner := biz.NewQueryPlanner()
 	opaClient := biz.NewOPAClient(logger)
 	client := data.NewRedisClient(dataData)
-	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, client, logger)
-	graphService := service.NewGraphService(graphUsecase)
+	redisLockManager := lock.NewRedisLockManager(client)
+	contextDriver := data.NewNeo4jDriver(dataData)
+	qdrantClient := data.NewQdrantClient(dataData)
+	natsClient := data.NewNATSClient(dataData)
+	db := data.NewGormDB(dataData)
+	cache := analytics.NewCache(client)
+	engine1 := analytics.NewEngine(graphRepo, cache)
+	embeddingClient, err := search.NewEmbeddingClient(confData, logger)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	neo4jWriter := batch.NewNeo4jWriter(contextDriver)
+	semanticDeduper := batch.NewSemanticDeduper(qdrantClient, embeddingClient)
+	qdrantIndexer := batch.NewQdrantIndexer(qdrantClient, embeddingClient)
+	usecase := batch.NewUsecaseWithIndexer(neo4jWriter, semanticDeduper, qdrantIndexer)
+	vectorSearcher := search.NewVectorSearcher(qdrantClient, embeddingClient)
+	textSearcher := search.NewTextSearcher(contextDriver, logger)
+	neo4jCentralityProvider := search.NewNeo4jCentralityProvider(contextDriver)
+	engine := search.NewEngine(vectorSearcher, textSearcher, neo4jCentralityProvider)
+	versionManager := version.NewManager(db, logger)
+	redisStore := overlay.NewRedisStore(client)
+	overlayManager := overlay.NewManager(redisStore, versionManager, natsClient, logger)
+	engine2 := projection.NewEngine(db, logger)
+	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, client, redisLockManager, overlayManager, logger)
+	graphService := service.NewGraphService(graphUsecase, usecase, engine, overlayManager, versionManager, engine1, engine2)
 	rulesRepo := data.NewRulesRepo(dataData, logger)
 	rulesUsecase := biz.NewRulesUsecase(rulesRepo, logger)
 	rulesService := service.NewRulesService(rulesUsecase)
 	policyRepo := data.NewPolicyRepo(dataData, logger)
 	policyUsecase := biz.NewPolicyUsecase(policyRepo, logger)
 	policyService := service.NewPolicyService(policyUsecase)
-	grpcServer := server.NewGRPCServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, logger)
-	httpServer := server.NewHTTPServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, logger)
+	healthService := service.NewHealthService(db, client, contextDriver, qdrantClient, natsClient, logger)
+	viewResolver := biz.NewViewResolver(engine2)
+	_ = viewResolver
+	grpcServer := server.NewGRPCServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, registryUsecase, client, logger)
+	httpServer := server.NewHTTPServer(confServer, greeterService, registryService, ontologyService, graphService, rulesService, policyService, healthService, registryUsecase, client, logger)
 	ruleRunner := biz.NewRuleRunner(rulesRepo, graphRepo, logger)
 	eventRunner := biz.NewEventRunner(rulesRepo, graphRepo, client, logger)
 	policySyncRunner := biz.NewPolicySyncRunner(policyRepo, opaClient, logger)
-	workerServer := server.NewWorkerServer(ruleRunner, eventRunner, policySyncRunner, logger)
+	sessionCloseListener := overlay.NewSessionCloseListener(natsClient, overlayManager, logger)
+	workerServer := server.NewWorkerServer(ruleRunner, eventRunner, policySyncRunner, sessionCloseListener, logger)
 	app := newApp(logger, grpcServer, httpServer, workerServer)
 	return app, func() {
 		cleanup()

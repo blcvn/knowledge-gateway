@@ -2,11 +2,16 @@ package data
 
 import (
 	"context"
+	"fmt"
+	"regexp"
 
 	"kgs-platform/internal/biz"
+	"kgs-platform/internal/observability"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/google/uuid"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type graphRepo struct {
@@ -16,36 +21,49 @@ type graphRepo struct {
 
 // NewGraphRepo .
 func NewGraphRepo(data *Data, logger log.Logger) biz.GraphRepo {
-	return &graphRepo{
+	repo := &graphRepo{
 		data: data,
 		log:  log.NewHelper(logger),
 	}
+	if err := repo.ensureGlobalFullTextIndex(context.Background()); err != nil {
+		repo.log.Warnf("failed to ensure global fulltext index: %v", err)
+	}
+	return repo
 }
 
 // CreateNode creates a new namespaced node in Neo4j
-func (r *graphRepo) CreateNode(ctx context.Context, appID string, label string, properties map[string]any) (map[string]any, error) {
-	session := r.data.neo4j.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.create_node", attribute.String("neo4j.label", label))
+	defer span.End()
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
-	result, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
-		// DYNAMIC CYPHER - safe because parameterization
-		// We add the namespace prefix to both label and id properties
-		query := `
-			CREATE (n:` + label + ` {app_id: $app_id})
+	cleanLabel, err := sanitizeCypherIdentifier(label)
+	if err != nil {
+		return nil, err
+	}
+	props := cloneMap(properties)
+	nodeID := ensureID(props)
+
+	result, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
+		query := fmt.Sprintf(`
+			CREATE (n:%s {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
 			SET n += $props
 			RETURN n
-		`
+		`, cleanLabel)
 		params := map[string]interface{}{
-			"app_id": appID,
-			"props":  properties,
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"node_id":   nodeID,
+			"props":     props,
 		}
 
-		res, err := tx.Run(ctx, query, params)
+		res, err := tx.Run(traceCtx, query, params)
 		if err != nil {
 			return nil, err
 		}
 
-		if res.Next(ctx) {
+		if res.Next(traceCtx) {
 			node := res.Record().Values[0].(neo4j.Node)
 			return node.Props, nil
 		}
@@ -54,9 +72,97 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID string, label string, 
 	})
 
 	if err != nil {
+		observability.RecordSpanError(span, err)
 		r.log.Errorf("Failed to create node: %v", err)
 		return nil, err
 	}
 
 	return result.(map[string]any), nil
+}
+
+func (r *graphRepo) GetNode(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.get_node", attribute.String("neo4j.node_id", nodeID))
+	defer span.End()
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
+		query := `
+			MATCH (n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
+			RETURN n
+			LIMIT 1
+		`
+		res, err := tx.Run(traceCtx, query, map[string]any{
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"node_id":   nodeID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if res.Next(traceCtx) {
+			node := res.Record().Values[0].(neo4j.Node)
+			return node.Props, nil
+		}
+		if err := res.Err(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("node not found")
+	})
+	if err != nil {
+		observability.RecordSpanError(span, err)
+		return nil, err
+	}
+	return result.(map[string]any), nil
+}
+
+func ensureID(props map[string]any) string {
+	if props == nil {
+		return uuid.NewString()
+	}
+	if id, ok := props["id"].(string); ok && id != "" {
+		return id
+	}
+	id := uuid.NewString()
+	props["id"] = id
+	return id
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	if in == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+var cypherIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func sanitizeCypherIdentifier(input string) (string, error) {
+	if !cypherIdentifierPattern.MatchString(input) {
+		return "", fmt.Errorf("invalid cypher identifier: %q", input)
+	}
+	return input, nil
+}
+
+func (r *graphRepo) ensureGlobalFullTextIndex(ctx context.Context) error {
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.ensure_fulltext_index")
+	defer span.End()
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close(ctx)
+
+	_, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
+		_, err := tx.Run(traceCtx, "CREATE FULLTEXT INDEX kgs_fti_global IF NOT EXISTS FOR (n) ON EACH [n.name, n.content, n.description]", nil)
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	})
+	if err != nil {
+		observability.RecordSpanError(span, err)
+	}
+	return err
 }

@@ -23,11 +23,12 @@ type App struct {
 
 // APIKey represents an authentication key for an App.
 type APIKey struct {
-	KeyHash   string `gorm:"primaryKey;type:varchar(64)"` // SHA-256 hash of the key
+	KeyHash   string `gorm:"primaryKey;type:varchar(80)"` // SHA-256 hash of the key
 	AppID     string `gorm:"type:varchar(50);not null;index"`
 	KeyPrefix string `gorm:"type:varchar(10);not null"` // First few chars for identification
 	Name      string `gorm:"type:varchar(100)"`
 	Scopes    string `gorm:"type:varchar(500)"` // Comma-separated scopes (e.g., "read,write")
+	IsRevoked bool   `gorm:"default:false"`
 	ExpiresAt *time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time

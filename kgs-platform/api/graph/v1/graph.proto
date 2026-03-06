@@ -57,6 +57,111 @@ service Graph {
       body: "*"
     };
   }
+
+  // Batch upsert entities
+  rpc BatchUpsertEntities (BatchUpsertRequest) returns (BatchUpsertReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/entities/batch"
+      body: "*"
+    };
+  }
+
+  // Hybrid search across vector and full-text indexes
+  rpc HybridSearch (HybridSearchRequest) returns (HybridSearchReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/search/hybrid"
+      body: "*"
+    };
+  }
+
+  // Get coverage report by domain
+  rpc GetCoverageReport (GetCoverageReportRequest) returns (GetCoverageReportReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/coverage/{domain}"
+    };
+  }
+
+  // Get traceability matrix between source and target entity types
+  rpc GetTraceabilityMatrix (GetTraceabilityMatrixRequest) returns (GetTraceabilityMatrixReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/traceability"
+      body: "*"
+    };
+  }
+
+  // Create an overlay graph for session-scoped writes
+  rpc CreateOverlay (CreateOverlayRequest) returns (CreateOverlayReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/overlays"
+      body: "*"
+    };
+  }
+
+  // Commit overlay changes into base graph and create new version
+  rpc CommitOverlay (CommitOverlayRequest) returns (CommitOverlayReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/overlays/{overlay_id}/commit"
+      body: "*"
+    };
+  }
+
+  // Discard an overlay graph
+  rpc DiscardOverlay (DiscardOverlayRequest) returns (DiscardOverlayReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/overlays/{overlay_id}"
+    };
+  }
+
+  // List versions in current namespace
+  rpc ListVersions (ListVersionsRequest) returns (ListVersionsReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/versions"
+    };
+  }
+
+  // Diff two versions in current namespace
+  rpc DiffVersions (DiffVersionsRequest) returns (DiffVersionsReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/versions/diff"
+    };
+  }
+
+  // Rollback current namespace to target version
+  rpc RollbackVersion (RollbackVersionRequest) returns (RollbackVersionReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/versions/{version_id}/rollback"
+      body: "*"
+    };
+  }
+
+  // Create a view definition for role-based projection
+  rpc CreateViewDefinition (CreateViewDefinitionRequest) returns (CreateViewDefinitionReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/views"
+      body: "*"
+    };
+  }
+
+  // Get a view definition by ID
+  rpc GetViewDefinition (GetViewDefinitionRequest) returns (GetViewDefinitionReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/views/{view_id}"
+    };
+  }
+
+  // List all view definitions in namespace
+  rpc ListViewDefinitions (ListViewDefinitionsRequest) returns (ListViewDefinitionsReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/views"
+    };
+  }
+
+  // Delete a view definition
+  rpc DeleteViewDefinition (DeleteViewDefinitionRequest) returns (DeleteViewDefinitionReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/views/{view_id}"
+    };
+  }
 }
 
 message CreateNodeRequest {
@@ -99,16 +204,22 @@ message GetContextRequest {
   string node_id = 1;
   int32 depth = 2;
   string direction = 3; // INCOMING, OUTGOING, BOTH (default)
+  int32 page_size = 4;
+  string page_token = 5;
 }
 
 message GetImpactRequest {
   string node_id = 1;
   int32 max_depth = 2;
+  int32 page_size = 3;
+  string page_token = 4;
 }
 
 message GetCoverageRequest {
   string node_id = 1;
   int32 max_depth = 2;
+  int32 page_size = 3;
+  string page_token = 4;
 }
 
 message GetSubgraphRequest {
@@ -132,4 +243,206 @@ message GraphEdge {
 message GraphReply {
   repeated GraphNode nodes = 1;
   repeated GraphEdge edges = 2;
+}
+
+message BatchEntity {
+  string label = 1;
+  string properties_json = 2;
+}
+
+message BatchUpsertRequest {
+  repeated BatchEntity entities = 1;
+}
+
+message BatchUpsertReply {
+  int32 created = 1;
+  int32 updated = 2;
+  int32 skipped = 3;
+}
+
+message HybridSearchRequest {
+  string query = 1;
+  int32 top_k = 2;
+  double alpha = 3;
+  double beta = 4;
+  repeated string entity_types = 5;
+  repeated string domains = 6;
+  double min_confidence = 7;
+  repeated string provenance_types = 8;
+}
+
+message HybridSearchResult {
+  string node_id = 1;
+  string label = 2;
+  string properties_json = 3;
+  double score = 4;
+  double semantic_score = 5;
+  double text_score = 6;
+  double centrality = 7;
+}
+
+message HybridSearchReply {
+  repeated HybridSearchResult results = 1;
+}
+
+message GetCoverageReportRequest {
+  string domain = 1;
+}
+
+message CoverageByType {
+  string entity_type = 1;
+  int32 total_entities = 2;
+  int32 covered_entities = 3;
+  double coverage_percent = 4;
+}
+
+message GetCoverageReportReply {
+  string domain = 1;
+  int32 total_entities = 2;
+  int32 covered_entities = 3;
+  double coverage_percent = 4;
+  repeated string uncovered_types = 5;
+  int64 generated_at_unix = 6;
+  repeated CoverageByType by_type = 7;
+}
+
+message GetTraceabilityMatrixRequest {
+  repeated string source_types = 1;
+  repeated string target_types = 2;
+  int32 max_hops = 3;
+}
+
+message TraceabilityTarget {
+  string entity_id = 1;
+  string name = 2;
+  string type = 3;
+  int32 hops = 4;
+  repeated string path = 5;
+}
+
+message TraceabilitySourceRow {
+  string entity_id = 1;
+  string name = 2;
+  string type = 3;
+  repeated TraceabilityTarget targets = 4;
+}
+
+message GetTraceabilityMatrixReply {
+  repeated TraceabilitySourceRow matrix = 1;
+  int32 total_sources = 2;
+  int32 total_targets = 3;
+  int64 compute_duration_ms = 4;
+}
+
+message CreateOverlayRequest {
+  string session_id = 1;
+  string base_version = 2;
+}
+
+message CreateOverlayReply {
+  string overlay_id = 1;
+  string status = 2;
+  string base_version_id = 3;
+  string ttl = 4;
+}
+
+message CommitOverlayRequest {
+  string overlay_id = 1;
+  string conflict_policy = 2;
+}
+
+message CommitOverlayReply {
+  string new_version_id = 1;
+  int32 entities_committed = 2;
+  int32 edges_committed = 3;
+  int32 conflicts_resolved = 4;
+}
+
+message DiscardOverlayRequest {
+  string overlay_id = 1;
+}
+
+message DiscardOverlayReply {
+  string overlay_id = 1;
+  string status = 2;
+}
+
+message VersionInfo {
+  string version_id = 1;
+  string parent_id = 2;
+  string commit_message = 3;
+  int64 created_at_unix = 4;
+}
+
+message ListVersionsRequest {}
+
+message ListVersionsReply {
+  repeated VersionInfo versions = 1;
+}
+
+message DiffVersionsRequest {
+  string from_version_id = 1;
+  string to_version_id = 2;
+}
+
+message DiffVersionsReply {
+  string from_version_id = 1;
+  string to_version_id = 2;
+  int32 entities_added = 3;
+  int32 entities_modified = 4;
+  int32 entities_deleted = 5;
+  int32 edges_added = 6;
+  int32 edges_modified = 7;
+  int32 edges_deleted = 8;
+}
+
+message RollbackVersionRequest {
+  string version_id = 1;
+  string reason = 2;
+}
+
+message RollbackVersionReply {
+  string rollback_version_id = 1;
+}
+
+message ViewDefinition {
+  string view_id = 1;
+  string role_name = 2;
+  repeated string allowed_entity_types = 3;
+  repeated string allowed_fields = 4;
+  repeated string pii_mask_fields = 5;
+  int64 created_at_unix = 6;
+}
+
+message CreateViewDefinitionRequest {
+  string role_name = 1;
+  repeated string allowed_entity_types = 2;
+  repeated string allowed_fields = 3;
+  repeated string pii_mask_fields = 4;
+}
+
+message CreateViewDefinitionReply {
+  ViewDefinition view = 1;
+}
+
+message GetViewDefinitionRequest {
+  string view_id = 1;
+}
+
+message GetViewDefinitionReply {
+  ViewDefinition view = 1;
+}
+
+message ListViewDefinitionsRequest {}
+
+message ListViewDefinitionsReply {
+  repeated ViewDefinition views = 1;
+}
+
+message DeleteViewDefinitionRequest {
+  string view_id = 1;
+}
+
+message DeleteViewDefinitionReply {
+  string view_id = 1;
 }
