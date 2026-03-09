@@ -20,9 +20,8 @@ type OpenAIEmbeddingClient struct {
 }
 
 type openAIEmbeddingRequest struct {
-	Model          string `json:"model"`
-	Input          string `json:"input"`
-	EncodingFormat string `json:"encoding_format,omitempty"`
+	Model string   `json:"model"`
+	Input []string `json:"input"`
 }
 
 type openAIEmbeddingResponse struct {
@@ -67,14 +66,14 @@ func (c *OpenAIEmbeddingClient) Embed(ctx context.Context, text string) ([]float
 	if text == "" {
 		return nil, fmt.Errorf("empty text")
 	}
+	text = strings.ToValidUTF8(text, " ")
 	if c.apiKey == "" {
 		return nil, fmt.Errorf("openai api key is empty")
 	}
 
 	reqBody, err := json.Marshal(openAIEmbeddingRequest{
-		Model:          c.model,
-		Input:          text,
-		EncodingFormat: "float",
+		Model: c.model,
+		Input: []string{text},
 	})
 	if err != nil {
 		return nil, err

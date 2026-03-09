@@ -237,3 +237,39 @@ func TestAuthCacheRoundTripWithOrgID(t *testing.T) {
 		t.Fatalf("cache round-trip mismatch: got=%+v want=%+v", got, expected)
 	}
 }
+
+func TestAuthMiddlewareTenantIDFromHeader(t *testing.T) {
+	tr := &testTransport{
+		operation: "/api.graph.v1.Graph/CreateNode",
+		request:   testHeader{},
+		reply:     testHeader{},
+	}
+	tr.request.Set("Authorization", "Bearer valid-key")
+	tr.request.Set("X-Tenant-ID", "tenant-from-header")
+
+	ctx := transport.NewServerContext(context.Background(), tr)
+	handler := Auth(&fakeRegistryValidator{
+		validateFn: func(ctx context.Context, rawAPIKey string) (*biz.APIKey, error) {
+			return &biz.APIKey{AppID: "app-1", Scopes: "read,write"}, nil
+		},
+	}, nil)(func(ctx context.Context, req any) (any, error) {
+		appCtx, _ := AppContextFromContext(ctx)
+		return appCtx, nil
+	})
+
+	resp, err := handler(ctx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := resp.(AppContext)
+	if got.TenantID != "tenant-from-header" {
+		t.Fatalf("TenantID mismatch: got=%q want=%q", got.TenantID, "tenant-from-header")
+	}
+}
+
+func TestResolveTenantIDFallbackDefault(t *testing.T) {
+	got := resolveTenantID(testHeader{}, "plain-api-key")
+	if got != "default" {
+		t.Fatalf("tenant fallback mismatch: got=%q want=default", got)
+	}
+}

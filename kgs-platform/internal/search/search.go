@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	defaultTopK   = 10
-	defaultAlpha  = 0.6
-	defaultBeta   = 0.2
-	maxSearchTopK = 100
+	defaultTopK  = 10
+	defaultAlpha = 0.6
+	defaultBeta  = 0.2
+	// Allow large retrieval windows for whole-graph hydration flows (e.g. ba-agent GetByDocumentID).
+	maxSearchTopK = 10000
 )
 
 type SearchEngine interface {

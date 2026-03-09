@@ -6,6 +6,8 @@ import (
 
 	"kgs-platform/internal/data"
 	"kgs-platform/internal/search"
+
+	"github.com/google/uuid"
 )
 
 type QdrantIndexer struct {
@@ -32,6 +34,7 @@ func (i *QdrantIndexer) IndexEntities(ctx context.Context, appID, tenantID strin
 		if id == "" {
 			continue
 		}
+		pointID := toQdrantPointID(appID, tenantID, entity.Label, id)
 		text := entityToText(entity)
 		if text == "" {
 			continue
@@ -41,10 +44,11 @@ func (i *QdrantIndexer) IndexEntities(ctx context.Context, appID, tenantID strin
 			return fmt.Errorf("embed entity %s: %w", id, err)
 		}
 		points = append(points, data.VectorPoint{
-			ID:     id,
+			ID:     pointID,
 			Vector: vector,
 			Payload: map[string]any{
 				"id":         id,
+				"point_id":   pointID,
 				"label":      entity.Label,
 				"properties": entity.Properties,
 				"app_id":     appID,
@@ -64,3 +68,8 @@ func (i *QdrantIndexer) IndexEntities(ctx context.Context, appID, tenantID strin
 }
 
 var _ VectorIndexer = (*QdrantIndexer)(nil)
+
+func toQdrantPointID(appID, tenantID, label, entityID string) string {
+	seed := fmt.Sprintf("%s|%s|%s|%s", appID, tenantID, label, entityID)
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(seed)).String()
+}

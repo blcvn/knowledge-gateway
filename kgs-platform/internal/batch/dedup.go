@@ -68,6 +68,12 @@ func (d *SemanticDeduper) Dedup(ctx context.Context, appID, tenantID string, ent
 	collection := buildCollectionName(appID)
 	final := make([]Entity, 0, len(unique))
 	for _, entity := range unique {
+		// Keep entities with explicit IDs to preserve edge references during graph ingest.
+		if entityID(entity) != "" {
+			final = append(final, entity)
+			continue
+		}
+
 		text := entityToText(entity)
 		if text == "" {
 			final = append(final, entity)
@@ -91,6 +97,14 @@ func (d *SemanticDeduper) Dedup(ctx context.Context, appID, tenantID string, ent
 		final = append(final, entity)
 	}
 	return final, skipped, nil
+}
+
+func entityID(entity Entity) string {
+	if entity.Properties == nil {
+		return ""
+	}
+	id, _ := entity.Properties["id"].(string)
+	return strings.TrimSpace(id)
 }
 
 func entityToText(entity Entity) string {

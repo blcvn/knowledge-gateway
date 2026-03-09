@@ -2,6 +2,8 @@ package search
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +17,20 @@ func TestOpenAIEmbeddingClientEmbedSuccess(t *testing.T) {
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
 			t.Fatalf("unexpected authorization header: %q", got)
+		}
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		var req openAIEmbeddingRequest
+		if err := json.Unmarshal(raw, &req); err != nil {
+			t.Fatalf("request body is not valid json: %v", err)
+		}
+		if req.Model != "text-embedding-3-small" {
+			t.Fatalf("unexpected model: %q", req.Model)
+		}
+		if len(req.Input) != 1 || req.Input[0] != "hello" {
+			t.Fatalf("unexpected input payload: %#v", req.Input)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"embedding":[1,2,3]}]}`))

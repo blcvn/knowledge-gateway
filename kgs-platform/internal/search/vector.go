@@ -105,14 +105,20 @@ func normalizeVector(vector []float32) {
 }
 
 func resolveResultID(pointID string, payload map[string]any) string {
-	if pointID != "" && pointID != "<nil>" {
-		return pointID
-	}
 	if payload == nil {
+		if pointID != "" && pointID != "<nil>" {
+			return pointID
+		}
 		return ""
 	}
 	if raw, ok := payload["id"]; ok {
-		return fmt.Sprint(raw)
+		id := fmt.Sprint(raw)
+		if id != "" && id != "<nil>" {
+			return id
+		}
+	}
+	if pointID != "" && pointID != "<nil>" {
+		return pointID
 	}
 	return ""
 }

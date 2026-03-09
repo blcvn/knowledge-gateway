@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	stdlog "log"
+	"sort"
 	"strings"
+	"time"
 
 	pb "kgs-platform/api/graph/v1"
 	"kgs-platform/internal/analytics"
@@ -105,14 +108,21 @@ func (s *GraphService) CreateEdge(ctx context.Context, req *pb.CreateEdgeRequest
 	if err != nil {
 		return nil, err
 	}
+	started := time.Now()
 	props, err := parseJSON(req.PropertiesJson)
 	if err != nil {
 		return nil, err
 	}
+	stdlog.Printf("[KGS][GraphService] CreateEdge start app_id=%s tenant_id=%s relation=%s source=%s target=%s props_keys=%d",
+		appCtx.AppID, appCtx.TenantID, req.RelationType, req.SourceNodeId, req.TargetNodeId, len(props))
 	out, err := s.uc.CreateEdge(ctx, appCtx.AppID, appCtx.TenantID, req.RelationType, req.SourceNodeId, req.TargetNodeId, props)
 	if err != nil {
+		stdlog.Printf("[KGS][GraphService] CreateEdge failed app_id=%s tenant_id=%s relation=%s source=%s target=%s err=%v",
+			appCtx.AppID, appCtx.TenantID, req.RelationType, req.SourceNodeId, req.TargetNodeId, err)
 		return nil, err
 	}
+	stdlog.Printf("[KGS][GraphService] CreateEdge done app_id=%s tenant_id=%s relation=%s source=%s target=%s edge_id=%s duration=%s",
+		appCtx.AppID, appCtx.TenantID, req.RelationType, req.SourceNodeId, req.TargetNodeId, mapString(out, "id"), time.Since(started))
 	return &pb.CreateEdgeReply{
 		EdgeId:         mapString(out, "id"),
 		SourceNodeId:   req.SourceNodeId,
@@ -187,11 +197,24 @@ func (s *GraphService) GetSubgraph(ctx context.Context, req *pb.GetSubgraphReque
 	if err != nil {
 		return nil, err
 	}
+	started := time.Now()
+	stdlog.Printf("[KGS][GraphService] GetSubgraph start app_id=%s tenant_id=%s requested_node_ids=%d",
+		appCtx.AppID, appCtx.TenantID, len(req.NodeIds))
 	result, err := s.uc.GetSubgraph(ctx, appCtx.AppID, appCtx.TenantID, req.NodeIds)
 	if err != nil {
+		stdlog.Printf("[KGS][GraphService] GetSubgraph failed app_id=%s tenant_id=%s requested_node_ids=%d err=%v",
+			appCtx.AppID, appCtx.TenantID, len(req.NodeIds), err)
 		return nil, err
 	}
-	return s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	reply, err := s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	if err != nil {
+		stdlog.Printf("[KGS][GraphService] GetSubgraph projection failed app_id=%s tenant_id=%s requested_node_ids=%d err=%v",
+			appCtx.AppID, appCtx.TenantID, len(req.NodeIds), err)
+		return nil, err
+	}
+	stdlog.Printf("[KGS][GraphService] GetSubgraph done app_id=%s tenant_id=%s requested_node_ids=%d returned_nodes=%d returned_edges=%d duration=%s",
+		appCtx.AppID, appCtx.TenantID, len(req.NodeIds), len(reply.GetNodes()), len(reply.GetEdges()), time.Since(started))
+	return reply, nil
 }
 
 func (s *GraphService) BatchUpsertEntities(ctx context.Context, req *pb.BatchUpsertRequest) (*pb.BatchUpsertReply, error) {
@@ -202,6 +225,9 @@ func (s *GraphService) BatchUpsertEntities(ctx context.Context, req *pb.BatchUps
 	if err != nil {
 		return nil, err
 	}
+	started := time.Now()
+	stdlog.Printf("[KGS][GraphService] BatchUpsert start app_id=%s tenant_id=%s entities=%d labels=%s",
+		appCtx.AppID, appCtx.TenantID, len(req.Entities), summarizeBatchLabels(req.Entities))
 
 	entities := make([]batch.Entity, 0, len(req.Entities))
 	for i, item := range req.Entities {
@@ -221,8 +247,12 @@ func (s *GraphService) BatchUpsertEntities(ctx context.Context, req *pb.BatchUps
 		Entities: entities,
 	})
 	if err != nil {
+		stdlog.Printf("[KGS][GraphService] BatchUpsert failed app_id=%s tenant_id=%s entities=%d err=%v",
+			appCtx.AppID, appCtx.TenantID, len(req.Entities), err)
 		return nil, err
 	}
+	stdlog.Printf("[KGS][GraphService] BatchUpsert done app_id=%s tenant_id=%s entities=%d created=%d skipped=%d updated=%d duration=%s",
+		appCtx.AppID, appCtx.TenantID, len(req.Entities), out.Created, out.Skipped, out.Updated, time.Since(started))
 
 	if tr, ok := transport.FromServerContext(ctx); ok {
 		tr.ReplyHeader().Set("X-Batch-Created", fmt.Sprint(out.Created))
@@ -242,8 +272,11 @@ func (s *GraphService) HybridSearch(ctx context.Context, req *pb.HybridSearchReq
 	if err != nil {
 		return nil, err
 	}
+	started := time.Now()
 
 	namespace := biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID)
+	stdlog.Printf("[KGS][GraphService] HybridSearch start app_id=%s tenant_id=%s namespace=%s query=%q top_k=%d alpha=%.2f beta=%.2f",
+		appCtx.AppID, appCtx.TenantID, namespace, req.Query, req.TopK, req.Alpha, req.Beta)
 	results, err := s.searchUC.HybridSearch(ctx, namespace, req.Query, search.Options{
 		TopK:            int(req.TopK),
 		Alpha:           req.Alpha,
@@ -254,6 +287,8 @@ func (s *GraphService) HybridSearch(ctx context.Context, req *pb.HybridSearchReq
 		ProvenanceTypes: req.ProvenanceTypes,
 	})
 	if err != nil {
+		stdlog.Printf("[KGS][GraphService] HybridSearch failed app_id=%s tenant_id=%s namespace=%s query=%q err=%v",
+			appCtx.AppID, appCtx.TenantID, namespace, req.Query, err)
 		return nil, err
 	}
 
@@ -271,6 +306,8 @@ func (s *GraphService) HybridSearch(ctx context.Context, req *pb.HybridSearchReq
 			Centrality:     item.Centrality,
 		})
 	}
+	stdlog.Printf("[KGS][GraphService] HybridSearch done app_id=%s tenant_id=%s namespace=%s query=%q result_count=%d labels=%s duration=%s",
+		appCtx.AppID, appCtx.TenantID, namespace, req.Query, len(reply.Results), summarizeSearchLabels(reply.Results), time.Since(started))
 	return reply, nil
 }
 
@@ -842,6 +879,52 @@ func applyPagination(ctx context.Context, reply *pb.GraphReply, pageSize int32, 
 		Nodes: pagedNodes,
 		Edges: pagedEdges,
 	}, nil
+}
+
+func summarizeBatchLabels(entities []*pb.BatchEntity) string {
+	if len(entities) == 0 {
+		return "{}"
+	}
+	counts := make(map[string]int)
+	for _, entity := range entities {
+		label := strings.TrimSpace(entity.GetLabel())
+		if label == "" {
+			label = "<empty>"
+		}
+		counts[label]++
+	}
+	return formatSummaryCounts(counts)
+}
+
+func summarizeSearchLabels(results []*pb.HybridSearchResult) string {
+	if len(results) == 0 {
+		return "{}"
+	}
+	counts := make(map[string]int)
+	for _, result := range results {
+		label := strings.TrimSpace(result.GetLabel())
+		if label == "" {
+			label = "<empty>"
+		}
+		counts[label]++
+	}
+	return formatSummaryCounts(counts)
+}
+
+func formatSummaryCounts(counts map[string]int) string {
+	if len(counts) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", key, counts[key]))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
 }
 
 func collectNodesFromPath(nodeByID map[string]*pb.GraphNode, internalNodeIDToID map[int64]string, raw any) {

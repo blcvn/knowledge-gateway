@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	stdlog "log"
 	"strings"
 	"time"
 
@@ -46,8 +47,9 @@ func Auth(registryUC RegistryValidator, redisCli *redis.Client) middleware.Middl
 				return nil, kerrors.Unauthorized("ERR_UNAUTHORIZED", "missing API key")
 			}
 
-			tenantID := extractTenantID(rawAPIKey)
+			tenantID := resolveTenantID(tr.RequestHeader(), rawAPIKey)
 			orgID := strings.TrimSpace(tr.RequestHeader().Get("X-Org-ID"))
+			cacheHit := false
 			appCtx, ok := readCachedAppContext(ctx, redisCli, rawAPIKey)
 			if !ok {
 				apiKey, err := registryUC.ValidateAPIKey(ctx, rawAPIKey)
@@ -61,10 +63,13 @@ func Auth(registryUC RegistryValidator, redisCli *redis.Client) middleware.Middl
 					OrgID:    orgID,
 				}
 			} else {
+				cacheHit = true
 				appCtx.TenantID = tenantID
 				appCtx.OrgID = orgID
 			}
 			cacheAppContext(ctx, redisCli, rawAPIKey, appCtx)
+			stdlog.Printf("[KGS][Auth] operation=%s app_id=%s tenant_id=%s org_id=%s cache_hit=%t",
+				tr.Operation(), appCtx.AppID, appCtx.TenantID, appCtx.OrgID, cacheHit)
 
 			ctx = context.WithValue(ctx, AppContextKey, appCtx)
 			return handler(ctx, req)
@@ -165,4 +170,16 @@ func extractTenantID(rawToken string) string {
 		}
 	}
 	return "default"
+}
+
+func resolveTenantID(header transport.Header, rawToken string) string {
+	if header != nil {
+		if tenantID := strings.TrimSpace(header.Get("X-Tenant-ID")); tenantID != "" {
+			return tenantID
+		}
+		if tenantID := strings.TrimSpace(header.Get("x-tenant-id")); tenantID != "" {
+			return tenantID
+		}
+	}
+	return extractTenantID(rawToken)
 }
