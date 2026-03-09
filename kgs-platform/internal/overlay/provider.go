@@ -1,7 +1,7 @@
 package overlay
 
 import (
-	"kgs-platform/internal/data"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 
 	"github.com/google/wire"
 )

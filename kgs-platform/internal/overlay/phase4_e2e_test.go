@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"kgs-platform/internal/conf"
-	"kgs-platform/internal/data"
-	"kgs-platform/internal/version"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
 )

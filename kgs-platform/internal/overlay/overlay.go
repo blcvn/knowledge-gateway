@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"kgs-platform/internal/data"
-	"kgs-platform/internal/observability"
-	"kgs-platform/internal/version"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/observability"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"

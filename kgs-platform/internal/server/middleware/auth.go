@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	registryv1 "kgs-platform/api/registry/v1"
-	"kgs-platform/internal/biz"
+	registryv1 "github.com/blcvn/knowledge-gateway/kgs-platform/api/registry/v1"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/middleware"

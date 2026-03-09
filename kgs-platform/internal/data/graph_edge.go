@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"kgs-platform/internal/observability"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/observability"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go.opentelemetry.io/otel/attribute"

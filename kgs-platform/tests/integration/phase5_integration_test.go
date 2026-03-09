@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"kgs-platform/internal/analytics"
-	"kgs-platform/internal/batch"
-	"kgs-platform/internal/overlay"
-	"kgs-platform/internal/search"
-	"kgs-platform/internal/version"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/analytics"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/batch"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"gorm.io/driver/sqlite"

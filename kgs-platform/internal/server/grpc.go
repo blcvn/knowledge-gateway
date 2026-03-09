@@ -1,16 +1,16 @@
 package server
 
 import (
-	policy "kgs-platform/api/accesscontrol/v1"
-	graph "kgs-platform/api/graph/v1"
-	v1 "kgs-platform/api/helloworld/v1"
-	ontology "kgs-platform/api/ontology/v1"
-	pb "kgs-platform/api/registry/v1"
-	rules "kgs-platform/api/rules/v1"
-	"kgs-platform/internal/biz"
-	"kgs-platform/internal/conf"
-	"kgs-platform/internal/server/middleware"
-	"kgs-platform/internal/service"
+	policy "github.com/blcvn/knowledge-gateway/kgs-platform/api/accesscontrol/v1"
+	graph "github.com/blcvn/knowledge-gateway/kgs-platform/api/graph/v1"
+	v1 "github.com/blcvn/knowledge-gateway/kgs-platform/api/helloworld/v1"
+	ontology "github.com/blcvn/knowledge-gateway/kgs-platform/api/ontology/v1"
+	pb "github.com/blcvn/knowledge-gateway/kgs-platform/api/registry/v1"
+	rules "github.com/blcvn/knowledge-gateway/kgs-platform/api/rules/v1"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/server/middleware"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/service"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"

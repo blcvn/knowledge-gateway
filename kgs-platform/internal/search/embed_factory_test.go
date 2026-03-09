@@ -3,7 +3,7 @@ package search
 import (
 	"testing"
 
-	"kgs-platform/internal/conf"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"google.golang.org/protobuf/types/known/durationpb"

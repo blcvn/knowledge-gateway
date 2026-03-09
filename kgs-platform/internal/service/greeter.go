@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	v1 "kgs-platform/api/helloworld/v1"
-	"kgs-platform/internal/biz"
+	v1 "github.com/blcvn/knowledge-gateway/kgs-platform/api/helloworld/v1"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 )
 
 // GreeterService is a greeter service.

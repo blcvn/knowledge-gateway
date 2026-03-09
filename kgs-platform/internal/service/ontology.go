@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	pb "kgs-platform/api/ontology/v1"
+	pb "github.com/blcvn/knowledge-gateway/kgs-platform/api/ontology/v1"
 )
 
 type OntologyService struct {

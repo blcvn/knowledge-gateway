@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"kgs-platform/internal/version"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
 )
 
 type memoryStore struct {

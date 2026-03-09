@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"kgs-platform/internal/conf"
-	"kgs-platform/internal/observability"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/observability"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"go.opentelemetry.io/otel/attribute"

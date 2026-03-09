@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 
-	"kgs-platform/internal/biz"
-	"kgs-platform/internal/overlay"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/transport"

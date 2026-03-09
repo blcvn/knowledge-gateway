@@ -10,7 +10,7 @@ import (
 )
 
 func StartDependencySpan(ctx context.Context, system, operation string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
-	tracer := otel.Tracer("kgs-platform/dependency")
+	tracer := otel.Tracer("github.com/blcvn/knowledge-gateway/kgs-platform/dependency")
 	ctx, span := tracer.Start(ctx, operation, trace.WithSpanKind(trace.SpanKindClient))
 	span.SetAttributes(attribute.String("dep.system", system))
 	if len(attrs) > 0 {

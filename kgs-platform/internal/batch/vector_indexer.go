@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"kgs-platform/internal/data"
-	"kgs-platform/internal/search"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
 
 	"github.com/google/uuid"
 )

@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	pb "kgs-platform/api/registry/v1"
-	"kgs-platform/internal/biz"
+	pb "github.com/blcvn/knowledge-gateway/kgs-platform/api/registry/v1"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 )
 
 type RegistryService struct {

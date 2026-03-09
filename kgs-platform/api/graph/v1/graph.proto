@@ -4,7 +4,7 @@ package api.graph.v1;
 
 import "google/api/annotations.proto";
 
-option go_package = "kgs-platform/api/graph/v1;v1";
+option go_package = "github.com/blcvn/knowledge-gateway/kgs-platform/api/graph/v1;v1";
 
 service Graph {
   // Create a new node in the Knowledge Graph

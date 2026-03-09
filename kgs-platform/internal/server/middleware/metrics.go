@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"kgs-platform/internal/observability"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/observability"
 
 	kratosMiddleware "github.com/go-kratos/kratos/v2/middleware"
 	"github.com/go-kratos/kratos/v2/transport"

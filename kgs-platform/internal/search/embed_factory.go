@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"kgs-platform/internal/conf"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
 
 	"github.com/go-kratos/kratos/v2/log"
 )

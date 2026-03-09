@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	registryv1 "kgs-platform/api/registry/v1"
-	"kgs-platform/internal/biz"
+	registryv1 "github.com/blcvn/knowledge-gateway/kgs-platform/api/registry/v1"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 
 	"github.com/alicebob/miniredis/v2"
 	kerrors "github.com/go-kratos/kratos/v2/errors"

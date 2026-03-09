@@ -4,7 +4,7 @@ package api.accesscontrol.v1;
 
 import "google/api/annotations.proto";
 
-option go_package = "kgs-platform/api/accesscontrol/v1;v1";
+option go_package = "github.com/blcvn/knowledge-gateway/kgs-platform/api/accesscontrol/v1;v1";
 
 service AccessControl {
   // Create a new OPA Policy

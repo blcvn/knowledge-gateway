@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"kgs-platform/internal/observability"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/observability"
 )
 
 const (

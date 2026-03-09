@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"kgs-platform/internal/batch"
-	"kgs-platform/internal/search"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/batch"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
 )
 
 func BenchmarkHybridSearch(b *testing.B) {

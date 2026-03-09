@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-kratos/kratos/v2/transport"

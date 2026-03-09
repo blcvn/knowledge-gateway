@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/jackc/pgx/v5/pgconn"

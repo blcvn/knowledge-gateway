@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"kgs-platform/internal/lock"
-	"kgs-platform/internal/observability"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/lock"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/observability"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"

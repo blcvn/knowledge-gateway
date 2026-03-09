@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"math"
 
-	"kgs-platform/internal/data"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 )
 
 type EmbeddingClient interface {

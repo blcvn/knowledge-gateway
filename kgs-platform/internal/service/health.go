@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"kgs-platform/internal/data"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"

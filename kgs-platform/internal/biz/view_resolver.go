@@ -3,7 +3,7 @@ package biz
 import (
 	"context"
 
-	"kgs-platform/internal/projection"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
 )
 
 // ViewResolver shapes raw graph data via role-based projection rules.

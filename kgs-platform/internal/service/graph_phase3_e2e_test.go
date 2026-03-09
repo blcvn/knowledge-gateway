@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	pb "kgs-platform/api/graph/v1"
-	"kgs-platform/internal/biz"
-	"kgs-platform/internal/overlay"
-	"kgs-platform/internal/server/middleware"
-	"kgs-platform/internal/version"
+	pb "github.com/blcvn/knowledge-gateway/kgs-platform/api/graph/v1"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/server/middleware"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"gorm.io/driver/sqlite"

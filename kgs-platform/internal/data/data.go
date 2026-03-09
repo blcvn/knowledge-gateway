@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"kgs-platform/internal/biz"
-	"kgs-platform/internal/conf"
-	"kgs-platform/internal/projection"
-	"kgs-platform/internal/version"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
