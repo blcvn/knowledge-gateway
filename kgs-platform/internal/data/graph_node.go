@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"kgs-platform/internal/biz"
 	"kgs-platform/internal/observability"
@@ -44,18 +45,16 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, labe
 	}
 	props := cloneMap(properties)
 	nodeID := ensureID(props)
+	props["_unique_key"] = buildNodeUniqueKey(appID, tenantID, nodeID)
 
 	result, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
-		query := fmt.Sprintf(`
-			CREATE (n:%s {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
-			SET n += $props
-			RETURN n
-		`, cleanLabel)
+		query := buildCreateNodeQuery(cleanLabel)
 		params := map[string]interface{}{
-			"app_id":    appID,
-			"tenant_id": tenantID,
-			"node_id":   nodeID,
-			"props":     props,
+			"app_id":     appID,
+			"tenant_id":  tenantID,
+			"node_id":    nodeID,
+			"unique_key": props["_unique_key"],
+			"props":      props,
 		}
 
 		res, err := tx.Run(traceCtx, query, params)
@@ -78,6 +77,19 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, labe
 	}
 
 	return result.(map[string]any), nil
+}
+
+func buildCreateNodeQuery(cleanLabel string) string {
+	return fmt.Sprintf(`
+		MERGE (n:Entity:%s {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
+		ON CREATE SET n += $props, n.created_at = datetime(), n._unique_key = $unique_key
+		ON MATCH SET n += $props, n.updated_at = datetime(), n._unique_key = $unique_key
+		RETURN n
+	`, cleanLabel)
+}
+
+func buildNodeUniqueKey(appID, tenantID, nodeID string) string {
+	return fmt.Sprintf("%s|%s|%s", strings.TrimSpace(appID), strings.TrimSpace(tenantID), strings.TrimSpace(nodeID))
 }
 
 func (r *graphRepo) GetNode(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {

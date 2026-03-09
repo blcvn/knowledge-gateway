@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -51,6 +52,12 @@ func (w *Neo4jWriter) writeChunk(ctx context.Context, appID, tenantID string, en
 		if _, ok := props["id"].(string); !ok {
 			props["id"] = uuid.NewString()
 		}
+		id, _ := props["id"].(string)
+		if strings.TrimSpace(id) == "" {
+			id = uuid.NewString()
+			props["id"] = id
+		}
+		props["_unique_key"] = buildEntityUniqueKey(appID, tenantID, id)
 		byLabel[label] = append(byLabel[label], props)
 	}
 
@@ -60,12 +67,7 @@ func (w *Neo4jWriter) writeChunk(ctx context.Context, appID, tenantID string, en
 	total := 0
 	for label, propsList := range byLabel {
 		countAny, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
-			query := fmt.Sprintf(`
-				UNWIND $entities AS e
-				CREATE (n:%s {app_id: $app_id, tenant_id: $tenant_id, id: e.id})
-				SET n += e
-				RETURN count(n) AS created
-			`, label)
+			query := buildBatchUpsertQuery(label)
 			res, err := tx.Run(ctx, query, map[string]any{
 				"app_id":    appID,
 				"tenant_id": tenantID,
@@ -92,6 +94,20 @@ func (w *Neo4jWriter) writeChunk(ctx context.Context, appID, tenantID string, en
 		}
 	}
 	return total, nil
+}
+
+func buildBatchUpsertQuery(label string) string {
+	return fmt.Sprintf(`
+		UNWIND $entities AS e
+		MERGE (n:Entity:%s {app_id: $app_id, tenant_id: $tenant_id, id: e.id})
+		ON CREATE SET n += e, n.created_at = datetime(), n._unique_key = e._unique_key
+		ON MATCH SET n += e, n.updated_at = datetime(), n._unique_key = e._unique_key
+		RETURN count(n) AS upserted
+	`, label)
+}
+
+func buildEntityUniqueKey(appID, tenantID, id string) string {
+	return fmt.Sprintf("%s|%s|%s", strings.TrimSpace(appID), strings.TrimSpace(tenantID), strings.TrimSpace(id))
 }
 
 func cloneMap(in map[string]any) map[string]any {

@@ -100,6 +100,10 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	if err := driver.VerifyConnectivity(context.Background()); err != nil {
 		helper.Fatalf("failed verifying neo4j connectivity: %v", err)
 	}
+	if err := EnsureConstraints(context.Background(), driver); err != nil {
+		// Do not crash service startup on dirty legacy data; log and continue.
+		helper.Warnf("failed ensuring neo4j constraints: %v", err)
+	}
 
 	// Redis Setup
 	readTimeout := c.Redis.ReadTimeout.AsDuration()

@@ -27,13 +27,7 @@ func (r *graphRepo) CreateEdge(ctx context.Context, appID, tenantID string, rela
 	edgeID := ensureID(props)
 
 	result, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
-		query := fmt.Sprintf(`
-			MATCH (a {app_id: $app_id, tenant_id: $tenant_id, id: $source_node_id})
-			MATCH (b {app_id: $app_id, tenant_id: $tenant_id, id: $target_node_id})
-			CREATE (a)-[rel:%s {app_id: $app_id, tenant_id: $tenant_id, id: $edge_id}]->(b)
-			SET rel += $props
-			RETURN rel
-		`, cleanRelationType)
+		query := buildCreateEdgeQuery(cleanRelationType)
 		params := map[string]interface{}{
 			"app_id":         appID,
 			"tenant_id":      tenantID,
@@ -72,4 +66,15 @@ func (r *graphRepo) CreateEdge(ctx context.Context, appID, tenantID string, rela
 	r.log.Infof("CreateEdge succeeded app_id=%s tenant_id=%s relation=%s source=%s target=%s edge_id=%v duration=%s",
 		appID, tenantID, cleanRelationType, sourceNodeID, targetNodeID, edgeProps["id"], time.Since(started))
 	return edgeProps, nil
+}
+
+func buildCreateEdgeQuery(cleanRelationType string) string {
+	return fmt.Sprintf(`
+		MATCH (a {app_id: $app_id, tenant_id: $tenant_id, id: $source_node_id})
+		MATCH (b {app_id: $app_id, tenant_id: $tenant_id, id: $target_node_id})
+		MERGE (a)-[rel:%s {app_id: $app_id, tenant_id: $tenant_id, id: $edge_id}]->(b)
+		ON CREATE SET rel += $props, rel.created_at = datetime()
+		ON MATCH SET rel += $props, rel.updated_at = datetime()
+		RETURN rel
+	`, cleanRelationType)
 }
