@@ -21,6 +21,9 @@ func EnsureConstraints(ctx context.Context, driver neo4j.DriverWithContext) erro
 		`CREATE CONSTRAINT kgs_entity_unique_key IF NOT EXISTS
 		 FOR (n:Entity)
 		 REQUIRE n._unique_key IS UNIQUE`,
+		`CREATE INDEX kgs_entity_app_tenant IF NOT EXISTS
+		 FOR (n:Entity)
+		 ON (n.app_id, n.tenant_id)`,
 	}
 
 	for _, cypher := range constraints {

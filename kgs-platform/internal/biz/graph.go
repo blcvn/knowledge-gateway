@@ -18,6 +18,7 @@ type GraphRepo interface {
 	GetNode(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error)
 	CreateEdge(ctx context.Context, appID, tenantID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error)
 	ExecuteQuery(ctx context.Context, cypher string, params map[string]any) (map[string]any, error)
+	GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*FullGraphResult, error)
 }
 
 type GraphUsecase struct {
@@ -216,6 +217,19 @@ func (uc *GraphUsecase) GetSubgraph(ctx context.Context, appID, tenantID string,
 		"node_ids":  nodeIDs,
 	}
 	return uc.repo.ExecuteQuery(ctx, cypher, params)
+}
+
+func (uc *GraphUsecase) GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*FullGraphResult, error) {
+	if limit <= 0 {
+		limit = MaxAllowedNodes
+	}
+	if limit > MaxAllowedNodes {
+		limit = MaxAllowedNodes
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return uc.repo.GetFullGraph(ctx, appID, tenantID, limit, offset)
 }
 
 func (uc *GraphUsecase) acquireNodeLock(ctx context.Context, appID, tenantID, nodeID string) (string, error) {

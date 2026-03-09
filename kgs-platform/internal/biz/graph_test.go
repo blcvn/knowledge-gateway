@@ -29,6 +29,9 @@ func (r *fakeGraphRepo) ExecuteQuery(ctx context.Context, cypher string, params 
 	r.queryCalls++
 	return map[string]any{"data": []map[string]any{}}, nil
 }
+func (r *fakeGraphRepo) GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*FullGraphResult, error) {
+	return &FullGraphResult{}, nil
+}
 
 func TestGraphUsecaseGetContextDepth5UsesBatchedTraversal(t *testing.T) {
 	repo := &fakeGraphRepo{}

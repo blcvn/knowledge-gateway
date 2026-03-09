@@ -43,6 +43,7 @@ type GraphUsecase interface {
 	GetImpact(ctx context.Context, appID, tenantID string, nodeID string, maxDepth int) (map[string]any, error)
 	GetCoverage(ctx context.Context, appID, tenantID string, nodeID string, maxDepth int) (map[string]any, error)
 	GetSubgraph(ctx context.Context, appID, tenantID string, nodeIDs []string) (map[string]any, error)
+	GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error)
 }
 
 func NewGraphService(
@@ -214,6 +215,71 @@ func (s *GraphService) GetSubgraph(ctx context.Context, req *pb.GetSubgraphReque
 	}
 	stdlog.Printf("[KGS][GraphService] GetSubgraph done app_id=%s tenant_id=%s requested_node_ids=%d returned_nodes=%d returned_edges=%d duration=%s",
 		appCtx.AppID, appCtx.TenantID, len(req.NodeIds), len(reply.GetNodes()), len(reply.GetEdges()), time.Since(started))
+	return reply, nil
+}
+
+func (s *GraphService) GetFullGraph(ctx context.Context, req *pb.GetFullGraphRequest) (*pb.GetFullGraphResponse, error) {
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil {
+		req = &pb.GetFullGraphRequest{}
+	}
+
+	appID := strings.TrimSpace(req.GetAppId())
+	if appID == "" {
+		appID = appCtx.AppID
+	}
+	tenantID := strings.TrimSpace(req.GetTenantId())
+	if tenantID == "" {
+		tenantID = appCtx.TenantID
+	}
+	if appID != appCtx.AppID || tenantID != appCtx.TenantID {
+		return nil, kerrors.BadRequest("ERR_SCOPE_MISMATCH", "app_id/tenant_id mismatch with auth context")
+	}
+
+	started := time.Now()
+	stdlog.Printf("[KGS][GraphService] GetFullGraph start app_id=%s tenant_id=%s node_limit=%d node_offset=%d",
+		appID, tenantID, req.GetNodeLimit(), req.GetNodeOffset())
+
+	result, err := s.uc.GetFullGraph(ctx, appID, tenantID, int(req.GetNodeLimit()), int(req.GetNodeOffset()))
+	if err != nil {
+		stdlog.Printf("[KGS][GraphService] GetFullGraph failed app_id=%s tenant_id=%s err=%v", appID, tenantID, err)
+		return nil, err
+	}
+
+	reply := &pb.GetFullGraphResponse{
+		Nodes:      make([]*pb.GraphNode, 0, len(result.Nodes)),
+		Edges:      make([]*pb.GraphEdge, 0, len(result.Edges)),
+		TotalNodes: int32(result.TotalNodes),
+		TotalEdges: int32(result.TotalEdges),
+	}
+	for _, node := range result.Nodes {
+		reply.Nodes = append(reply.Nodes, &pb.GraphNode{
+			Id:             node.ID,
+			Label:          primaryNodeLabel(node.Labels),
+			PropertiesJson: mustJSON(node.Properties),
+			Properties:     stringifyMap(node.Properties),
+		})
+	}
+	for _, edge := range result.Edges {
+		reply.Edges = append(reply.Edges, &pb.GraphEdge{
+			Id:             edge.ID,
+			Source:         edge.SourceNodeID,
+			Target:         edge.TargetNodeID,
+			Type:           edge.RelationType,
+			PropertiesJson: mustJSON(edge.Properties),
+			RelationType:   edge.RelationType,
+			SourceNodeId:   edge.SourceNodeID,
+			TargetNodeId:   edge.TargetNodeID,
+			Properties:     stringifyMap(edge.Properties),
+		})
+	}
+
+	stdlog.Printf("[KGS][GraphService] GetFullGraph done app_id=%s tenant_id=%s returned_nodes=%d returned_edges=%d total_nodes=%d total_edges=%d duration=%s",
+		appID, tenantID, len(reply.GetNodes()), len(reply.GetEdges()), reply.GetTotalNodes(), reply.GetTotalEdges(), time.Since(started))
+
 	return reply, nil
 }
 
@@ -790,6 +856,31 @@ func mustJSON(m map[string]any) string {
 		return "{}"
 	}
 	return string(b)
+}
+
+func stringifyMap(m map[string]any) map[string]string {
+	if len(m) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = fmt.Sprint(v)
+	}
+	return out
+}
+
+func primaryNodeLabel(labels []string) string {
+	for _, label := range labels {
+		trimmed := strings.TrimSpace(label)
+		if trimmed == "" || trimmed == "Entity" {
+			continue
+		}
+		return trimmed
+	}
+	if len(labels) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(labels[0])
 }
 
 func toGraphReply(result map[string]any) *pb.GraphReply {

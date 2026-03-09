@@ -32,6 +32,9 @@ func (r *phase3Repo) CreateEdge(ctx context.Context, appID, tenantID string, rel
 func (r *phase3Repo) ExecuteQuery(ctx context.Context, cypher string, params map[string]any) (map[string]any, error) {
 	return map[string]any{"data": []map[string]any{}}, nil
 }
+func (r *phase3Repo) GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error) {
+	return &biz.FullGraphResult{}, nil
+}
 
 type memOverlayStore struct {
 	items       map[string]*overlay.OverlayGraph

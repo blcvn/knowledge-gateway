@@ -31,6 +31,7 @@ const OperationGraphDiscardOverlay = "/api.graph.v1.Graph/DiscardOverlay"
 const OperationGraphGetContext = "/api.graph.v1.Graph/GetContext"
 const OperationGraphGetCoverage = "/api.graph.v1.Graph/GetCoverage"
 const OperationGraphGetCoverageReport = "/api.graph.v1.Graph/GetCoverageReport"
+const OperationGraphGetFullGraph = "/api.graph.v1.Graph/GetFullGraph"
 const OperationGraphGetImpact = "/api.graph.v1.Graph/GetImpact"
 const OperationGraphGetNode = "/api.graph.v1.Graph/GetNode"
 const OperationGraphGetSubgraph = "/api.graph.v1.Graph/GetSubgraph"
@@ -66,6 +67,8 @@ type GraphHTTPServer interface {
 	GetCoverage(context.Context, *GetCoverageRequest) (*GraphReply, error)
 	// GetCoverageReport Get coverage report by domain
 	GetCoverageReport(context.Context, *GetCoverageReportRequest) (*GetCoverageReportReply, error)
+	// GetFullGraph Get full graph by app_id + tenant_id (with optional node pagination)
+	GetFullGraph(context.Context, *GetFullGraphRequest) (*GetFullGraphResponse, error)
 	// GetImpact Get downstream impact of a node
 	GetImpact(context.Context, *GetImpactRequest) (*GraphReply, error)
 	// GetNode Get a node by ID
@@ -95,6 +98,7 @@ func RegisterGraphHTTPServer(s *http.Server, srv GraphHTTPServer) {
 	r.GET("/v1/graph/nodes/{node_id}/impact", _Graph_GetImpact0_HTTP_Handler(srv))
 	r.GET("/v1/graph/nodes/{node_id}/coverage", _Graph_GetCoverage0_HTTP_Handler(srv))
 	r.POST("/v1/graph/subgraph", _Graph_GetSubgraph0_HTTP_Handler(srv))
+	r.POST("/v1/graph/full", _Graph_GetFullGraph0_HTTP_Handler(srv))
 	r.POST("/v1/graph/entities/batch", _Graph_BatchUpsertEntities0_HTTP_Handler(srv))
 	r.POST("/v1/graph/search/hybrid", _Graph_HybridSearch0_HTTP_Handler(srv))
 	r.GET("/v1/graph/coverage/{domain}", _Graph_GetCoverageReport0_HTTP_Handler(srv))
@@ -261,6 +265,28 @@ func _Graph_GetSubgraph0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context
 			return err
 		}
 		reply := out.(*GraphReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_GetFullGraph0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetFullGraphRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphGetFullGraph)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetFullGraph(ctx, req.(*GetFullGraphRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetFullGraphResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -595,6 +621,8 @@ type GraphHTTPClient interface {
 	GetCoverage(ctx context.Context, req *GetCoverageRequest, opts ...http.CallOption) (rsp *GraphReply, err error)
 	// GetCoverageReport Get coverage report by domain
 	GetCoverageReport(ctx context.Context, req *GetCoverageReportRequest, opts ...http.CallOption) (rsp *GetCoverageReportReply, err error)
+	// GetFullGraph Get full graph by app_id + tenant_id (with optional node pagination)
+	GetFullGraph(ctx context.Context, req *GetFullGraphRequest, opts ...http.CallOption) (rsp *GetFullGraphResponse, err error)
 	// GetImpact Get downstream impact of a node
 	GetImpact(ctx context.Context, req *GetImpactRequest, opts ...http.CallOption) (rsp *GraphReply, err error)
 	// GetNode Get a node by ID
@@ -785,6 +813,20 @@ func (c *GraphHTTPClientImpl) GetCoverageReport(ctx context.Context, in *GetCove
 	opts = append(opts, http.Operation(OperationGraphGetCoverageReport))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetFullGraph Get full graph by app_id + tenant_id (with optional node pagination)
+func (c *GraphHTTPClientImpl) GetFullGraph(ctx context.Context, in *GetFullGraphRequest, opts ...http.CallOption) (*GetFullGraphResponse, error) {
+	var out GetFullGraphResponse
+	pattern := "/v1/graph/full"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphGetFullGraph))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

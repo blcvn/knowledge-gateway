@@ -21,6 +21,7 @@ import (
 type mockGraphUsecase struct {
 	createNodeFn func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error)
 	getNodeFn    func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error)
+	getFullFn    func(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error)
 }
 
 func (m *mockGraphUsecase) CreateNode(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
@@ -49,6 +50,13 @@ func (m *mockGraphUsecase) GetCoverage(ctx context.Context, appID, tenantID stri
 
 func (m *mockGraphUsecase) GetSubgraph(ctx context.Context, appID, tenantID string, nodeIDs []string) (map[string]any, error) {
 	return map[string]any{"data": []any{}}, nil
+}
+
+func (m *mockGraphUsecase) GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error) {
+	if m.getFullFn == nil {
+		return &biz.FullGraphResult{}, nil
+	}
+	return m.getFullFn(ctx, appID, tenantID, limit, offset)
 }
 
 func TestGraphServiceCreateNode(t *testing.T) {
@@ -132,6 +140,138 @@ func TestGraphServiceGetNode(t *testing.T) {
 	}
 	if props["name"] != "alice" {
 		t.Fatalf("unexpected properties: %#v", props)
+	}
+}
+
+func TestGraphServiceGetFullGraph(t *testing.T) {
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return nil, nil
+		},
+		getFullFn: func(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error) {
+			if appID != "app-1" || tenantID != "tenant-1" {
+				t.Fatalf("unexpected scope app=%s tenant=%s", appID, tenantID)
+			}
+			if limit != 200 || offset != 10 {
+				t.Fatalf("unexpected pagination limit=%d offset=%d", limit, offset)
+			}
+			return &biz.FullGraphResult{
+				Nodes: []biz.NodeResult{
+					{
+						ID:     "BR-001",
+						Labels: []string{"Entity", "BUSINESS_RULE"},
+						Properties: map[string]any{
+							"id":         "BR-001",
+							"given":      "logged in",
+							"confidence": 0.97,
+						},
+					},
+				},
+				Edges: []biz.EdgeResult{
+					{
+						ID:           "E-001",
+						RelationType: "RELATES_TO",
+						SourceNodeID: "BR-001",
+						TargetNodeID: "UC-001",
+						Properties: map[string]any{
+							"id": "E-001",
+						},
+					},
+				},
+				TotalNodes: 1,
+				TotalEdges: 1,
+			}, nil
+		},
+	}, nil, nil, nil, nil, nil, nil)
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-1",
+		TenantID: "tenant-1",
+		Scopes:   "read",
+	})
+
+	resp, err := svc.GetFullGraph(ctx, &pb.GetFullGraphRequest{
+		NodeLimit:  200,
+		NodeOffset: 10,
+	})
+	if err != nil {
+		t.Fatalf("GetFullGraph error: %v", err)
+	}
+	if resp.TotalNodes != 1 || resp.TotalEdges != 1 {
+		t.Fatalf("unexpected totals: nodes=%d edges=%d", resp.TotalNodes, resp.TotalEdges)
+	}
+	if len(resp.Nodes) != 1 || len(resp.Edges) != 1 {
+		t.Fatalf("unexpected graph size: nodes=%d edges=%d", len(resp.Nodes), len(resp.Edges))
+	}
+	if resp.Nodes[0].Label != "BUSINESS_RULE" {
+		t.Fatalf("expected primary label BUSINESS_RULE, got %q", resp.Nodes[0].Label)
+	}
+	if resp.Nodes[0].Properties["confidence"] != "0.97" {
+		t.Fatalf("unexpected stringified property: %#v", resp.Nodes[0].Properties)
+	}
+	if resp.Edges[0].RelationType != "RELATES_TO" || resp.Edges[0].SourceNodeId != "BR-001" || resp.Edges[0].TargetNodeId != "UC-001" {
+		t.Fatalf("unexpected edge response: %#v", resp.Edges[0])
+	}
+}
+
+func TestGraphServiceGetFullGraphRejectsScopeMismatch(t *testing.T) {
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return nil, nil
+		},
+	}, nil, nil, nil, nil, nil, nil)
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-1",
+		TenantID: "tenant-1",
+		Scopes:   "read",
+	})
+
+	_, err := svc.GetFullGraph(ctx, &pb.GetFullGraphRequest{
+		AppId:    "other-app",
+		TenantId: "tenant-1",
+	})
+	if err == nil {
+		t.Fatalf("expected scope mismatch error")
+	}
+}
+
+func TestGraphServiceGetFullGraphEmptyGraph(t *testing.T) {
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return nil, nil
+		},
+		getFullFn: func(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error) {
+			return &biz.FullGraphResult{
+				Nodes:      []biz.NodeResult{},
+				Edges:      []biz.EdgeResult{},
+				TotalNodes: 0,
+				TotalEdges: 0,
+			}, nil
+		},
+	}, nil, nil, nil, nil, nil, nil)
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-empty",
+		TenantID: "tenant-empty",
+		Scopes:   "read",
+	})
+
+	resp, err := svc.GetFullGraph(ctx, &pb.GetFullGraphRequest{})
+	if err != nil {
+		t.Fatalf("GetFullGraph error: %v", err)
+	}
+	if resp.TotalNodes != 0 || resp.TotalEdges != 0 || len(resp.Nodes) != 0 || len(resp.Edges) != 0 {
+		t.Fatalf("expected empty response, got %#v", resp)
 	}
 }
 

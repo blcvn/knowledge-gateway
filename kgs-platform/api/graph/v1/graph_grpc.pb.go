@@ -36,6 +36,8 @@ type GraphClient interface {
 	GetCoverage(ctx context.Context, in *GetCoverageRequest, opts ...grpc.CallOption) (*GraphReply, error)
 	// Get subgraph for a list of node IDs
 	GetSubgraph(ctx context.Context, in *GetSubgraphRequest, opts ...grpc.CallOption) (*GraphReply, error)
+	// Get full graph by app_id + tenant_id (with optional node pagination)
+	GetFullGraph(ctx context.Context, in *GetFullGraphRequest, opts ...grpc.CallOption) (*GetFullGraphResponse, error)
 	// Batch upsert entities
 	BatchUpsertEntities(ctx context.Context, in *BatchUpsertRequest, opts ...grpc.CallOption) (*BatchUpsertReply, error)
 	// Hybrid search across vector and full-text indexes
@@ -131,6 +133,15 @@ func (c *graphClient) GetCoverage(ctx context.Context, in *GetCoverageRequest, o
 func (c *graphClient) GetSubgraph(ctx context.Context, in *GetSubgraphRequest, opts ...grpc.CallOption) (*GraphReply, error) {
 	out := new(GraphReply)
 	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/GetSubgraph", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) GetFullGraph(ctx context.Context, in *GetFullGraphRequest, opts ...grpc.CallOption) (*GetFullGraphResponse, error) {
+	out := new(GetFullGraphResponse)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/GetFullGraph", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +292,8 @@ type GraphServer interface {
 	GetCoverage(context.Context, *GetCoverageRequest) (*GraphReply, error)
 	// Get subgraph for a list of node IDs
 	GetSubgraph(context.Context, *GetSubgraphRequest) (*GraphReply, error)
+	// Get full graph by app_id + tenant_id (with optional node pagination)
+	GetFullGraph(context.Context, *GetFullGraphRequest) (*GetFullGraphResponse, error)
 	// Batch upsert entities
 	BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error)
 	// Hybrid search across vector and full-text indexes
@@ -336,6 +349,9 @@ func (UnimplementedGraphServer) GetCoverage(context.Context, *GetCoverageRequest
 }
 func (UnimplementedGraphServer) GetSubgraph(context.Context, *GetSubgraphRequest) (*GraphReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSubgraph not implemented")
+}
+func (UnimplementedGraphServer) GetFullGraph(context.Context, *GetFullGraphRequest) (*GetFullGraphResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFullGraph not implemented")
 }
 func (UnimplementedGraphServer) BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BatchUpsertEntities not implemented")
@@ -514,6 +530,24 @@ func _Graph_GetSubgraph_Handler(srv interface{}, ctx context.Context, dec func(i
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GraphServer).GetSubgraph(ctx, req.(*GetSubgraphRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_GetFullGraph_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFullGraphRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).GetFullGraph(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/GetFullGraph",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).GetFullGraph(ctx, req.(*GetFullGraphRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -804,6 +838,10 @@ var Graph_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSubgraph",
 			Handler:    _Graph_GetSubgraph_Handler,
+		},
+		{
+			MethodName: "GetFullGraph",
+			Handler:    _Graph_GetFullGraph_Handler,
 		},
 		{
 			MethodName: "BatchUpsertEntities",

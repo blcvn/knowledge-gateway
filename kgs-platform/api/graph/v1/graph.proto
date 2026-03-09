@@ -58,6 +58,14 @@ service Graph {
     };
   }
 
+  // Get full graph by app_id + tenant_id (with optional node pagination)
+  rpc GetFullGraph (GetFullGraphRequest) returns (GetFullGraphResponse) {
+    option (google.api.http) = {
+      post: "/v1/graph/full"
+      body: "*"
+    };
+  }
+
   // Batch upsert entities
   rpc BatchUpsertEntities (BatchUpsertRequest) returns (BatchUpsertReply) {
     option (google.api.http) = {
@@ -226,10 +234,18 @@ message GetSubgraphRequest {
   repeated string node_ids = 1;
 }
 
+message GetFullGraphRequest {
+  string app_id = 1;
+  string tenant_id = 2;
+  int32 node_limit = 3;
+  int32 node_offset = 4;
+}
+
 message GraphNode {
   string id = 1;
   string label = 2;
   string properties_json = 3;
+  map<string, string> properties = 4;
 }
 
 message GraphEdge {
@@ -238,11 +254,22 @@ message GraphEdge {
   string target = 3;
   string type = 4;
   string properties_json = 5;
+  string relation_type = 6;
+  string source_node_id = 7;
+  string target_node_id = 8;
+  map<string, string> properties = 9;
 }
 
 message GraphReply {
   repeated GraphNode nodes = 1;
   repeated GraphEdge edges = 2;
+}
+
+message GetFullGraphResponse {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+  int32 total_nodes = 3;
+  int32 total_edges = 4;
 }
 
 message BatchEntity {
