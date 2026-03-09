@@ -20,6 +20,10 @@ type EntityType struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
 }
 
+func (EntityType) TableName() string {
+	return "kgs_entity_types"
+}
+
 // RelationType defines the schema and constraints for a specific edge type in Neo4j.
 type RelationType struct {
 	ID          uint           `gorm:"primaryKey"`
@@ -33,4 +37,8 @@ type RelationType struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
+}
+
+func (RelationType) TableName() string {
+	return "kgs_relation_types"
 }

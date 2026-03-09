@@ -28,7 +28,7 @@ type ViewDefinitionRecord struct {
 }
 
 func (ViewDefinitionRecord) TableName() string {
-	return "view_definitions"
+	return "kgs_view_definitions"
 }
 
 func (r ViewDefinitionRecord) toDomain() ViewDefinition {

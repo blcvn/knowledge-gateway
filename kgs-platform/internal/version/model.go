@@ -28,7 +28,7 @@ type GraphVersion struct {
 }
 
 func (GraphVersion) TableName() string {
-	return "graph_versions"
+	return "kgs_graph_versions"
 }
 
 type DiffResult struct {

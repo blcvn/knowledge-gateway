@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,9 @@ const (
 	levelSubgraph
 	levelVersion
 	levelNamespace
+
+	defaultLockAcquireTimeout = 2 * time.Second
+	lockAcquireTimeoutEnvKey  = "KGS_LOCK_ACQUIRE_TIMEOUT"
 )
 
 var (
@@ -35,7 +39,8 @@ type redisLockStore interface {
 }
 
 type RedisLockManager struct {
-	store redisLockStore
+	store          redisLockStore
+	acquireTimeout time.Duration
 
 	mu       sync.Mutex
 	byToken  map[string]lockRecord
@@ -52,18 +57,26 @@ type lockRecord struct {
 }
 
 func NewRedisLockManager(redisCli *redis.Client) LockManager {
-	return NewRedisLockManagerWithStore(redisCli)
+	return NewRedisLockManagerWithStoreAndTimeout(redisCli, lockAcquireTimeoutFromEnv())
 }
 
 func NewRedisLockManagerWithStore(store redisLockStore) LockManager {
+	return NewRedisLockManagerWithStoreAndTimeout(store, defaultLockAcquireTimeout)
+}
+
+func NewRedisLockManagerWithStoreAndTimeout(store redisLockStore, acquireTimeout time.Duration) LockManager {
 	if store == nil {
 		return nil
 	}
+	if acquireTimeout <= 0 {
+		acquireTimeout = defaultLockAcquireTimeout
+	}
 	return &RedisLockManager{
-		store:    store,
-		byToken:  make(map[string]lockRecord),
-		byOwner:  make(map[string]map[string]lockRecord),
-		ownerMax: make(map[string]int),
+		store:          store,
+		acquireTimeout: acquireTimeout,
+		byToken:        make(map[string]lockRecord),
+		byOwner:        make(map[string]map[string]lockRecord),
+		ownerMax:       make(map[string]int),
 	}
 }
 
@@ -159,7 +172,7 @@ func (m *RedisLockManager) acquire(ctx context.Context, key string, level int, t
 	m.mu.Unlock()
 
 	token := uuid.NewString()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(m.acquireTimeout)
 	for {
 		ok, err := m.store.SetNX(traceCtx, key, token, ttl).Result()
 		if err == nil && ok {
@@ -195,6 +208,18 @@ func (m *RedisLockManager) acquire(ctx context.Context, key string, level int, t
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+func lockAcquireTimeoutFromEnv() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(lockAcquireTimeoutEnvKey))
+	if raw == "" {
+		return defaultLockAcquireTimeout
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return defaultLockAcquireTimeout
+	}
+	return parsed
 }
 
 func ownerIDFromContext(ctx context.Context) string {

@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/lock"
@@ -10,6 +12,13 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+)
+
+const lockReleaseTimeout = 2 * time.Second
+
+const (
+	defaultNodeLockTTL = 30 * time.Second
+	nodeLockTTLEnvKey  = "KGS_LOCK_TTL"
 )
 
 // GraphRepo defines the graph data persistence interface
@@ -22,14 +31,15 @@ type GraphRepo interface {
 }
 
 type GraphUsecase struct {
-	repo     GraphRepo
-	ontology *OntologySyncManager
-	planner  *QueryPlanner
-	opa      *OPAClient
-	redisCli *redis.Client
-	lockMgr  lock.LockManager
-	overlay  OverlayDeltaWriter
-	log      *log.Helper
+	repo        GraphRepo
+	ontology    *OntologySyncManager
+	planner     *QueryPlanner
+	opa         *OPAClient
+	redisCli    *redis.Client
+	lockMgr     lock.LockManager
+	nodeLockTTL time.Duration
+	overlay     OverlayDeltaWriter
+	log         *log.Helper
 }
 
 type OverlayDeltaWriter interface {
@@ -47,13 +57,14 @@ func NewGraphUsecase(
 	logger log.Logger,
 ) *GraphUsecase {
 	return &GraphUsecase{
-		repo:     repo,
-		planner:  planner,
-		opa:      opa,
-		redisCli: redisCli,
-		lockMgr:  lockMgr,
-		overlay:  overlay,
-		log:      log.NewHelper(logger),
+		repo:        repo,
+		planner:     planner,
+		opa:         opa,
+		redisCli:    redisCli,
+		lockMgr:     lockMgr,
+		nodeLockTTL: lockTTLFromEnv(),
+		overlay:     overlay,
+		log:         log.NewHelper(logger),
 	}
 }
 
@@ -139,17 +150,26 @@ func (uc *GraphUsecase) CreateEdge(ctx context.Context, appID, tenantID string, 
 	}
 
 	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
-	sourceToken, err := uc.acquireNodeLock(lockCtx, appID, tenantID, sourceNodeID)
-	if err != nil {
-		return nil, err
-	}
-	defer uc.releaseLock(lockCtx, sourceToken)
 
-	targetToken, err := uc.acquireNodeLock(lockCtx, appID, tenantID, targetNodeID)
+	firstNodeID := sourceNodeID
+	secondNodeID := targetNodeID
+	if firstNodeID != secondNodeID && strings.Compare(firstNodeID, secondNodeID) > 0 {
+		firstNodeID, secondNodeID = secondNodeID, firstNodeID
+	}
+
+	firstToken, err := uc.acquireNodeLock(lockCtx, appID, tenantID, firstNodeID)
 	if err != nil {
 		return nil, err
 	}
-	defer uc.releaseLock(lockCtx, targetToken)
+	defer uc.releaseLock(lockCtx, firstToken)
+
+	if secondNodeID != firstNodeID {
+		secondToken, acquireErr := uc.acquireNodeLock(lockCtx, appID, tenantID, secondNodeID)
+		if acquireErr != nil {
+			return nil, acquireErr
+		}
+		defer uc.releaseLock(lockCtx, secondToken)
+	}
 
 	// TODO: Validate relation whitelist
 	result, err := uc.repo.CreateEdge(lockCtx, appID, tenantID, relationType, sourceNodeID, targetNodeID, properties)
@@ -237,7 +257,11 @@ func (uc *GraphUsecase) acquireNodeLock(ctx context.Context, appID, tenantID, no
 		return "", nil
 	}
 	namespace := ComputeNamespace(appID, tenantID)
-	token, err := uc.lockMgr.AcquireNodeLock(ctx, namespace, nodeID, 10*time.Second)
+	ttl := uc.nodeLockTTL
+	if ttl <= 0 {
+		ttl = defaultNodeLockTTL
+	}
+	token, err := uc.lockMgr.AcquireNodeLock(ctx, namespace, nodeID, ttl)
 	if err != nil {
 		uc.log.Errorf("failed to acquire node lock namespace=%s node=%s: %v", namespace, nodeID, err)
 		return "", err
@@ -249,7 +273,11 @@ func (uc *GraphUsecase) releaseLock(ctx context.Context, token string) {
 	if uc.lockMgr == nil || token == "" {
 		return
 	}
-	if err := uc.lockMgr.Release(ctx, token); err != nil {
+	releaseCtx := context.WithoutCancel(ctx)
+	releaseCtx, cancel := context.WithTimeout(releaseCtx, lockReleaseTimeout)
+	defer cancel()
+
+	if err := uc.lockMgr.Release(releaseCtx, token); err != nil {
 		uc.log.Errorf("failed to release lock %s: %v", token, err)
 	}
 }
@@ -288,4 +316,16 @@ func extractOverlayID(properties map[string]any) string {
 	}
 	delete(properties, "overlay_id")
 	return id
+}
+
+func lockTTLFromEnv() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(nodeLockTTLEnvKey))
+	if raw == "" {
+		return defaultNodeLockTTL
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return defaultNodeLockTTL
+	}
+	return parsed
 }

@@ -27,6 +27,10 @@ type Rule struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
 }
 
+func (Rule) TableName() string {
+	return "kgs_rules"
+}
+
 // RuleExecution tracks the history of rule executions.
 type RuleExecution struct {
 	ID        uint      `gorm:"primaryKey"`
@@ -37,6 +41,10 @@ type RuleExecution struct {
 	Message   string    `gorm:"type:text"`
 	StartedAt time.Time `gorm:"index"`
 	EndedAt   time.Time
+}
+
+func (RuleExecution) TableName() string {
+	return "kgs_rule_executions"
 }
 
 // Policy defines OPA Rego policies managed via the database.
@@ -51,6 +59,10 @@ type Policy struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
+}
+
+func (Policy) TableName() string {
+	return "kgs_policies"
 }
 
 // RulesRepo defines the persistence interface for Rules

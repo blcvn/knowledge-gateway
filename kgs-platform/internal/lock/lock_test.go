@@ -111,3 +111,25 @@ func TestRedisLockManagerReentrant(t *testing.T) {
 		t.Fatalf("release #2 failed: %v", err)
 	}
 }
+
+func TestRedisLockManagerAcquireTimeoutConfigurable(t *testing.T) {
+	manager := NewRedisLockManagerWithStoreAndTimeout(&memoryLockStore{}, 30*time.Millisecond)
+	ctxA := WithOwnerID(context.Background(), "owner-a")
+	ctxB := WithOwnerID(context.Background(), "owner-b")
+
+	token, err := manager.AcquireNodeLock(ctxA, "graph/app/default", "node-1", time.Second)
+	if err != nil || token == "" {
+		t.Fatalf("first acquire failed: %v", err)
+	}
+	defer func() { _ = manager.Release(ctxA, token) }()
+
+	start := time.Now()
+	_, err = manager.AcquireNodeLock(ctxB, "graph/app/default", "node-1", time.Second)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatalf("expected lock acquisition timeout")
+	}
+	if elapsed > 400*time.Millisecond {
+		t.Fatalf("expected lock wait to honor configured timeout, elapsed=%v", elapsed)
+	}
+}
