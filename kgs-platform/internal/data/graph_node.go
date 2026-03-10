@@ -64,7 +64,7 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, labe
 
 		if res.Next(traceCtx) {
 			node := res.Record().Values[0].(neo4j.Node)
-			return node.Props, nil
+			return enrichNodePropsWithLabels(node), nil
 		}
 
 		return nil, res.Err()
@@ -77,6 +77,38 @@ func (r *graphRepo) CreateNode(ctx context.Context, appID, tenantID string, labe
 	}
 
 	return result.(map[string]any), nil
+}
+
+func enrichNodePropsWithLabels(node neo4j.Node) map[string]any {
+	props := cloneMap(node.Props)
+	if len(node.Labels) == 0 {
+		return props
+	}
+
+	labels := make([]string, 0, len(node.Labels))
+	var primaryLabel string
+	for _, label := range node.Labels {
+		trimmed := strings.TrimSpace(label)
+		if trimmed == "" {
+			continue
+		}
+		labels = append(labels, trimmed)
+		if primaryLabel == "" && !strings.EqualFold(trimmed, "Entity") {
+			primaryLabel = trimmed
+		}
+	}
+
+	if primaryLabel == "" && len(labels) > 0 {
+		primaryLabel = labels[0]
+	}
+	if primaryLabel != "" {
+		props["label"] = primaryLabel
+		props["entity_type"] = primaryLabel
+	}
+	if len(labels) > 0 {
+		props["labels"] = labels
+	}
+	return props
 }
 
 func buildCreateNodeQuery(cleanLabel string) string {
@@ -114,7 +146,7 @@ func (r *graphRepo) GetNode(ctx context.Context, appID, tenantID, nodeID string)
 		}
 		if res.Next(traceCtx) {
 			node := res.Record().Values[0].(neo4j.Node)
-			return node.Props, nil
+			return enrichNodePropsWithLabels(node), nil
 		}
 		if err := res.Err(); err != nil {
 			return nil, err

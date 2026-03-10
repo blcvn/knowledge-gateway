@@ -1,14 +1,14 @@
 server:
   http:
     addr: 0.0.0.0:8000
-    timeout: 10s
+    timeout: 180s
   grpc:
     addr: 0.0.0.0:9000
-    timeout: 10s
+    timeout: 180s
 data:
   database:
     driver: postgres
-    source: host=postgres user=kgs password=kgspassword dbname=kgs_platform port=5432 sslmode=disable TimeZone=Asia/Ho_Chi_Minh
+    source: host=postgres user=ba_agent password=secret dbname=ba_agent_db port=5432 sslmode=disable TimeZone=Asia/Ho_Chi_Minh
   redis:
     network: tcp
     addr: redis:6379
@@ -16,25 +16,31 @@ data:
     read_timeout: 0.2s
     write_timeout: 0.2s
   neo4j:
-    uri: bolt://neo4j:7687
+    uri: bolt://kgs-neo4j:7687
     user: neo4j
     password: neo4jpassword
     database: kgs
   opa:
-    url: http://opa:8181
+    url: http://kgs-opa:8181
   qdrant:
-    host: qdrant
+    host: kgs-qdrant
     port: 6333
     collection: kgs-vectors-default
     vector_size: 1536
   nats:
-    url: nats://nats:4222
+    url: nats://kgs-nats:4222
     stream: kgs-events
   embedding:
     provider: deterministic
     api_key: ""
     model: text-embedding-3-small
     base_url: https://api.openai.com/v1
-    path: /ai/embeddings
+    # path: /ai/embeddings
     vector_size: 1536
     timeout: 15s
+  ontology:
+    validation_enabled: true
+    strict_mode: false
+    schema_validation: false
+    edge_constraint_check: true
+    sync_projection: true
