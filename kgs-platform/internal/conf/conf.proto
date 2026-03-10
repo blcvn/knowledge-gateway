@@ -65,6 +65,13 @@ message Data {
     google.protobuf.Duration timeout = 6;
     string path = 7;
   }
+  message OntologyConfig {
+    bool validation_enabled = 1;
+    bool strict_mode = 2;
+    bool schema_validation = 3;
+    bool edge_constraint_check = 4;
+    bool sync_projection = 5;
+  }
   Database database = 1;
   Redis redis = 2;
   Neo4j neo4j = 3;
@@ -72,4 +79,5 @@ message Data {
   Qdrant qdrant = 5;
   NATS nats = 6;
   Embedding embedding = 7;
+  OntologyConfig ontology = 9;
 }

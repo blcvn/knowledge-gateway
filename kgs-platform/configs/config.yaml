@@ -38,3 +38,9 @@ data:
     path: /ai/embeddings
     vector_size: 1536
     timeout: 15s
+  ontology:
+    validation_enabled: false
+    strict_mode: false
+    schema_validation: false
+    edge_constraint_check: false
+    sync_projection: false
