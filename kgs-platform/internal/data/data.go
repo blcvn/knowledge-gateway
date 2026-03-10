@@ -88,6 +88,9 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	); err != nil {
 		helper.Errorf("failed to auto-migrate postgres schemas: %v", err)
 	}
+	if err := ensureOntologyUniqueIndexes(context.Background(), db, helper); err != nil {
+		helper.Fatalf("failed ensuring ontology unique indexes: %v", err)
+	}
 
 	// Neo4j Setup
 	driver, err := neo4j.NewDriverWithContext(
@@ -210,4 +213,116 @@ func verifyOPAConnectivity(ctx context.Context, raw string) error {
 		return fmt.Errorf("opa health check returned status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func ensureOntologyUniqueIndexes(ctx context.Context, db *gorm.DB, logger *log.Helper) error {
+	plans := []struct {
+		table string
+		index string
+	}{
+		{table: "kgs_entity_types", index: "idx_app_tenant_entity"},
+		{table: "kgs_relation_types", index: "idx_app_tenant_relation"},
+	}
+	for _, plan := range plans {
+		if err := ensureOntologyTableUniqueIndex(ctx, db, logger, plan.table, plan.index); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureOntologyTableUniqueIndex(ctx context.Context, db *gorm.DB, logger *log.Helper, table, index string) error {
+	if err := normalizeOntologyTenantID(ctx, db, table); err != nil {
+		return fmt.Errorf("normalize tenant_id for %s: %w", table, err)
+	}
+
+	exists, unique, err := queryIndexDefinition(ctx, db, table, index)
+	if err != nil {
+		return fmt.Errorf("query index %s on %s: %w", index, table, err)
+	}
+	if exists && unique {
+		return nil
+	}
+	if exists && !unique {
+		logger.Warnf("index %s on %s exists but is not unique; recreating as unique", index, table)
+		dropSQL := fmt.Sprintf(`DROP INDEX IF EXISTS %s`, quoteIdent(index))
+		if err := db.WithContext(ctx).Exec(dropSQL).Error; err != nil {
+			return fmt.Errorf("drop non-unique index %s on %s: %w", index, table, err)
+		}
+	}
+
+	if err := createOntologyUniqueIndex(ctx, db, table, index); err != nil {
+		if !isDuplicateConstraintDataError(err) {
+			return fmt.Errorf("create unique index %s on %s: %w", index, table, err)
+		}
+		removed, dedupeErr := dedupeOntologyRows(ctx, db, table)
+		if dedupeErr != nil {
+			return fmt.Errorf("dedupe rows for %s: %w", table, dedupeErr)
+		}
+		logger.Warnf("removed %d duplicate rows from %s before creating unique index %s", removed, table, index)
+		if err := createOntologyUniqueIndex(ctx, db, table, index); err != nil {
+			return fmt.Errorf("recreate unique index %s on %s after dedupe: %w", index, table, err)
+		}
+	}
+	return nil
+}
+
+func normalizeOntologyTenantID(ctx context.Context, db *gorm.DB, table string) error {
+	sql := fmt.Sprintf(`UPDATE %s SET tenant_id = 'default' WHERE tenant_id IS NULL OR tenant_id = ''`, quoteIdent(table))
+	return db.WithContext(ctx).Exec(sql).Error
+}
+
+func queryIndexDefinition(ctx context.Context, db *gorm.DB, table, index string) (exists bool, unique bool, err error) {
+	var indexDef string
+	tx := db.WithContext(ctx).Raw(
+		`SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND tablename = ? AND indexname = ? LIMIT 1`,
+		table,
+		index,
+	).Scan(&indexDef)
+	if tx.Error != nil {
+		return false, false, tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return false, false, nil
+	}
+	def := strings.ToUpper(strings.TrimSpace(indexDef))
+	return true, strings.Contains(def, "UNIQUE INDEX"), nil
+}
+
+func createOntologyUniqueIndex(ctx context.Context, db *gorm.DB, table, index string) error {
+	sql := fmt.Sprintf(
+		`CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (app_id, tenant_id, name)`,
+		quoteIdent(index),
+		quoteIdent(table),
+	)
+	return db.WithContext(ctx).Exec(sql).Error
+}
+
+func dedupeOntologyRows(ctx context.Context, db *gorm.DB, table string) (int64, error) {
+	sql := fmt.Sprintf(`
+WITH ranked AS (
+	SELECT id,
+	       ROW_NUMBER() OVER (PARTITION BY app_id, tenant_id, name ORDER BY id DESC) AS rn
+	FROM %s
+)
+DELETE FROM %s AS t
+USING ranked r
+WHERE t.id = r.id
+  AND r.rn > 1
+`, quoteIdent(table), quoteIdent(table))
+	tx := db.WithContext(ctx).Exec(sql)
+	return tx.RowsAffected, tx.Error
+}
+
+func isDuplicateConstraintDataError(err error) bool {
+	if err == nil {
+		return false
+	}
+	raw := strings.ToLower(err.Error())
+	return strings.Contains(raw, "duplicate key value violates unique constraint") ||
+		strings.Contains(raw, "sqlstate 23505")
+}
+
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
