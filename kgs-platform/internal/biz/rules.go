@@ -12,7 +12,8 @@ import (
 // Rule represents a business rule that runs either on a schedule or triggered by events.
 type Rule struct {
 	ID          uint           `gorm:"primaryKey"`
-	AppID       string         `gorm:"type:varchar(50);not null;index:idx_app_rule"`
+	AppID       string         `gorm:"type:varchar(50);not null;index:idx_app_tenant_rule"`
+	TenantID    string         `gorm:"type:varchar(50);not null;default:'default';index:idx_app_tenant_rule"`
 	Name        string         `gorm:"type:varchar(100);not null"`
 	Description string         `gorm:"type:text"`
 	TriggerType string         `gorm:"type:varchar(20);not null"` // e.g., "SCHEDULED", "ON_WRITE"
@@ -26,10 +27,15 @@ type Rule struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
 }
 
+func (Rule) TableName() string {
+	return "kgs_rules"
+}
+
 // RuleExecution tracks the history of rule executions.
 type RuleExecution struct {
 	ID        uint      `gorm:"primaryKey"`
-	AppID     string    `gorm:"type:varchar(50);not null;index:idx_app_ex"`
+	AppID     string    `gorm:"type:varchar(50);not null;index:idx_app_tenant_ex"`
+	TenantID  string    `gorm:"type:varchar(50);not null;default:'default';index:idx_app_tenant_ex"`
 	RuleID    uint      `gorm:"not null"`
 	Status    string    `gorm:"type:varchar(20);not null"` // SUCCESS, FAILED
 	Message   string    `gorm:"type:text"`
@@ -37,10 +43,15 @@ type RuleExecution struct {
 	EndedAt   time.Time
 }
 
+func (RuleExecution) TableName() string {
+	return "kgs_rule_executions"
+}
+
 // Policy defines OPA Rego policies managed via the database.
 type Policy struct {
 	ID          uint   `gorm:"primaryKey"`
-	AppID       string `gorm:"type:varchar(50);not null;index:idx_app_policy"`
+	AppID       string `gorm:"type:varchar(50);not null;index:idx_app_tenant_policy"`
+	TenantID    string `gorm:"type:varchar(50);not null;default:'default';index:idx_app_tenant_policy"`
 	Name        string `gorm:"type:varchar(100);not null"`
 	Description string `gorm:"type:text"`
 	RegoContent string `gorm:"type:text;not null"`
@@ -48,6 +59,10 @@ type Policy struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
+}
+
+func (Policy) TableName() string {
+	return "kgs_policies"
 }
 
 // RulesRepo defines the persistence interface for Rules

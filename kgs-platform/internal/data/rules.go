@@ -2,10 +2,13 @@ package data
 
 import (
 	"context"
+	"errors"
+	"strings"
 
-	"kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type rulesRepo struct {
@@ -40,7 +43,25 @@ func (r *rulesRepo) GetRule(ctx context.Context, id uint) (*biz.Rule, error) {
 func (r *rulesRepo) ListRules(ctx context.Context, appID string) ([]*biz.Rule, error) {
 	var rules []*biz.Rule
 	if err := r.data.db.WithContext(ctx).Where("app_id = ?", appID).Find(&rules).Error; err != nil {
+		if isUndefinedTableErr(err) {
+			r.log.Warnf("rules table is missing; skip loading scheduled rules and continue startup: %v", err)
+			return []*biz.Rule{}, nil
+		}
 		return nil, err
 	}
 	return rules, nil
+}
+
+func isUndefinedTableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "42P01"
+	}
+
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "sqlstate 42p01") || strings.Contains(errMsg, `relation "rules" does not exist`)
 }

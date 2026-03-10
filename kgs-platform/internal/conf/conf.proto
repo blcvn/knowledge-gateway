@@ -1,7 +1,7 @@
 syntax = "proto3";
 package kratos.api;
 
-option go_package = "kgs-platform/internal/conf;conf";
+option go_package = "github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf;conf";
 
 import "google/protobuf/duration.proto";
 
@@ -46,8 +46,38 @@ message Data {
   message OPA {
     string url = 1;
   }
+  message Qdrant {
+    string host = 1;
+    int32 port = 2;
+    string collection = 3;
+    int32 vector_size = 4;
+  }
+  message NATS {
+    string url = 1;
+    string stream = 2;
+  }
+  message Embedding {
+    string provider = 1;
+    string api_key = 2;
+    string model = 3;
+    string base_url = 4;
+    int32 vector_size = 5;
+    google.protobuf.Duration timeout = 6;
+    string path = 7;
+  }
+  message OntologyConfig {
+    bool validation_enabled = 1;
+    bool strict_mode = 2;
+    bool schema_validation = 3;
+    bool edge_constraint_check = 4;
+    bool sync_projection = 5;
+  }
   Database database = 1;
   Redis redis = 2;
   Neo4j neo4j = 3;
   OPA opa = 4;
+  Qdrant qdrant = 5;
+  NATS nats = 6;
+  Embedding embedding = 7;
+  OntologyConfig ontology = 9;
 }

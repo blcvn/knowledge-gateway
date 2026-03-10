@@ -4,7 +4,7 @@ package api.rules.v1;
 
 import "google/api/annotations.proto";
 
-option go_package = "kgs-platform/api/rules/v1;v1";
+option go_package = "github.com/blcvn/knowledge-gateway/kgs-platform/api/rules/v1;v1";
 
 service Rules {
   // Create a new business rule

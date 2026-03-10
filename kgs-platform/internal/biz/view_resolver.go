@@ -1,37 +1,25 @@
 package biz
 
-import "context"
+import (
+	"context"
 
-// ViewResolver shapes raw data from Neo4j into App-defined schemas.
-// App-defined schemas (views) could be stored in Postgres or cached in Redis.
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
+)
+
+// ViewResolver shapes raw graph data via role-based projection rules.
 type ViewResolver struct {
+	projection projection.ProjectionEngine
 }
 
 // NewViewResolver builds a view resolver instance.
-func NewViewResolver() *ViewResolver {
-	return &ViewResolver{}
+func NewViewResolver(engine projection.ProjectionEngine) *ViewResolver {
+	return &ViewResolver{projection: engine}
 }
 
-// Resolve shapes a raw Neo4j record into a structured JSON representation
-// governed by a whitelist of allowed fields. If no view is provided, it returns all properties.
-func (vr *ViewResolver) Resolve(ctx context.Context, appID string, queryResult map[string]any, viewName string) (map[string]any, error) {
-	// Dummy implementation for shaping based on simple whitelists
-	// In production, this would fetch the `view` definition from Postgres and traverse
-	// the `queryResult` map to prune keys not in the allowed properties list.
-
-	if viewName == "" {
-		// No shaping required
+// Resolve applies role-based filtering/masking for a given namespace and role.
+func (vr *ViewResolver) Resolve(ctx context.Context, namespace, role string, queryResult map[string]any) (map[string]any, error) {
+	if vr == nil || vr.projection == nil {
 		return queryResult, nil
 	}
-
-	// Mocking shaped data
-	shapedData := make(map[string]any)
-	for key, val := range queryResult {
-		// Mock condition: include only "data" list
-		if key == "data" {
-			shapedData[key] = val
-		}
-	}
-
-	return shapedData, nil
+	return vr.projection.Apply(ctx, namespace, role, queryResult)
 }

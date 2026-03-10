@@ -6,22 +6,42 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
 
 // OPAClient interfaces with the sidecar Open Policy Agent container
 type OPAClient struct {
-	baseURL string
-	log     *log.Helper
+	baseURL    string
+	policyBase string
+	log        *log.Helper
 }
 
 // NewOPAClient initializes the OPA client
 // For KGS, OPA is typically deployed as a sidecar running at localhost:8181
 func NewOPAClient(logger log.Logger) *OPAClient {
+	raw := strings.TrimSpace(os.Getenv("OPA_URL"))
+	if raw == "" {
+		raw = "http://localhost:8181"
+	}
+	raw = strings.TrimSuffix(raw, "/")
+
+	policyBase := raw
+	if idx := strings.Index(raw, "/v1/"); idx >= 0 {
+		policyBase = raw[:idx]
+	}
+
+	base := raw
+	if !strings.Contains(base, "/v1/data/") {
+		base = strings.TrimSuffix(policyBase, "/") + "/v1/data/kgs/allow"
+	}
+
 	return &OPAClient{
-		baseURL: "http://localhost:8181/v1/data/kgs/allow",
-		log:     log.NewHelper(logger),
+		baseURL:    base,
+		policyBase: strings.TrimSuffix(policyBase, "/"),
+		log:        log.NewHelper(logger),
 	}
 }
 
@@ -80,10 +100,7 @@ func (c *OPAClient) EvaluatePolicy(ctx context.Context, appID, action, resource 
 
 // PutPolicy uploads a raw Rego policy string to OPA's /v1/policies API
 func (c *OPAClient) PutPolicy(ctx context.Context, policyID string, regoContent string) error {
-	// e.g. "http://localhost:8181/v1/policies/{policyID}"
-	// We need to construct the URL from baseURL dynamically since baseURL is currently /v1/data/kgs/allow
-	// A quick hack is replacing the suffix or using a fixed config. We'll assume localhost:8181.
-	url := fmt.Sprintf("http://localhost:8181/v1/policies/%s", policyID)
+	url := fmt.Sprintf("%s/v1/policies/%s", c.policyBase, policyID)
 
 	req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer([]byte(regoContent)))
 	if err != nil {

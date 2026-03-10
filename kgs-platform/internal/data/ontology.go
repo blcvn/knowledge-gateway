@@ -6,20 +6,20 @@ import (
 	"fmt"
 	"time"
 
-	"kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/redis/go-redis/v9"
 )
 
-type ontologyRepo struct {
+type OntologyRepo struct {
 	data *Data
 	log  *log.Helper
 }
 
 // NewOntologyRepo .
-func NewOntologyRepo(data *Data, logger log.Logger) *ontologyRepo {
-	return &ontologyRepo{
+func NewOntologyRepo(data *Data, logger log.Logger) *OntologyRepo {
+	return &OntologyRepo{
 		data: data,
 		log:  log.NewHelper(logger),
 	}
@@ -31,17 +31,19 @@ const (
 	cacheTTL            = 5 * time.Minute
 )
 
-func (r *ontologyRepo) GetEntityType(ctx context.Context, appID, name string) (*biz.EntityType, error) {
+func (r *OntologyRepo) GetEntityType(ctx context.Context, appID, name string) (*biz.EntityType, error) {
 	cacheKey := fmt.Sprintf("%s%s:%s", entityCachePrefix, appID, name)
 
-	val, err := r.data.rc.Get(ctx, cacheKey).Result()
-	if err == nil {
-		var entityType biz.EntityType
-		if json.Unmarshal([]byte(val), &entityType) == nil {
-			return &entityType, nil
+	if r.data.rc != nil {
+		val, err := r.data.rc.Get(ctx, cacheKey).Result()
+		if err == nil {
+			var entityType biz.EntityType
+			if json.Unmarshal([]byte(val), &entityType) == nil {
+				return &entityType, nil
+			}
+		} else if err != redis.Nil {
+			r.log.Errorf("Redis Get error: %v", err)
 		}
-	} else if err != redis.Nil {
-		r.log.Errorf("Redis Get error: %v", err)
 	}
 
 	var entity biz.EntityType
@@ -49,24 +51,28 @@ func (r *ontologyRepo) GetEntityType(ctx context.Context, appID, name string) (*
 		return nil, err
 	}
 
-	if data, err := json.Marshal(entity); err == nil {
-		r.data.rc.Set(ctx, cacheKey, data, cacheTTL)
+	if r.data.rc != nil {
+		if data, err := json.Marshal(entity); err == nil {
+			_ = r.data.rc.Set(ctx, cacheKey, data, cacheTTL).Err()
+		}
 	}
 
 	return &entity, nil
 }
 
-func (r *ontologyRepo) GetRelationType(ctx context.Context, appID, name string) (*biz.RelationType, error) {
+func (r *OntologyRepo) GetRelationType(ctx context.Context, appID, name string) (*biz.RelationType, error) {
 	cacheKey := fmt.Sprintf("%s%s:%s", relationCachePrefix, appID, name)
 
-	val, err := r.data.rc.Get(ctx, cacheKey).Result()
-	if err == nil {
-		var relationType biz.RelationType
-		if json.Unmarshal([]byte(val), &relationType) == nil {
-			return &relationType, nil
+	if r.data.rc != nil {
+		val, err := r.data.rc.Get(ctx, cacheKey).Result()
+		if err == nil {
+			var relationType biz.RelationType
+			if json.Unmarshal([]byte(val), &relationType) == nil {
+				return &relationType, nil
+			}
+		} else if err != redis.Nil {
+			r.log.Errorf("Redis Get error: %v", err)
 		}
-	} else if err != redis.Nil {
-		r.log.Errorf("Redis Get error: %v", err)
 	}
 
 	var relation biz.RelationType
@@ -74,9 +80,27 @@ func (r *ontologyRepo) GetRelationType(ctx context.Context, appID, name string) 
 		return nil, err
 	}
 
-	if data, err := json.Marshal(relation); err == nil {
-		r.data.rc.Set(ctx, cacheKey, data, cacheTTL)
+	if r.data.rc != nil {
+		if data, err := json.Marshal(relation); err == nil {
+			_ = r.data.rc.Set(ctx, cacheKey, data, cacheTTL).Err()
+		}
 	}
 
 	return &relation, nil
+}
+
+func (r *OntologyRepo) InvalidateEntityType(ctx context.Context, appID, name string) error {
+	if r == nil || r.data == nil || r.data.rc == nil {
+		return nil
+	}
+	cacheKey := fmt.Sprintf("%s%s:%s", entityCachePrefix, appID, name)
+	return r.data.rc.Del(ctx, cacheKey).Err()
+}
+
+func (r *OntologyRepo) InvalidateRelationType(ctx context.Context, appID, name string) error {
+	if r == nil || r.data == nil || r.data.rc == nil {
+		return nil
+	}
+	cacheKey := fmt.Sprintf("%s%s:%s", relationCachePrefix, appID, name)
+	return r.data.rc.Del(ctx, cacheKey).Err()
 }

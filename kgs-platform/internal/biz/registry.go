@@ -21,17 +21,26 @@ type App struct {
 	Quotas  []Quota  `gorm:"foreignKey:AppID"`
 }
 
+func (App) TableName() string {
+	return "kgs_apps"
+}
+
 // APIKey represents an authentication key for an App.
 type APIKey struct {
-	KeyHash   string `gorm:"primaryKey;type:varchar(64)"` // SHA-256 hash of the key
+	KeyHash   string `gorm:"primaryKey;type:varchar(80)"` // SHA-256 hash of the key
 	AppID     string `gorm:"type:varchar(50);not null;index"`
 	KeyPrefix string `gorm:"type:varchar(10);not null"` // First few chars for identification
 	Name      string `gorm:"type:varchar(100)"`
 	Scopes    string `gorm:"type:varchar(500)"` // Comma-separated scopes (e.g., "read,write")
+	IsRevoked bool   `gorm:"default:false"`
 	ExpiresAt *time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+func (APIKey) TableName() string {
+	return "kgs_api_keys"
 }
 
 // Quota defines rate limits and resource limits for an App.
@@ -44,6 +53,10 @@ type Quota struct {
 	UpdatedAt time.Time
 }
 
+func (Quota) TableName() string {
+	return "kgs_quotas"
+}
+
 // AuditLog tracks administrative actions.
 type AuditLog struct {
 	ID        uint      `gorm:"primaryKey"`
@@ -52,4 +65,8 @@ type AuditLog struct {
 	Actor     string    `gorm:"type:varchar(100);not null"`
 	Details   string    `gorm:"type:text"`
 	CreatedAt time.Time `gorm:"index"`
+}
+
+func (AuditLog) TableName() string {
+	return "kgs_audit_logs"
 }
