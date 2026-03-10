@@ -32,7 +32,6 @@ type GraphRepo interface {
 
 type GraphUsecase struct {
 	repo        GraphRepo
-	ontology    *OntologySyncManager
 	validator   *OntologyValidator
 	planner     *QueryPlanner
 	opa         *OPAClient

@@ -2,189 +2,228 @@ package service
 
 import (
 	"context"
-	"sync"
+	"encoding/json"
+	"strings"
 
 	pb "github.com/blcvn/knowledge-gateway/kgs-platform/api/ontology/v1"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type OntologyService struct {
 	pb.UnimplementedOntologyServer
-	mu             sync.RWMutex
-	byApp          map[string]*ontologyStore
-	nextEntityID   uint32
-	nextRelationID uint32
+	db           *gorm.DB
+	ontologyRepo *data.OntologyRepo
 }
 
-type ontologyStore struct {
-	entities      map[string]*entityTypeItem
-	entityOrder   []string
-	relations     map[string]*relationTypeItem
-	relationOrder []string
-}
-
-type entityTypeItem struct {
-	ID     uint32
-	Name   string
-	Schema string
-}
-
-type relationTypeItem struct {
-	ID               uint32
-	Name             string
-	PropertiesSchema string
-	SourceTypes      []string
-	TargetTypes      []string
-}
-
-func NewOntologyService() *OntologyService {
+func NewOntologyService(db *gorm.DB, ontologyRepo *data.OntologyRepo) *OntologyService {
 	return &OntologyService{
-		byApp: make(map[string]*ontologyStore),
+		db:           db,
+		ontologyRepo: ontologyRepo,
 	}
 }
 
 func (s *OntologyService) CreateEntityType(ctx context.Context, req *pb.CreateEntityTypeRequest) (*pb.CreateEntityTypeReply, error) {
+	if s.db == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "ontology database is not configured")
+	}
 	appCtx, err := getAppContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if req.GetName() == "" {
+	name := strings.TrimSpace(req.GetName())
+	if name == "" {
 		return &pb.CreateEntityTypeReply{Status: "INVALID"}, nil
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	store := s.ensureStoreLocked(appCtx.AppID)
-	if item, ok := store.entities[req.GetName()]; ok {
-		return &pb.CreateEntityTypeReply{
-			Id:     item.ID,
-			Name:   item.Name,
-			Status: "EXISTS",
-		}, nil
+	rawSchema := strings.TrimSpace(req.GetSchema())
+	if rawSchema == "" {
+		rawSchema = "{}"
 	}
 
-	s.nextEntityID++
-	item := &entityTypeItem{
-		ID:     s.nextEntityID,
-		Name:   req.GetName(),
-		Schema: req.GetSchema(),
+	entity := biz.EntityType{
+		AppID:       appCtx.AppID,
+		TenantID:    appCtx.TenantID,
+		Name:        name,
+		Description: req.GetDescription(),
+		Schema:      datatypes.JSON([]byte(rawSchema)),
 	}
-	store.entities[item.Name] = item
-	store.entityOrder = append(store.entityOrder, item.Name)
+	if err := s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "app_id"},
+				{Name: "tenant_id"},
+				{Name: "name"},
+			},
+			DoUpdates: clause.Assignments(map[string]any{
+				"description": entity.Description,
+				"schema":      entity.Schema,
+				"updated_at":  gorm.Expr("CURRENT_TIMESTAMP"),
+			}),
+		}).
+		Create(&entity).Error; err != nil {
+		return nil, err
+	}
+
+	var persisted biz.EntityType
+	if err := s.db.WithContext(ctx).
+		Where("app_id = ? AND tenant_id = ? AND name = ?", appCtx.AppID, appCtx.TenantID, name).
+		First(&persisted).Error; err != nil {
+		return nil, err
+	}
+
+	if s.ontologyRepo != nil {
+		_ = s.ontologyRepo.InvalidateEntityType(ctx, appCtx.AppID, name)
+	}
 
 	return &pb.CreateEntityTypeReply{
-		Id:     item.ID,
-		Name:   item.Name,
-		Status: "CREATED",
+		Id:     uint32(persisted.ID),
+		Name:   persisted.Name,
+		Status: "UPSERTED",
 	}, nil
 }
+
 func (s *OntologyService) CreateRelationType(ctx context.Context, req *pb.CreateRelationTypeRequest) (*pb.CreateRelationTypeReply, error) {
+	if s.db == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "ontology database is not configured")
+	}
 	appCtx, err := getAppContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if req.GetName() == "" {
+	name := strings.TrimSpace(req.GetName())
+	if name == "" {
 		return &pb.CreateRelationTypeReply{Status: "INVALID"}, nil
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	sourceTypes, _ := json.Marshal(req.GetSourceTypes())
+	targetTypes, _ := json.Marshal(req.GetTargetTypes())
 
-	store := s.ensureStoreLocked(appCtx.AppID)
-	if item, ok := store.relations[req.GetName()]; ok {
-		return &pb.CreateRelationTypeReply{
-			Id:     item.ID,
-			Name:   item.Name,
-			Status: "EXISTS",
-		}, nil
+	rawPropertiesSchema := strings.TrimSpace(req.GetPropertiesSchema())
+	if rawPropertiesSchema == "" {
+		rawPropertiesSchema = "{}"
 	}
 
-	s.nextRelationID++
-	item := &relationTypeItem{
-		ID:               s.nextRelationID,
-		Name:             req.GetName(),
-		PropertiesSchema: req.GetPropertiesSchema(),
-		SourceTypes:      append([]string(nil), req.GetSourceTypes()...),
-		TargetTypes:      append([]string(nil), req.GetTargetTypes()...),
+	relation := biz.RelationType{
+		AppID:       appCtx.AppID,
+		TenantID:    appCtx.TenantID,
+		Name:        name,
+		Description: req.GetDescription(),
+		Properties:  datatypes.JSON([]byte(rawPropertiesSchema)),
+		SourceTypes: datatypes.JSON(sourceTypes),
+		TargetTypes: datatypes.JSON(targetTypes),
 	}
-	store.relations[item.Name] = item
-	store.relationOrder = append(store.relationOrder, item.Name)
+	if err := s.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "app_id"},
+				{Name: "tenant_id"},
+				{Name: "name"},
+			},
+			DoUpdates: clause.Assignments(map[string]any{
+				"description":  relation.Description,
+				"properties":   relation.Properties,
+				"source_types": relation.SourceTypes,
+				"target_types": relation.TargetTypes,
+				"updated_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+			}),
+		}).
+		Create(&relation).Error; err != nil {
+		return nil, err
+	}
+
+	var persisted biz.RelationType
+	if err := s.db.WithContext(ctx).
+		Where("app_id = ? AND tenant_id = ? AND name = ?", appCtx.AppID, appCtx.TenantID, name).
+		First(&persisted).Error; err != nil {
+		return nil, err
+	}
+
+	if s.ontologyRepo != nil {
+		_ = s.ontologyRepo.InvalidateRelationType(ctx, appCtx.AppID, name)
+	}
 
 	return &pb.CreateRelationTypeReply{
-		Id:     item.ID,
-		Name:   item.Name,
-		Status: "CREATED",
+		Id:     uint32(persisted.ID),
+		Name:   persisted.Name,
+		Status: "UPSERTED",
 	}, nil
 }
+
 func (s *OntologyService) ListEntityTypes(ctx context.Context, req *pb.ListEntityTypesRequest) (*pb.ListEntityTypesReply, error) {
 	_ = req
+	if s.db == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "ontology database is not configured")
+	}
 	appCtx, err := getAppContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	store, ok := s.byApp[appCtx.AppID]
-	if !ok {
-		return &pb.ListEntityTypesReply{Entities: []*pb.EntityTypeInfo{}}, nil
+	var entities []biz.EntityType
+	if err := s.db.WithContext(ctx).
+		Where("app_id = ? AND tenant_id = ?", appCtx.AppID, appCtx.TenantID).
+		Order("id ASC").
+		Find(&entities).Error; err != nil {
+		return nil, err
 	}
 
-	out := make([]*pb.EntityTypeInfo, 0, len(store.entityOrder))
-	for _, name := range store.entityOrder {
-		item := store.entities[name]
-		if item == nil {
-			continue
-		}
+	out := make([]*pb.EntityTypeInfo, 0, len(entities))
+	for i := range entities {
+		entity := entities[i]
 		out = append(out, &pb.EntityTypeInfo{
-			Id:     item.ID,
-			Name:   item.Name,
-			Schema: item.Schema,
+			Id:     uint32(entity.ID),
+			Name:   entity.Name,
+			Schema: string(entity.Schema),
 		})
 	}
 	return &pb.ListEntityTypesReply{Entities: out}, nil
 }
+
 func (s *OntologyService) ListRelationTypes(ctx context.Context, req *pb.ListRelationTypesRequest) (*pb.ListRelationTypesReply, error) {
 	_ = req
+	if s.db == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "ontology database is not configured")
+	}
 	appCtx, err := getAppContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	store, ok := s.byApp[appCtx.AppID]
-	if !ok {
-		return &pb.ListRelationTypesReply{Relations: []*pb.RelationTypeInfo{}}, nil
+	var relations []biz.RelationType
+	if err := s.db.WithContext(ctx).
+		Where("app_id = ? AND tenant_id = ?", appCtx.AppID, appCtx.TenantID).
+		Order("id ASC").
+		Find(&relations).Error; err != nil {
+		return nil, err
 	}
 
-	out := make([]*pb.RelationTypeInfo, 0, len(store.relationOrder))
-	for _, name := range store.relationOrder {
-		item := store.relations[name]
-		if item == nil {
-			continue
-		}
+	out := make([]*pb.RelationTypeInfo, 0, len(relations))
+	for i := range relations {
+		relation := relations[i]
 		out = append(out, &pb.RelationTypeInfo{
-			Id:               item.ID,
-			Name:             item.Name,
-			PropertiesSchema: item.PropertiesSchema,
-			SourceTypes:      append([]string(nil), item.SourceTypes...),
-			TargetTypes:      append([]string(nil), item.TargetTypes...),
+			Id:               uint32(relation.ID),
+			Name:             relation.Name,
+			PropertiesSchema: string(relation.Properties),
+			SourceTypes:      decodeJSONStringSlice(relation.SourceTypes),
+			TargetTypes:      decodeJSONStringSlice(relation.TargetTypes),
 		})
 	}
 	return &pb.ListRelationTypesReply{Relations: out}, nil
 }
 
-func (s *OntologyService) ensureStoreLocked(appID string) *ontologyStore {
-	if store, ok := s.byApp[appID]; ok {
-		return store
+func decodeJSONStringSlice(raw datatypes.JSON) []string {
+	if len(raw) == 0 {
+		return []string{}
 	}
-	store := &ontologyStore{
-		entities:  make(map[string]*entityTypeItem),
-		relations: make(map[string]*relationTypeItem),
+	var out []string
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return []string{}
 	}
-	s.byApp[appID] = store
-	return store
+	return out
 }

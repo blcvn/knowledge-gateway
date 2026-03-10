@@ -10,6 +10,7 @@ type OntologySyncManager struct {
 	log *log.Helper
 }
 
+// Deprecated: OntologySyncManager is a legacy stub and is no longer wired in runtime DI.
 func NewOntologySyncManager(logger log.Logger) *OntologySyncManager {
 	return &OntologySyncManager{
 		log: log.NewHelper(logger),
