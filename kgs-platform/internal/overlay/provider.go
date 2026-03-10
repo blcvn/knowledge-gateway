@@ -9,7 +9,11 @@ import (
 var ProviderSet = wire.NewSet(
 	NewRedisStore,
 	NewManager,
+	newEventPublisher,
 	NewSessionCloseListener,
 	wire.Bind(new(OverlayManager), new(*Manager)),
-	wire.Bind(new(EventPublisher), new(*data.NATSClient)),
 )
+
+func newEventPublisher(client *data.NATSClient) EventPublisher {
+	return client
+}

@@ -33,6 +33,7 @@ type GraphRepo interface {
 type GraphUsecase struct {
 	repo        GraphRepo
 	ontology    *OntologySyncManager
+	validator   *OntologyValidator
 	planner     *QueryPlanner
 	opa         *OPAClient
 	redisCli    *redis.Client
@@ -51,6 +52,7 @@ func NewGraphUsecase(
 	repo GraphRepo,
 	planner *QueryPlanner,
 	opa *OPAClient,
+	validator *OntologyValidator,
 	redisCli *redis.Client,
 	lockMgr lock.LockManager,
 	overlay OverlayDeltaWriter,
@@ -60,6 +62,7 @@ func NewGraphUsecase(
 		repo:        repo,
 		planner:     planner,
 		opa:         opa,
+		validator:   validator,
 		redisCli:    redisCli,
 		lockMgr:     lockMgr,
 		nodeLockTTL: lockTTLFromEnv(),
@@ -106,6 +109,11 @@ func (uc *GraphUsecase) CreateNode(ctx context.Context, appID, tenantID string, 
 			"action": "CREATE_NODE",
 			"label":  label,
 		})
+		observability.ObserveEntityWrite("create_node", err)
+		return nil, err
+	}
+
+	if err := uc.validator.ValidateEntity(lockCtx, appID, label, properties); err != nil {
 		observability.ObserveEntityWrite("create_node", err)
 		return nil, err
 	}
@@ -171,7 +179,11 @@ func (uc *GraphUsecase) CreateEdge(ctx context.Context, appID, tenantID string, 
 		defer uc.releaseLock(lockCtx, secondToken)
 	}
 
-	// TODO: Validate relation whitelist
+	if err := uc.validator.ValidateEdge(lockCtx, appID, tenantID, relationType, sourceNodeID, targetNodeID); err != nil {
+		observability.ObserveEntityWrite("create_edge", err)
+		return nil, err
+	}
+
 	result, err := uc.repo.CreateEdge(lockCtx, appID, tenantID, relationType, sourceNodeID, targetNodeID, properties)
 	observability.ObserveEntityWrite("create_edge", err)
 	return result, err

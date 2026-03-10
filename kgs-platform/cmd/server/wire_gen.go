@@ -7,8 +7,6 @@
 package main
 
 import (
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/log"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/analytics"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/batch"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
@@ -21,6 +19,8 @@ import (
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/server"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/service"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
+	"github.com/go-kratos/kratos/v2"
+	"github.com/go-kratos/kratos/v2/log"
 )
 
 import (
@@ -43,8 +43,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	registryService := service.NewRegistryService(registryUsecase)
 	ontologyService := service.NewOntologyService()
 	graphRepo := data.NewGraphRepo(dataData, logger)
+	ontologyRepo := data.NewOntologyRepo(dataData, logger)
 	queryPlanner := biz.NewQueryPlanner()
 	opaClient := biz.NewOPAClient(logger)
+	ontologyValidatorConfig := newOntologyValidatorConfig(confData)
+	ontologyValidator := biz.NewOntologyValidator(ontologyRepo, graphRepo, ontologyValidatorConfig, logger)
 	client := data.NewRedisClient(dataData)
 	redisLockManager := lock.NewRedisLockManager(client)
 	contextDriver := data.NewNeo4jDriver(dataData)
@@ -70,7 +73,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	redisStore := overlay.NewRedisStore(client)
 	overlayManager := overlay.NewManager(redisStore, versionManager, natsClient, logger)
 	engine2 := projection.NewEngine(db, logger)
-	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, client, redisLockManager, overlayManager, logger)
+	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, ontologyValidator, client, redisLockManager, overlayManager, logger)
 	graphService := service.NewGraphService(graphUsecase, usecase, engine, overlayManager, versionManager, engine1, engine2)
 	rulesRepo := data.NewRulesRepo(dataData, logger)
 	rulesUsecase := biz.NewRulesUsecase(rulesRepo, logger)

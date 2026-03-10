@@ -37,7 +37,7 @@ func (r *fakeGraphRepo) GetFullGraph(ctx context.Context, appID, tenantID string
 
 func TestGraphUsecaseGetContextDepth5UsesBatchedTraversal(t *testing.T) {
 	repo := &fakeGraphRepo{}
-	uc := NewGraphUsecase(repo, NewQueryPlanner(), nil, nil, nil, nil, log.NewStdLogger(io.Discard))
+	uc := NewGraphUsecase(repo, NewQueryPlanner(), nil, nil, nil, nil, nil, log.NewStdLogger(io.Discard))
 
 	_, err := uc.GetContext(context.Background(), "app-1", "tenant-1", "node-1", 5, "OUTGOING")
 	if err != nil {
@@ -127,7 +127,7 @@ func (w *fakeOverlayWriter) AddEdgeDelta(ctx context.Context, overlayID, namespa
 func TestGraphUsecaseRoutesWriteToOverlayWhenOverlayIDProvided(t *testing.T) {
 	repo := &fakeGraphRepo{}
 	overlay := &fakeOverlayWriter{}
-	uc := NewGraphUsecase(repo, NewQueryPlanner(), nil, nil, nil, overlay, log.NewStdLogger(io.Discard))
+	uc := NewGraphUsecase(repo, NewQueryPlanner(), nil, nil, nil, nil, overlay, log.NewStdLogger(io.Discard))
 
 	nodeProps := map[string]any{"overlay_id": "ov-1", "name": "N1"}
 	nodeOut, err := uc.CreateNode(context.Background(), "app-1", "tenant-1", "Requirement", nodeProps)
@@ -163,7 +163,7 @@ func TestGraphUsecaseRoutesWriteToOverlayWhenOverlayIDProvided(t *testing.T) {
 func TestGraphUsecaseReleaseLockUsesDetachedContext(t *testing.T) {
 	repo := &fakeGraphRepo{}
 	lockMgr := &captureLockManager{}
-	uc := NewGraphUsecase(repo, NewQueryPlanner(), nil, nil, lockMgr, nil, log.NewStdLogger(io.Discard))
+	uc := NewGraphUsecase(repo, NewQueryPlanner(), nil, nil, nil, lockMgr, nil, log.NewStdLogger(io.Discard))
 
 	lockCtx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -182,7 +182,7 @@ func TestGraphUsecaseCreateEdgeAcquiresNodeLocksInStableOrder(t *testing.T) {
 
 	repo := &fakeGraphRepo{}
 	lockMgr := &orderingLockManager{}
-	uc := NewGraphUsecase(repo, NewQueryPlanner(), nil, nil, lockMgr, nil, log.NewStdLogger(io.Discard))
+	uc := NewGraphUsecase(repo, NewQueryPlanner(), nil, nil, nil, lockMgr, nil, log.NewStdLogger(io.Discard))
 
 	_, err := uc.CreateEdge(context.Background(), "app-1", "tenant-1", "RELATES_TO", "node-b", "node-a", map[string]any{"id": "edge-1"})
 	if err != nil {
