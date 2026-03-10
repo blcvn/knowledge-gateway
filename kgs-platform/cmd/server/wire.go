@@ -30,5 +30,5 @@ func newBizOntologyRepo(repo *data.OntologyRepo) biz.OntologyRepo {
 
 // wireApp init kratos application.
 func wireApp(*conf.Server, *conf.Data, log.Logger) (*kratos.App, func(), error) {
-	panic(wire.Build(server.ProviderSet, data.ProviderSet, lock.ProviderSet, batch.ProviderSet, search.ProviderSet, version.ProviderSet, overlay.ProviderSet, analytics.ProviderSet, projection.ProviderSet, biz.ProviderSet, service.ProviderSet, newOntologyValidatorConfig, newBizOntologyRepo, newApp))
+	panic(wire.Build(server.ProviderSet, data.ProviderSet, lock.ProviderSet, batch.ProviderSet, search.ProviderSet, version.ProviderSet, overlay.ProviderSet, analytics.ProviderSet, projection.ProviderSet, biz.ProviderSet, service.ProviderSet, newOntologyValidatorConfig, newBizOntologyRepo, newBatchEntityValidator, newApp))
 }

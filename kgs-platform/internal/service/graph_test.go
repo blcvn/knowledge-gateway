@@ -74,7 +74,7 @@ func TestGraphServiceCreateNode(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, nil, nil, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -118,7 +118,7 @@ func TestGraphServiceGetNode(t *testing.T) {
 				"name":  "alice",
 			}, nil
 		},
-	}, nil, nil, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -140,6 +140,61 @@ func TestGraphServiceGetNode(t *testing.T) {
 	}
 	if props["name"] != "alice" {
 		t.Fatalf("unexpected properties: %#v", props)
+	}
+}
+
+func TestGraphServiceGetNode_UsesViewResolver(t *testing.T) {
+	resolverCalled := false
+	proj := &fakeProjectionEngine{
+		applyFn: func(ctx context.Context, namespace, role string, rawData map[string]any) (map[string]any, error) {
+			resolverCalled = true
+			return map[string]any{
+				"nodes": []map[string]any{
+					{
+						"id":    "node-1",
+						"label": "User",
+						"properties": map[string]any{
+							"id":   "node-1",
+							"name": "filtered",
+						},
+					},
+				},
+				"edges": []map[string]any{},
+			}, nil
+		},
+	}
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return map[string]any{
+				"id":    "node-1",
+				"label": "User",
+				"name":  "alice",
+			}, nil
+		},
+	}, nil, nil, nil, nil, nil, biz.NewViewResolver(proj), proj)
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-1",
+		TenantID: "tenant-1",
+		Scopes:   "BA",
+	})
+
+	resp, err := svc.GetNode(ctx, &pb.GetNodeRequest{NodeId: "node-1"})
+	if err != nil {
+		t.Fatalf("GetNode error: %v", err)
+	}
+	if !resolverCalled {
+		t.Fatalf("expected view resolver to be called")
+	}
+	var props map[string]any
+	if err := json.Unmarshal([]byte(resp.PropertiesJson), &props); err != nil {
+		t.Fatalf("invalid properties json: %v", err)
+	}
+	if props["name"] != "filtered" {
+		t.Fatalf("expected projected value, got %#v", props["name"])
 	}
 }
 
@@ -185,7 +240,7 @@ func TestGraphServiceGetFullGraph(t *testing.T) {
 				TotalEdges: 1,
 			}, nil
 		},
-	}, nil, nil, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -225,7 +280,7 @@ func TestGraphServiceGetFullGraphRejectsScopeMismatch(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, nil, nil, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -258,7 +313,7 @@ func TestGraphServiceGetFullGraphEmptyGraph(t *testing.T) {
 				TotalEdges: 0,
 			}, nil
 		},
-	}, nil, nil, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-empty",
@@ -416,7 +471,7 @@ func TestGraphServiceBatchUpsertEntities(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil, nil, nil)
+	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -446,7 +501,7 @@ func TestGraphServiceBatchUpsertEntities100(t *testing.T) {
 		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
 			return nil, nil
 		},
-	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil, nil, nil)
+	}, batch.NewUsecase(&fakeBatchWriter{}, &fakeBatchDeduper{}), nil, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -511,7 +566,7 @@ func TestGraphServiceHybridSearch(t *testing.T) {
 				TextScore:     0.89,
 			},
 		},
-	}, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -579,7 +634,7 @@ func TestGraphServiceOverlayAndVersionRPCs(t *testing.T) {
 		rollbackFn: func(ctx context.Context, namespace, targetVersionID, reason string) (string, error) {
 			return "v3", nil
 		},
-	}, nil, nil)
+	}, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",
@@ -666,7 +721,7 @@ func TestGraphServiceCoverageAndTraceabilityAPI(t *testing.T) {
 				ComputeDurationMs: 120,
 			}, nil
 		},
-	}, nil)
+	}, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",

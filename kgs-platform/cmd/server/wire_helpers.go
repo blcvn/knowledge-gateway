@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/batch"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
 )
@@ -16,4 +17,8 @@ func newOntologyValidatorConfig(confData *conf.Data) biz.OntologyValidatorConfig
 		SchemaValidation:    ontology.GetSchemaValidation(),
 		EdgeConstraintCheck: ontology.GetEdgeConstraintCheck(),
 	}
+}
+
+func newBatchEntityValidator(validator *biz.OntologyValidator) batch.EntityValidator {
+	return validator
 }

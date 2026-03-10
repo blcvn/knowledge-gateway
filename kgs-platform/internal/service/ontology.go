@@ -8,6 +8,7 @@ import (
 	pb "github.com/blcvn/knowledge-gateway/kgs-platform/api/ontology/v1"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"gorm.io/datatypes"
@@ -19,12 +20,14 @@ type OntologyService struct {
 	pb.UnimplementedOntologyServer
 	db           *gorm.DB
 	ontologyRepo *data.OntologyRepo
+	projection   *projection.OntologyProjectionSync
 }
 
-func NewOntologyService(db *gorm.DB, ontologyRepo *data.OntologyRepo) *OntologyService {
+func NewOntologyService(db *gorm.DB, ontologyRepo *data.OntologyRepo, projectionSync *projection.OntologyProjectionSync) *OntologyService {
 	return &OntologyService{
 		db:           db,
 		ontologyRepo: ontologyRepo,
+		projection:   projectionSync,
 	}
 }
 
@@ -79,6 +82,11 @@ func (s *OntologyService) CreateEntityType(ctx context.Context, req *pb.CreateEn
 
 	if s.ontologyRepo != nil {
 		_ = s.ontologyRepo.InvalidateEntityType(ctx, appCtx.AppID, name)
+	}
+	if s.projection != nil {
+		if err := s.projection.SyncAllRoleViews(ctx, appCtx.AppID, appCtx.TenantID); err != nil {
+			return nil, err
+		}
 	}
 
 	return &pb.CreateEntityTypeReply{

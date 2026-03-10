@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// ProviderSet wires projection engine dependencies.
-var ProviderSet = wire.NewSet(NewEngine)
+// ProviderSet wires projection dependencies.
+var ProviderSet = wire.NewSet(NewEngine, NewOntologyProjectionSync)
 
 type ProjectionEngine interface {
 	Apply(ctx context.Context, namespace, role string, rawData map[string]any) (map[string]any, error)

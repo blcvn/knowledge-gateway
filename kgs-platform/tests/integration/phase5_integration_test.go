@@ -21,7 +21,7 @@ import (
 )
 
 func TestPhase5Integration_Batch(t *testing.T) {
-	uc := batch.NewUsecaseWithIndexer(&integrationWriter{}, &integrationDeduper{}, &integrationIndexer{})
+	uc := batch.NewUsecaseWithIndexer(&integrationWriter{}, &integrationDeduper{}, &integrationIndexer{}, nil)
 	out, err := uc.Execute(context.Background(), batch.BatchUpsertRequest{
 		AppID:    "app-1",
 		TenantID: "tenant-1",

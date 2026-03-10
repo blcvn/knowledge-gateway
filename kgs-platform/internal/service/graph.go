@@ -26,13 +26,14 @@ import (
 
 type GraphService struct {
 	pb.UnimplementedGraphServer
-	uc         GraphUsecase
-	batchUC    *batch.Usecase
-	searchUC   search.SearchEngine
-	overlay    overlay.OverlayManager
-	version    version.VersionManager
-	analytics  analytics.AnalyticsEngine
-	projection projection.ProjectionEngine
+	uc           GraphUsecase
+	batchUC      *batch.Usecase
+	searchUC     search.SearchEngine
+	overlay      overlay.OverlayManager
+	version      version.VersionManager
+	analytics    analytics.AnalyticsEngine
+	projection   projection.ProjectionEngine
+	viewResolver *biz.ViewResolver
 }
 
 type GraphUsecase interface {
@@ -53,16 +54,18 @@ func NewGraphService(
 	overlayMgr overlay.OverlayManager,
 	versionMgr version.VersionManager,
 	analyticsEngine analytics.AnalyticsEngine,
+	viewResolver *biz.ViewResolver,
 	projectionEngine projection.ProjectionEngine,
 ) *GraphService {
 	return &GraphService{
-		uc:         uc,
-		batchUC:    batchUC,
-		searchUC:   searchUC,
-		overlay:    overlayMgr,
-		version:    versionMgr,
-		analytics:  analyticsEngine,
-		projection: projectionEngine,
+		uc:           uc,
+		batchUC:      batchUC,
+		searchUC:     searchUC,
+		overlay:      overlayMgr,
+		version:      versionMgr,
+		analytics:    analyticsEngine,
+		viewResolver: viewResolver,
+		projection:   projectionEngine,
 	}
 }
 
@@ -648,7 +651,7 @@ func (s *GraphService) DeleteViewDefinition(ctx context.Context, req *pb.DeleteV
 }
 
 func (s *GraphService) applyProjectionToSingleNode(ctx context.Context, appCtx middleware.AppContext, raw map[string]any) (map[string]any, error) {
-	if s.projection == nil {
+	if s.viewResolver == nil {
 		return raw, nil
 	}
 	role := projectionRole(ctx, appCtx)
@@ -662,7 +665,7 @@ func (s *GraphService) applyProjectionToSingleNode(ctx context.Context, appCtx m
 		"label":      label,
 		"properties": raw,
 	}
-	projected, err := s.projection.Apply(ctx, biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID), role, map[string]any{
+	projected, err := s.viewResolver.Resolve(ctx, biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID), role, map[string]any{
 		"nodes": []map[string]any{nodeRaw},
 		"edges": []map[string]any{},
 	})
@@ -684,7 +687,7 @@ func (s *GraphService) applyProjectionToSingleNode(ctx context.Context, appCtx m
 }
 
 func (s *GraphService) applyProjectionToGraphReply(ctx context.Context, appCtx middleware.AppContext, reply *pb.GraphReply) (*pb.GraphReply, error) {
-	if s.projection == nil || reply == nil {
+	if s.viewResolver == nil || reply == nil {
 		return reply, nil
 	}
 	role := projectionRole(ctx, appCtx)
@@ -719,7 +722,7 @@ func (s *GraphService) applyProjectionToGraphReply(ctx context.Context, appCtx m
 		})
 	}
 
-	projected, err := s.projection.Apply(ctx, biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID), role, map[string]any{
+	projected, err := s.viewResolver.Resolve(ctx, biz.ComputeNamespace(appCtx.AppID, appCtx.TenantID), role, map[string]any{
 		"nodes": nodes,
 		"edges": edges,
 	})

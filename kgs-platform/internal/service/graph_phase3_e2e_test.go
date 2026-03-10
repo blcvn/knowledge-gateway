@@ -107,7 +107,7 @@ func TestPhase3OverlayLifecycleViaAPI(t *testing.T) {
 	overlayMgr := overlay.NewManager(store, versionMgr, nil, log.DefaultLogger)
 	repo := &phase3Repo{}
 	graphUC := biz.NewGraphUsecase(repo, biz.NewQueryPlanner(), nil, nil, nil, nil, overlayMgr, log.NewStdLogger(io.Discard))
-	svc := NewGraphService(graphUC, nil, nil, overlayMgr, versionMgr, nil, nil)
+	svc := NewGraphService(graphUC, nil, nil, overlayMgr, versionMgr, nil, nil, nil)
 
 	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
 		AppID:    "app-1",

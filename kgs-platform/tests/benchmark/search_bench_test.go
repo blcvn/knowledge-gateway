@@ -22,7 +22,7 @@ func BenchmarkHybridSearch(b *testing.B) {
 }
 
 func BenchmarkBatchUpsert(b *testing.B) {
-	uc := batch.NewUsecaseWithIndexer(&benchWriter{}, &benchDeduper{}, &benchIndexer{})
+	uc := batch.NewUsecaseWithIndexer(&benchWriter{}, &benchDeduper{}, &benchIndexer{}, nil)
 	entities := make([]batch.Entity, 0, 200)
 	for i := 0; i < 200; i++ {
 		entities = append(entities, batch.Entity{Label: "Requirement", Properties: map[string]any{"name": "FR"}})

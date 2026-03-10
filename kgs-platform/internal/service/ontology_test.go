@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -10,8 +11,10 @@ import (
 
 	pb "github.com/blcvn/knowledge-gateway/kgs-platform/api/ontology/v1"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/server/middleware"
 
+	"github.com/go-kratos/kratos/v2/log"
 	"gorm.io/datatypes"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -23,10 +26,11 @@ func newOntologyServiceForTest(t *testing.T, dbPath string) (*OntologyService, *
 	if err != nil {
 		t.Fatalf("failed to open sqlite db: %v", err)
 	}
-	if err := db.AutoMigrate(&biz.EntityType{}, &biz.RelationType{}); err != nil {
+	if err := db.AutoMigrate(&biz.EntityType{}, &biz.RelationType{}, &projection.ViewDefinitionRecord{}); err != nil {
 		t.Fatalf("failed to migrate schema: %v", err)
 	}
-	return NewOntologyService(db, nil), db
+	syncer := projection.NewOntologyProjectionSync(db, log.NewStdLogger(io.Discard))
+	return NewOntologyService(db, nil, syncer), db
 }
 
 func closeTestDB(t *testing.T, db *gorm.DB) {
@@ -228,5 +232,41 @@ func TestOntologyServiceDataPersistsAcrossRestart(t *testing.T) {
 	}
 	if len(reply.GetEntities()) != 1 || reply.GetEntities()[0].GetName() != "Actor" {
 		t.Fatalf("expected persisted entity Actor, got %#v", reply.GetEntities())
+	}
+}
+
+func TestOntologyServiceCreateEntityType_SyncsViewAllowedEntityTypes(t *testing.T) {
+	service, db := newOntologyServiceForTest(t, testMemoryDBDSN(t))
+	defer closeTestDB(t, db)
+
+	if err := db.Create(&projection.ViewDefinitionRecord{
+		ID:                     "view-ba",
+		AppID:                  "app-test",
+		TenantID:               "tenant-test",
+		RoleName:               "BA",
+		AllowedEntityTypesJSON: `["Requirement"]`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed view definition: %v", err)
+	}
+
+	if _, err := service.CreateEntityType(testAppContext(), &pb.CreateEntityTypeRequest{
+		Name:        "UseCase",
+		Description: "use case type",
+		Schema:      `{"type":"object"}`,
+	}); err != nil {
+		t.Fatalf("CreateEntityType failed: %v", err)
+	}
+
+	var updated projection.ViewDefinitionRecord
+	if err := db.Where("id = ?", "view-ba").Take(&updated).Error; err != nil {
+		t.Fatalf("failed to load updated view: %v", err)
+	}
+	var got []string
+	if err := json.Unmarshal([]byte(updated.AllowedEntityTypesJSON), &got); err != nil {
+		t.Fatalf("failed to decode allowed types: %v", err)
+	}
+	want := []string{"Requirement", "UseCase"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected allowed entity types: got=%v want=%v", got, want)
 	}
 }

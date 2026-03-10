@@ -46,21 +46,27 @@ type VectorIndexer interface {
 	IndexEntities(ctx context.Context, appID, tenantID string, entities []Entity) error
 }
 
+type EntityValidator interface {
+	ValidateEntity(ctx context.Context, appID, label string, properties map[string]any) error
+}
+
 type Usecase struct {
-	writer  Writer
-	deduper Deduper
-	indexer VectorIndexer
+	writer    Writer
+	deduper   Deduper
+	indexer   VectorIndexer
+	validator EntityValidator
 }
 
 func NewUsecase(writer Writer, deduper Deduper) *Usecase {
-	return NewUsecaseWithIndexer(writer, deduper, nil)
+	return NewUsecaseWithIndexer(writer, deduper, nil, nil)
 }
 
-func NewUsecaseWithIndexer(writer Writer, deduper Deduper, indexer VectorIndexer) *Usecase {
+func NewUsecaseWithIndexer(writer Writer, deduper Deduper, indexer VectorIndexer, validator EntityValidator) *Usecase {
 	return &Usecase{
-		writer:  writer,
-		deduper: deduper,
-		indexer: indexer,
+		writer:    writer,
+		deduper:   deduper,
+		indexer:   indexer,
+		validator: validator,
 	}
 }
 
@@ -86,6 +92,13 @@ func (u *Usecase) Execute(ctx context.Context, req BatchUpsertRequest) (*BatchUp
 		}
 		if _, ok := unique[i].Properties["id"].(string); !ok {
 			unique[i].Properties["id"] = uuid.NewString()
+		}
+	}
+	if u.validator != nil {
+		for i := range unique {
+			if err := u.validator.ValidateEntity(ctx, req.AppID, unique[i].Label, unique[i].Properties); err != nil {
+				return nil, fmt.Errorf("entity[%d] ontology validation: %w", i, err)
+			}
 		}
 	}
 
