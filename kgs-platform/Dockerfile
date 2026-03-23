@@ -1,9 +1,13 @@
 FROM golang:1.25 AS builder
 
-COPY . /src
-WORKDIR /src
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
+ENV GOWORK=off
 
-RUN GOPROXY=https://goproxy.cn make build
+COPY . /src
+WORKDIR /src/services/ai-kg-service/kgs-platform
+
+RUN make build
 
 FROM debian:stable-slim
 
@@ -13,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         && rm -rf /var/lib/apt/lists/ \
         && apt-get autoremove -y && apt-get autoclean -y
 
-COPY --from=builder /src/bin /app
+COPY --from=builder /src/services/ai-kg-service/kgs-platform/bin /app
 
 WORKDIR /app
 
@@ -21,4 +25,4 @@ EXPOSE 8000
 EXPOSE 9000
 VOLUME /data/conf
 
-CMD ["./server", "-conf", "/data/conf"]
+CMD ["./server", "-conf", "/data/conf/config.yaml"]
