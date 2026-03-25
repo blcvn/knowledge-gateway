@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"kgs-platform/internal/biz"
+	"kgs-platform/internal/kafka"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/transport"
@@ -14,14 +15,16 @@ type WorkerServer struct {
 	scheduler  *biz.RuleRunner
 	events     *biz.EventRunner
 	policySync *biz.PolicySyncRunner
+	kafka      *kafka.Consumer
 	log        *log.Helper
 }
 
-func NewWorkerServer(scheduler *biz.RuleRunner, events *biz.EventRunner, policySync *biz.PolicySyncRunner, logger log.Logger) *WorkerServer {
+func NewWorkerServer(scheduler *biz.RuleRunner, events *biz.EventRunner, policySync *biz.PolicySyncRunner, kafka *kafka.Consumer, logger log.Logger) *WorkerServer {
 	return &WorkerServer{
 		scheduler:  scheduler,
 		events:     events,
 		policySync: policySync,
+		kafka:      kafka,
 		log:        log.NewHelper(logger),
 	}
 }
@@ -38,12 +41,21 @@ func (s *WorkerServer) Start(ctx context.Context) error {
 	if err := s.policySync.Start(ctx); err != nil {
 		return err
 	}
+	if s.kafka != nil {
+		s.kafka.Start(ctx)
+		s.log.Info("[WorkerServer] kafka consumer started")
+	}
 	return nil
 }
 
 // Stop shuts down the background worker
 func (s *WorkerServer) Stop(ctx context.Context) error {
 	s.log.Info("[WorkerServer] stopping...")
+	if s.kafka != nil {
+		if err := s.kafka.Close(); err != nil {
+			s.log.Errorf("failed to stop kafka consumer: %v", err)
+		}
+	}
 	if err := s.policySync.Stop(ctx); err != nil {
 		s.log.Errorf("failed to stop policy sync runner: %v", err)
 	}

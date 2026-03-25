@@ -46,8 +46,18 @@ message Data {
   message OPA {
     string url = 1;
   }
+  message Qdrant {
+    string url = 1;
+    string collection = 2;
+  }
+  message Kafka {
+    repeated string brokers = 1;
+    string topic_document_ingested = 2;
+  }
   Database database = 1;
   Redis redis = 2;
   Neo4j neo4j = 3;
   OPA opa = 4;
+  Qdrant qdrant = 5;
+  Kafka kafka = 6;
 }

@@ -25,8 +25,14 @@ func NewRedisClient(data *Data) *redis.Client {
 type Data struct {
 	db    *gorm.DB
 	neo4j neo4j.DriverWithContext
-	rc    *redis.Client
-	opa   string
+	rc     *redis.Client
+	qdrant *QdrantClient
+	opa    string
+}
+
+// Qdrant returns the Qdrant client
+func (d *Data) Qdrant() *QdrantClient {
+	return d.qdrant
 }
 
 // NewData .
@@ -54,6 +60,9 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		helper.Errorf("failed to auto-migrate postgres schemas: %v", err)
 	}
 
+	// Seed Ontology
+	SeedOntology(context.Background(), db, logger)
+
 	// Neo4j Setup
 	driver, err := neo4j.NewDriverWithContext(
 		c.Neo4J.Uri,
@@ -78,10 +87,11 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	}
 
 	d := &Data{
-		db:    db,
-		neo4j: driver,
-		rc:    rdb,
-		opa:   c.Opa.Url,
+		db:     db,
+		neo4j:  driver,
+		rc:     rdb,
+		qdrant: NewQdrantClient(c.Qdrant.Url, c.Qdrant.Collection),
+		opa:    c.Opa.Url,
 	}
 
 	cleanup := func() {

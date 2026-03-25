@@ -14,6 +14,7 @@ import (
 	"kgs-platform/internal/data"
 	"kgs-platform/internal/server"
 	"kgs-platform/internal/service"
+	"kgs-platform/internal/kafka"
 )
 
 import (
@@ -50,7 +51,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	ruleRunner := biz.NewRuleRunner(rulesRepo, graphRepo, logger)
 	eventRunner := biz.NewEventRunner(rulesRepo, graphRepo, client, logger)
 	policySyncRunner := biz.NewPolicySyncRunner(policyRepo, opaClient, logger)
-	workerServer := server.NewWorkerServer(ruleRunner, eventRunner, policySyncRunner, logger)
+	consumer := kafka.NewConsumer(confData, graphUsecase)
+	workerServer := server.NewWorkerServer(ruleRunner, eventRunner, policySyncRunner, consumer, logger)
 	app := newApp(logger, grpcServer, httpServer, workerServer)
 	return app, func() {
 		cleanup()

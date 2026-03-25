@@ -22,3 +22,10 @@ data:
     database: kgs
   opa:
     url: http://localhost:8181
+  qdrant:
+    url: "http://localhost:6333"
+    collection: "knowledge_chunks"
+  kafka:
+    brokers:
+      - "localhost:9092"
+    topic_document_ingested: "document.ingested"

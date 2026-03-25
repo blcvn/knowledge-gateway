@@ -11,6 +11,8 @@ import (
 // GraphRepo defines the graph data persistence interface
 type GraphRepo interface {
 	CreateNode(ctx context.Context, appID string, label string, properties map[string]any) (map[string]any, error)
+	UpdateNode(ctx context.Context, appID string, nodeID string, properties map[string]any) (map[string]any, error)
+	DeleteNode(ctx context.Context, appID string, nodeID string) error
 	CreateEdge(ctx context.Context, appID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error)
 	ExecuteQuery(ctx context.Context, cypher string, params map[string]any) (map[string]any, error)
 }
@@ -62,6 +64,60 @@ func (uc *GraphUsecase) CreateNode(ctx context.Context, appID string, label stri
 	})
 
 	return result, nil
+}
+
+func (uc *GraphUsecase) UpdateNode(ctx context.Context, appID string, nodeID string, properties map[string]any) (map[string]any, error) {
+	// 1. OPA Policy Check
+	allowed, err := uc.opa.EvaluatePolicy(ctx, appID, "UPDATE_NODE", "*")
+	if err != nil {
+		uc.log.Errorf("OPA evaluation failed: %v", err)
+		return nil, err
+	}
+	if !allowed {
+		return nil, errors.New("access denied by OPA policy")
+	}
+
+	result, err := uc.repo.UpdateNode(ctx, appID, nodeID, properties)
+	if err != nil {
+		return nil, err
+	}
+
+	uc.redisCli.XAdd(ctx, &redis.XAddArgs{
+		Stream: "kgs:events:nodes",
+		Values: map[string]interface{}{
+			"event_type": "node.updated",
+			"app_id":     appID,
+			"node_id":    nodeID,
+		},
+	})
+	return result, nil
+}
+
+func (uc *GraphUsecase) DeleteNode(ctx context.Context, appID string, nodeID string) error {
+	// 1. OPA Policy Check
+	allowed, err := uc.opa.EvaluatePolicy(ctx, appID, "DELETE_NODE", "*")
+	if err != nil {
+		uc.log.Errorf("OPA evaluation failed: %v", err)
+		return err
+	}
+	if !allowed {
+		return errors.New("access denied by OPA policy")
+	}
+
+	err = uc.repo.DeleteNode(ctx, appID, nodeID)
+	if err != nil {
+		return err
+	}
+
+	uc.redisCli.XAdd(ctx, &redis.XAddArgs{
+		Stream: "kgs:events:nodes",
+		Values: map[string]interface{}{
+			"event_type": "node.deleted",
+			"app_id":     appID,
+			"node_id":    nodeID,
+		},
+	})
+	return nil
 }
 
 func (uc *GraphUsecase) CreateEdge(ctx context.Context, appID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error) {

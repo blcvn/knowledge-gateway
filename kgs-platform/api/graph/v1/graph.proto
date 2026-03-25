@@ -29,6 +29,22 @@ service Graph {
       body: "*"
     };
   }
+
+  // Update a node's properties
+  rpc UpdateNode (UpdateNodeRequest) returns (UpdateNodeReply) {
+    option (google.api.http) = {
+      put: "/v1/graph/nodes/{node_id}"
+      body: "*"
+    };
+  }
+
+  // Delete a node
+  rpc DeleteNode (DeleteNodeRequest) returns (DeleteNodeReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/nodes/{node_id}"
+    };
+  }
+
   // Get contextual neighborhood around a node
   rpc GetContext (GetContextRequest) returns (GraphReply) {
     option (google.api.http) = {
@@ -93,6 +109,25 @@ message CreateEdgeReply {
   string target_node_id = 3;
   string relation_type = 4;
   string properties_json = 5;
+}
+
+message UpdateNodeRequest {
+  string app_id   = 1;
+  string node_id  = 2;
+  map<string, string> properties = 3;
+}
+
+message UpdateNodeReply {
+  GraphNode node = 1;
+}
+
+message DeleteNodeRequest {
+  string app_id  = 1;
+  string node_id = 2;
+}
+
+message DeleteNodeReply {
+  bool success = 1;
 }
 
 message GetContextRequest {
