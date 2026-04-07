@@ -35,6 +35,15 @@ func (r *phase3Repo) ExecuteQuery(ctx context.Context, cypher string, params map
 func (r *phase3Repo) GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error) {
 	return &biz.FullGraphResult{}, nil
 }
+func (r *phase3Repo) DeleteNode(ctx context.Context, appID, tenantID, nodeID string) (int, error) {
+	return 0, nil
+}
+func (r *phase3Repo) DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error {
+	return nil
+}
+func (r *phase3Repo) BatchDeleteNodes(ctx context.Context, appID, tenantID string, nodeIDs []string) (int, int, error) {
+	return 0, 0, nil
+}
 
 type memOverlayStore struct {
 	items       map[string]*overlay.OverlayGraph
@@ -104,7 +113,7 @@ func TestPhase3OverlayLifecycleViaAPI(t *testing.T) {
 	}
 
 	store := newMemOverlayStore()
-	overlayMgr := overlay.NewManager(store, versionMgr, nil, log.DefaultLogger)
+	overlayMgr := overlay.NewManager(store, versionMgr, nil, nil, log.DefaultLogger)
 	repo := &phase3Repo{}
 	graphUC := biz.NewGraphUsecase(repo, biz.NewQueryPlanner(), nil, nil, nil, nil, overlayMgr, log.NewStdLogger(io.Discard))
 	svc := NewGraphService(graphUC, nil, nil, overlayMgr, versionMgr, nil, nil, nil)

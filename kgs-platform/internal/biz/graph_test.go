@@ -11,9 +11,12 @@ import (
 )
 
 type fakeGraphRepo struct {
-	queryCalls      int
-	createNodeCalls int
-	createEdgeCalls int
+	queryCalls       int
+	createNodeCalls  int
+	createEdgeCalls  int
+	deleteNodeCalls  int
+	deleteEdgeCalls  int
+	batchDeleteCalls int
 }
 
 func (r *fakeGraphRepo) CreateNode(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
@@ -34,6 +37,18 @@ func (r *fakeGraphRepo) ExecuteQuery(ctx context.Context, cypher string, params 
 func (r *fakeGraphRepo) GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*FullGraphResult, error) {
 	return &FullGraphResult{}, nil
 }
+func (r *fakeGraphRepo) DeleteNode(ctx context.Context, appID, tenantID, nodeID string) (int, error) {
+	r.deleteNodeCalls++
+	return 0, nil
+}
+func (r *fakeGraphRepo) DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error {
+	r.deleteEdgeCalls++
+	return nil
+}
+func (r *fakeGraphRepo) BatchDeleteNodes(ctx context.Context, appID, tenantID string, nodeIDs []string) (int, int, error) {
+	r.batchDeleteCalls++
+	return len(nodeIDs), 0, nil
+}
 
 func TestGraphUsecaseGetContextDepth5UsesBatchedTraversal(t *testing.T) {
 	repo := &fakeGraphRepo{}
@@ -50,8 +65,10 @@ func TestGraphUsecaseGetContextDepth5UsesBatchedTraversal(t *testing.T) {
 }
 
 type fakeOverlayWriter struct {
-	entityCalls int
-	edgeCalls   int
+	entityCalls       int
+	edgeCalls         int
+	deleteEntityCalls int
+	deleteEdgeCalls   int
 }
 
 type captureLockManager struct {
@@ -122,6 +139,16 @@ func (w *fakeOverlayWriter) AddEntityDelta(ctx context.Context, overlayID, names
 func (w *fakeOverlayWriter) AddEdgeDelta(ctx context.Context, overlayID, namespace, relationType, sourceNodeID, targetNodeID string, properties map[string]any) (map[string]any, error) {
 	w.edgeCalls++
 	return map[string]any{"id": properties["id"], "overlay_id": overlayID, "relation_type": relationType}, nil
+}
+
+func (w *fakeOverlayWriter) DeleteEntityDelta(ctx context.Context, overlayID, nodeID string) error {
+	w.deleteEntityCalls++
+	return nil
+}
+
+func (w *fakeOverlayWriter) DeleteEdgeDelta(ctx context.Context, overlayID, edgeID string) error {
+	w.deleteEdgeCalls++
+	return nil
 }
 
 func TestGraphUsecaseRoutesWriteToOverlayWhenOverlayIDProvided(t *testing.T) {

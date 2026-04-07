@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -28,6 +29,9 @@ type GraphRepo interface {
 	CreateEdge(ctx context.Context, appID, tenantID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error)
 	ExecuteQuery(ctx context.Context, cypher string, params map[string]any) (map[string]any, error)
 	GetFullGraph(ctx context.Context, appID, tenantID string, limit, offset int) (*FullGraphResult, error)
+	DeleteNode(ctx context.Context, appID, tenantID, nodeID string) (edgesRemoved int, err error)
+	DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error
+	BatchDeleteNodes(ctx context.Context, appID, tenantID string, nodeIDs []string) (deleted, edgesRemoved int, err error)
 }
 
 type GraphUsecase struct {
@@ -45,6 +49,8 @@ type GraphUsecase struct {
 type OverlayDeltaWriter interface {
 	AddEntityDelta(ctx context.Context, overlayID, namespace, label string, properties map[string]any) (map[string]any, error)
 	AddEdgeDelta(ctx context.Context, overlayID, namespace, relationType, sourceNodeID, targetNodeID string, properties map[string]any) (map[string]any, error)
+	DeleteEntityDelta(ctx context.Context, overlayID, nodeID string) error
+	DeleteEdgeDelta(ctx context.Context, overlayID, edgeID string) error
 }
 
 func NewGraphUsecase(
@@ -263,6 +269,91 @@ func (uc *GraphUsecase) GetFullGraph(ctx context.Context, appID, tenantID string
 	return uc.repo.GetFullGraph(ctx, appID, tenantID, limit, offset)
 }
 
+func (uc *GraphUsecase) DeleteNode(ctx context.Context, appID, tenantID, nodeID string) (int, error) {
+	if overlayID := overlayIDFromContext(ctx); overlayID != "" {
+		if uc.overlay == nil {
+			err := ErrNotConfigured("overlay writer is not configured", map[string]string{"component": "overlay_writer"})
+			observability.ObserveEntityWrite("delete_node_overlay", err)
+			return 0, err
+		}
+		err := uc.overlay.DeleteEntityDelta(ctx, overlayID, nodeID)
+		observability.ObserveEntityWrite("delete_node_overlay", err)
+		return 0, err
+	}
+
+	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
+	lockToken, err := uc.acquireNodeLock(lockCtx, appID, tenantID, nodeID)
+	if err != nil {
+		observability.ObserveEntityWrite("delete_node", err)
+		return 0, err
+	}
+	defer uc.releaseLock(lockCtx, lockToken)
+
+	edgesRemoved, err := uc.repo.DeleteNode(lockCtx, appID, tenantID, nodeID)
+	observability.ObserveEntityWrite("delete_node", err)
+	if err != nil {
+		return 0, err
+	}
+
+	if uc.redisCli != nil {
+		_ = uc.redisCli.XAdd(lockCtx, &redis.XAddArgs{
+			Stream: fmt.Sprintf("kgs:events:%s:%s", appID, tenantID),
+			Values: map[string]any{
+				"event":         "node.deleted",
+				"node_id":       nodeID,
+				"edges_removed": edgesRemoved,
+			},
+		}).Err()
+	}
+	return edgesRemoved, nil
+}
+
+func (uc *GraphUsecase) DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error {
+	if overlayID := overlayIDFromContext(ctx); overlayID != "" {
+		if uc.overlay == nil {
+			err := ErrNotConfigured("overlay writer is not configured", map[string]string{"component": "overlay_writer"})
+			observability.ObserveEntityWrite("delete_edge_overlay", err)
+			return err
+		}
+		err := uc.overlay.DeleteEdgeDelta(ctx, overlayID, edgeID)
+		observability.ObserveEntityWrite("delete_edge_overlay", err)
+		return err
+	}
+
+	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
+	lockToken, err := uc.acquireNodeLock(lockCtx, appID, tenantID, edgeID)
+	if err != nil {
+		observability.ObserveEntityWrite("delete_edge", err)
+		return err
+	}
+	defer uc.releaseLock(lockCtx, lockToken)
+
+	err = uc.repo.DeleteEdge(lockCtx, appID, tenantID, edgeID)
+	observability.ObserveEntityWrite("delete_edge", err)
+	return err
+}
+
+func (uc *GraphUsecase) BatchDeleteNodes(ctx context.Context, appID, tenantID string, nodeIDs []string) (int, int, error) {
+	if len(nodeIDs) == 0 {
+		return 0, 0, nil
+	}
+
+	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
+	if uc.lockMgr != nil {
+		namespace := ComputeNamespace(appID, tenantID)
+		lockToken, err := uc.lockMgr.AcquireNamespaceLock(lockCtx, namespace, uc.nodeLockTTL)
+		if err != nil {
+			observability.ObserveEntityWrite("batch_delete_nodes", err)
+			return 0, 0, err
+		}
+		defer uc.releaseLock(lockCtx, lockToken)
+	}
+
+	deleted, edgesRemoved, err := uc.repo.BatchDeleteNodes(lockCtx, appID, tenantID, nodeIDs)
+	observability.ObserveEntityWrite("batch_delete_nodes", err)
+	return deleted, edgesRemoved, err
+}
+
 func (uc *GraphUsecase) acquireNodeLock(ctx context.Context, appID, tenantID, nodeID string) (string, error) {
 	if uc.lockMgr == nil || nodeID == "" {
 		return "", nil
@@ -327,6 +418,15 @@ func extractOverlayID(properties map[string]any) string {
 	}
 	delete(properties, "overlay_id")
 	return id
+}
+
+func overlayIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	raw := ctx.Value("overlay_id")
+	id, _ := raw.(string)
+	return strings.TrimSpace(id)
 }
 
 func lockTTLFromEnv() time.Duration {

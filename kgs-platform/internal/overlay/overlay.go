@@ -20,10 +20,16 @@ type EventPublisher interface {
 	Publish(ctx context.Context, subject string, payload []byte) error
 }
 
+type GraphDeleteApplier interface {
+	BatchDeleteNodes(ctx context.Context, appID, tenantID string, nodeIDs []string) (deleted, edgesRemoved int, err error)
+	DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error
+}
+
 type Manager struct {
 	store      Store
 	versionMgr version.VersionManager
 	publisher  EventPublisher
+	graphRepo  GraphDeleteApplier
 	log        *log.Helper
 }
 
@@ -35,11 +41,12 @@ type OverlayManager interface {
 	DiscardBySession(ctx context.Context, sessionID string) error
 }
 
-func NewManager(store Store, versionMgr version.VersionManager, publisher EventPublisher, logger log.Logger) *Manager {
+func NewManager(store Store, versionMgr version.VersionManager, publisher EventPublisher, graphRepo GraphDeleteApplier, logger log.Logger) *Manager {
 	return &Manager{
 		store:      store,
 		versionMgr: versionMgr,
 		publisher:  publisher,
+		graphRepo:  graphRepo,
 		log:        log.NewHelper(logger),
 	}
 }
@@ -54,15 +61,17 @@ func (m *Manager) Create(ctx context.Context, namespace, sessionID, baseVersionI
 	baseVersionID = m.resolveBaseVersion(ctx, namespace, baseVersionID)
 	now := time.Now().UTC()
 	overlay := &OverlayGraph{
-		OverlayID:     uuid.NewString(),
-		Namespace:     namespace,
-		SessionID:     sessionID,
-		BaseVersionID: baseVersionID,
-		Status:        StatusActive,
-		EntitiesDelta: []EntityDelta{},
-		EdgesDelta:    []EdgeDelta{},
-		CreatedAt:     now,
-		ExpiresAt:     now.Add(defaultOverlayTTL),
+		OverlayID:      uuid.NewString(),
+		Namespace:      namespace,
+		SessionID:      sessionID,
+		BaseVersionID:  baseVersionID,
+		Status:         StatusActive,
+		EntitiesDelta:  []EntityDelta{},
+		EdgesDelta:     []EdgeDelta{},
+		DeletedNodeIDs: []string{},
+		DeletedEdgeIDs: []string{},
+		CreatedAt:      now,
+		ExpiresAt:      now.Add(defaultOverlayTTL),
 	}
 	if err := m.store.Save(ctx, overlay, defaultOverlayTTL); err != nil {
 		return nil, err

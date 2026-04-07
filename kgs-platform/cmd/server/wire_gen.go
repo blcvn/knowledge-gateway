@@ -73,7 +73,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	engine := search.NewEngine(vectorSearcher, textSearcher, neo4jCentralityProvider)
 	versionManager := version.NewManager(db, logger)
 	redisStore := overlay.NewRedisStore(client)
-	overlayManager := overlay.NewManager(redisStore, versionManager, natsClient, logger)
+	overlayManager := overlay.NewManager(redisStore, versionManager, natsClient, graphRepo, logger)
 	engine2 := projection.NewEngine(db, logger)
 	viewResolver := biz.NewViewResolver(engine2)
 	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, ontologyValidator, client, redisLockManager, overlayManager, logger)

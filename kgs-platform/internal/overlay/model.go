@@ -27,16 +27,18 @@ type EdgeDelta struct {
 }
 
 type OverlayGraph struct {
-	OverlayID     string        `json:"overlay_id"`
-	Namespace     string        `json:"namespace"`
-	SessionID     string        `json:"session_id"`
-	BaseVersionID string        `json:"base_version_id"`
-	Status        Status        `json:"status"`
-	EntitiesDelta []EntityDelta `json:"entities_delta"`
-	EdgesDelta    []EdgeDelta   `json:"edges_delta"`
-	CreatedAt     time.Time     `json:"created_at"`
-	ExpiresAt     time.Time     `json:"expires_at"`
-	CommittedAt   *time.Time    `json:"committed_at,omitempty"`
+	OverlayID      string        `json:"overlay_id"`
+	Namespace      string        `json:"namespace"`
+	SessionID      string        `json:"session_id"`
+	BaseVersionID  string        `json:"base_version_id"`
+	Status         Status        `json:"status"`
+	EntitiesDelta  []EntityDelta `json:"entities_delta"`
+	EdgesDelta     []EdgeDelta   `json:"edges_delta"`
+	DeletedNodeIDs []string      `json:"deleted_node_ids,omitempty"`
+	DeletedEdgeIDs []string      `json:"deleted_edge_ids,omitempty"`
+	CreatedAt      time.Time     `json:"created_at"`
+	ExpiresAt      time.Time     `json:"expires_at"`
+	CommittedAt    *time.Time    `json:"committed_at,omitempty"`
 }
 
 type CommitResult struct {

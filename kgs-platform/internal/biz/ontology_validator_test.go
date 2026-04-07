@@ -61,6 +61,18 @@ func (s *stubGraphRepoForOntology) GetFullGraph(context.Context, string, string,
 	return nil, nil
 }
 
+func (s *stubGraphRepoForOntology) DeleteNode(context.Context, string, string, string) (int, error) {
+	return 0, nil
+}
+
+func (s *stubGraphRepoForOntology) DeleteEdge(context.Context, string, string, string) error {
+	return nil
+}
+
+func (s *stubGraphRepoForOntology) BatchDeleteNodes(context.Context, string, string, []string) (int, int, error) {
+	return 0, 0, nil
+}
+
 func newOntologyValidatorForTest(repo OntologyRepo, graph GraphRepo, cfg OntologyValidatorConfig) *OntologyValidator {
 	return NewOntologyValidator(repo, graph, cfg, log.NewStdLogger(io.Discard))
 }

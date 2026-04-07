@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
@@ -35,12 +36,37 @@ func (m *Manager) commit(ctx context.Context, overlayID, conflictPolicy string, 
 		return nil, err
 	}
 
+	entitiesDeleted := len(overlay.DeletedNodeIDs)
+	edgesDeleted := len(overlay.DeletedEdgeIDs)
+	if m.graphRepo != nil && (entitiesDeleted > 0 || edgesDeleted > 0) {
+		appID, tenantID, err := parseNamespaceScope(overlay.Namespace)
+		if err != nil {
+			return nil, err
+		}
+		if entitiesDeleted > 0 {
+			deleted, _, err := m.graphRepo.BatchDeleteNodes(ctx, appID, tenantID, overlay.DeletedNodeIDs)
+			if err != nil {
+				return nil, err
+			}
+			entitiesDeleted = deleted
+		}
+		if edgesDeleted > 0 {
+			for _, edgeID := range overlay.DeletedEdgeIDs {
+				if err := m.graphRepo.DeleteEdge(ctx, appID, tenantID, edgeID); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
 	var newVersionID string
 	if m.versionMgr != nil {
 		newVersionID, err = m.versionMgr.CreateDelta(ctx, overlay.Namespace, version.ChangeSet{
-			EntitiesAdded: len(overlay.EntitiesDelta),
-			EdgesAdded:    len(overlay.EdgesDelta),
-			CommitMessage: "overlay commit: " + overlay.OverlayID,
+			EntitiesAdded:   len(overlay.EntitiesDelta),
+			EdgesAdded:      len(overlay.EdgesDelta),
+			EntitiesDeleted: entitiesDeleted,
+			EdgesDeleted:    edgesDeleted,
+			CommitMessage:   "overlay commit: " + overlay.OverlayID,
 		})
 		if err != nil {
 			return nil, err
@@ -78,4 +104,17 @@ func (m *Manager) commit(ctx context.Context, overlayID, conflictPolicy string, 
 		_ = m.publisher.Publish(ctx, data.TopicOverlayCommitted(overlay.Namespace), payload)
 	}
 	return result, nil
+}
+
+func parseNamespaceScope(namespace string) (appID, tenantID string, err error) {
+	parts := strings.Split(strings.TrimSpace(namespace), "/")
+	if len(parts) < 3 || parts[0] != "graph" {
+		return "", "", fmt.Errorf("invalid namespace: %q", namespace)
+	}
+	// graph/{app}/{tenant}
+	if len(parts) == 3 {
+		return parts[1], parts[2], nil
+	}
+	// graph/{org}/{app}/{tenant}
+	return parts[len(parts)-2], parts[len(parts)-1], nil
 }

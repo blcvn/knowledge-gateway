@@ -29,6 +29,28 @@ service Graph {
       body: "*"
     };
   }
+
+  // Delete a node and its incident edges (detach delete)
+  rpc DeleteNode (DeleteNodeRequest) returns (DeleteNodeReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/nodes/{node_id}"
+    };
+  }
+
+  // Delete an edge by ID
+  rpc DeleteEdge (DeleteEdgeRequest) returns (DeleteEdgeReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/edges/{edge_id}"
+    };
+  }
+
+  // Batch delete nodes and their incident edges
+  rpc BatchDeleteNodes (BatchDeleteNodesRequest) returns (BatchDeleteNodesReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/nodes/batch-delete"
+      body: "*"
+    };
+  }
   // Get contextual neighborhood around a node
   rpc GetContext (GetContextRequest) returns (GraphReply) {
     option (google.api.http) = {
@@ -206,6 +228,33 @@ message CreateEdgeReply {
   string target_node_id = 3;
   string relation_type = 4;
   string properties_json = 5;
+}
+
+message DeleteNodeRequest {
+  string node_id = 1;
+}
+
+message DeleteNodeReply {
+  string node_id = 1;
+  int32 edges_removed = 2;
+}
+
+message DeleteEdgeRequest {
+  string edge_id = 1;
+}
+
+message DeleteEdgeReply {
+  string edge_id = 1;
+}
+
+message BatchDeleteNodesRequest {
+  repeated string node_ids = 1;
+}
+
+message BatchDeleteNodesReply {
+  int32 deleted = 1;
+  int32 edges_removed = 2;
+  int32 not_found = 3;
 }
 
 message GetContextRequest {

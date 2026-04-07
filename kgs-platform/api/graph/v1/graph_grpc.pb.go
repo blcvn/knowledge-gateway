@@ -28,6 +28,12 @@ type GraphClient interface {
 	GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeReply, error)
 	// Create an edge between two nodes
 	CreateEdge(ctx context.Context, in *CreateEdgeRequest, opts ...grpc.CallOption) (*CreateEdgeReply, error)
+	// Delete a node and its incident edges (detach delete)
+	DeleteNode(ctx context.Context, in *DeleteNodeRequest, opts ...grpc.CallOption) (*DeleteNodeReply, error)
+	// Delete an edge by ID
+	DeleteEdge(ctx context.Context, in *DeleteEdgeRequest, opts ...grpc.CallOption) (*DeleteEdgeReply, error)
+	// Batch delete nodes and their incident edges
+	BatchDeleteNodes(ctx context.Context, in *BatchDeleteNodesRequest, opts ...grpc.CallOption) (*BatchDeleteNodesReply, error)
 	// Get contextual neighborhood around a node
 	GetContext(ctx context.Context, in *GetContextRequest, opts ...grpc.CallOption) (*GraphReply, error)
 	// Get downstream impact of a node
@@ -97,6 +103,33 @@ func (c *graphClient) GetNode(ctx context.Context, in *GetNodeRequest, opts ...g
 func (c *graphClient) CreateEdge(ctx context.Context, in *CreateEdgeRequest, opts ...grpc.CallOption) (*CreateEdgeReply, error) {
 	out := new(CreateEdgeReply)
 	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/CreateEdge", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) DeleteNode(ctx context.Context, in *DeleteNodeRequest, opts ...grpc.CallOption) (*DeleteNodeReply, error) {
+	out := new(DeleteNodeReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/DeleteNode", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) DeleteEdge(ctx context.Context, in *DeleteEdgeRequest, opts ...grpc.CallOption) (*DeleteEdgeReply, error) {
+	out := new(DeleteEdgeReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/DeleteEdge", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) BatchDeleteNodes(ctx context.Context, in *BatchDeleteNodesRequest, opts ...grpc.CallOption) (*BatchDeleteNodesReply, error) {
+	out := new(BatchDeleteNodesReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/BatchDeleteNodes", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -284,6 +317,12 @@ type GraphServer interface {
 	GetNode(context.Context, *GetNodeRequest) (*GetNodeReply, error)
 	// Create an edge between two nodes
 	CreateEdge(context.Context, *CreateEdgeRequest) (*CreateEdgeReply, error)
+	// Delete a node and its incident edges (detach delete)
+	DeleteNode(context.Context, *DeleteNodeRequest) (*DeleteNodeReply, error)
+	// Delete an edge by ID
+	DeleteEdge(context.Context, *DeleteEdgeRequest) (*DeleteEdgeReply, error)
+	// Batch delete nodes and their incident edges
+	BatchDeleteNodes(context.Context, *BatchDeleteNodesRequest) (*BatchDeleteNodesReply, error)
 	// Get contextual neighborhood around a node
 	GetContext(context.Context, *GetContextRequest) (*GraphReply, error)
 	// Get downstream impact of a node
@@ -337,6 +376,15 @@ func (UnimplementedGraphServer) GetNode(context.Context, *GetNodeRequest) (*GetN
 }
 func (UnimplementedGraphServer) CreateEdge(context.Context, *CreateEdgeRequest) (*CreateEdgeReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateEdge not implemented")
+}
+func (UnimplementedGraphServer) DeleteNode(context.Context, *DeleteNodeRequest) (*DeleteNodeReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteNode not implemented")
+}
+func (UnimplementedGraphServer) DeleteEdge(context.Context, *DeleteEdgeRequest) (*DeleteEdgeReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteEdge not implemented")
+}
+func (UnimplementedGraphServer) BatchDeleteNodes(context.Context, *BatchDeleteNodesRequest) (*BatchDeleteNodesReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BatchDeleteNodes not implemented")
 }
 func (UnimplementedGraphServer) GetContext(context.Context, *GetContextRequest) (*GraphReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetContext not implemented")
@@ -458,6 +506,60 @@ func _Graph_CreateEdge_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GraphServer).CreateEdge(ctx, req.(*CreateEdgeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_DeleteNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).DeleteNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/DeleteNode",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).DeleteNode(ctx, req.(*DeleteNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_DeleteEdge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteEdgeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).DeleteEdge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/DeleteEdge",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).DeleteEdge(ctx, req.(*DeleteEdgeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_BatchDeleteNodes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchDeleteNodesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).BatchDeleteNodes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/BatchDeleteNodes",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).BatchDeleteNodes(ctx, req.(*BatchDeleteNodesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -822,6 +924,18 @@ var Graph_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateEdge",
 			Handler:    _Graph_CreateEdge_Handler,
+		},
+		{
+			MethodName: "DeleteNode",
+			Handler:    _Graph_DeleteNode_Handler,
+		},
+		{
+			MethodName: "DeleteEdge",
+			Handler:    _Graph_DeleteEdge_Handler,
+		},
+		{
+			MethodName: "BatchDeleteNodes",
+			Handler:    _Graph_BatchDeleteNodes_Handler,
 		},
 		{
 			MethodName: "GetContext",

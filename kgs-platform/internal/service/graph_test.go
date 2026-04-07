@@ -19,9 +19,12 @@ import (
 )
 
 type mockGraphUsecase struct {
-	createNodeFn func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error)
-	getNodeFn    func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error)
-	getFullFn    func(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error)
+	createNodeFn  func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error)
+	getNodeFn     func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error)
+	getFullFn     func(ctx context.Context, appID, tenantID string, limit, offset int) (*biz.FullGraphResult, error)
+	deleteNodeFn  func(ctx context.Context, appID, tenantID, nodeID string) (int, error)
+	deleteEdgeFn  func(ctx context.Context, appID, tenantID, edgeID string) error
+	batchDeleteFn func(ctx context.Context, appID, tenantID string, nodeIDs []string) (deleted, edgesRemoved int, err error)
 }
 
 func (m *mockGraphUsecase) CreateNode(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
@@ -34,6 +37,27 @@ func (m *mockGraphUsecase) GetNode(ctx context.Context, appID, tenantID, nodeID 
 
 func (m *mockGraphUsecase) CreateEdge(ctx context.Context, appID, tenantID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error) {
 	return map[string]any{}, nil
+}
+
+func (m *mockGraphUsecase) DeleteNode(ctx context.Context, appID, tenantID, nodeID string) (int, error) {
+	if m.deleteNodeFn == nil {
+		return 0, nil
+	}
+	return m.deleteNodeFn(ctx, appID, tenantID, nodeID)
+}
+
+func (m *mockGraphUsecase) DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error {
+	if m.deleteEdgeFn == nil {
+		return nil
+	}
+	return m.deleteEdgeFn(ctx, appID, tenantID, edgeID)
+}
+
+func (m *mockGraphUsecase) BatchDeleteNodes(ctx context.Context, appID, tenantID string, nodeIDs []string) (deleted, edgesRemoved int, err error) {
+	if m.batchDeleteFn == nil {
+		return len(nodeIDs), 0, nil
+	}
+	return m.batchDeleteFn(ctx, appID, tenantID, nodeIDs)
 }
 
 func (m *mockGraphUsecase) GetContext(ctx context.Context, appID, tenantID string, nodeID string, depth int, direction string) (map[string]any, error) {
@@ -195,6 +219,93 @@ func TestGraphServiceGetNode_UsesViewResolver(t *testing.T) {
 	}
 	if props["name"] != "filtered" {
 		t.Fatalf("expected projected value, got %#v", props["name"])
+	}
+}
+
+func TestGraphServiceDeleteHandlers(t *testing.T) {
+	var gotNodeID string
+	var gotEdgeID string
+	var gotBatch []string
+
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return nil, nil
+		},
+		deleteNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (int, error) {
+			gotNodeID = nodeID
+			return 2, nil
+		},
+		deleteEdgeFn: func(ctx context.Context, appID, tenantID, edgeID string) error {
+			gotEdgeID = edgeID
+			return nil
+		},
+		batchDeleteFn: func(ctx context.Context, appID, tenantID string, nodeIDs []string) (deleted, edgesRemoved int, err error) {
+			gotBatch = append([]string(nil), nodeIDs...)
+			return 1, 3, nil
+		},
+	}, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-1",
+		TenantID: "tenant-1",
+	})
+
+	deleteNodeResp, err := svc.DeleteNode(ctx, &pb.DeleteNodeRequest{NodeId: "n-1"})
+	if err != nil {
+		t.Fatalf("DeleteNode error: %v", err)
+	}
+	if deleteNodeResp.NodeId != "n-1" || deleteNodeResp.EdgesRemoved != 2 || gotNodeID != "n-1" {
+		t.Fatalf("unexpected DeleteNode response: %#v gotNodeID=%s", deleteNodeResp, gotNodeID)
+	}
+
+	deleteEdgeResp, err := svc.DeleteEdge(ctx, &pb.DeleteEdgeRequest{EdgeId: "e-1"})
+	if err != nil {
+		t.Fatalf("DeleteEdge error: %v", err)
+	}
+	if deleteEdgeResp.EdgeId != "e-1" || gotEdgeID != "e-1" {
+		t.Fatalf("unexpected DeleteEdge response: %#v gotEdgeID=%s", deleteEdgeResp, gotEdgeID)
+	}
+
+	batchResp, err := svc.BatchDeleteNodes(ctx, &pb.BatchDeleteNodesRequest{NodeIds: []string{"n1", "n2"}})
+	if err != nil {
+		t.Fatalf("BatchDeleteNodes error: %v", err)
+	}
+	if batchResp.Deleted != 1 || batchResp.EdgesRemoved != 3 || batchResp.NotFound != 1 {
+		t.Fatalf("unexpected BatchDeleteNodes response: %#v", batchResp)
+	}
+	if len(gotBatch) != 2 || gotBatch[0] != "n1" || gotBatch[1] != "n2" {
+		t.Fatalf("unexpected batch args: %#v", gotBatch)
+	}
+}
+
+func TestGraphServiceBatchDeleteNodesValidation(t *testing.T) {
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return nil, nil
+		},
+	}, nil, nil, nil, nil, nil, nil, nil)
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-1",
+		TenantID: "tenant-1",
+	})
+
+	if _, err := svc.BatchDeleteNodes(ctx, &pb.BatchDeleteNodesRequest{}); err == nil {
+		t.Fatalf("expected error for empty batch")
+	}
+
+	nodeIDs := make([]string, 1001)
+	for i := range nodeIDs {
+		nodeIDs[i] = fmt.Sprintf("n-%d", i)
+	}
+	if _, err := svc.BatchDeleteNodes(ctx, &pb.BatchDeleteNodesRequest{NodeIds: nodeIDs}); err == nil {
+		t.Fatalf("expected error for oversized batch")
 	}
 }
 

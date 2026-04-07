@@ -40,6 +40,9 @@ type GraphUsecase interface {
 	CreateNode(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error)
 	GetNode(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error)
 	CreateEdge(ctx context.Context, appID, tenantID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error)
+	DeleteNode(ctx context.Context, appID, tenantID, nodeID string) (int, error)
+	DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error
+	BatchDeleteNodes(ctx context.Context, appID, tenantID string, nodeIDs []string) (deleted, edgesRemoved int, err error)
 	GetContext(ctx context.Context, appID, tenantID string, nodeID string, depth int, direction string) (map[string]any, error)
 	GetImpact(ctx context.Context, appID, tenantID string, nodeID string, maxDepth int) (map[string]any, error)
 	GetCoverage(ctx context.Context, appID, tenantID string, nodeID string, maxDepth int) (map[string]any, error)
@@ -133,6 +136,55 @@ func (s *GraphService) CreateEdge(ctx context.Context, req *pb.CreateEdgeRequest
 		TargetNodeId:   req.TargetNodeId,
 		RelationType:   req.RelationType,
 		PropertiesJson: mustJSON(out),
+	}, nil
+}
+
+func (s *GraphService) DeleteNode(ctx context.Context, req *pb.DeleteNodeRequest) (*pb.DeleteNodeReply, error) {
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	edgesRemoved, err := s.uc.DeleteNode(ctx, appCtx.AppID, appCtx.TenantID, req.GetNodeId())
+	if err != nil {
+		return nil, err
+	}
+	return &pb.DeleteNodeReply{
+		NodeId:       req.GetNodeId(),
+		EdgesRemoved: int32(edgesRemoved),
+	}, nil
+}
+
+func (s *GraphService) DeleteEdge(ctx context.Context, req *pb.DeleteEdgeRequest) (*pb.DeleteEdgeReply, error) {
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.uc.DeleteEdge(ctx, appCtx.AppID, appCtx.TenantID, req.GetEdgeId()); err != nil {
+		return nil, err
+	}
+	return &pb.DeleteEdgeReply{EdgeId: req.GetEdgeId()}, nil
+}
+
+func (s *GraphService) BatchDeleteNodes(ctx context.Context, req *pb.BatchDeleteNodesRequest) (*pb.BatchDeleteNodesReply, error) {
+	if req == nil || len(req.GetNodeIds()) == 0 {
+		return nil, kerrors.BadRequest("ERR_BATCH_EMPTY", "node_ids is required")
+	}
+	if len(req.GetNodeIds()) > 1000 {
+		return nil, kerrors.BadRequest("ERR_BATCH_TOO_LARGE", "max 1000 nodes per batch delete")
+	}
+
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	deleted, edgesRemoved, err := s.uc.BatchDeleteNodes(ctx, appCtx.AppID, appCtx.TenantID, req.GetNodeIds())
+	if err != nil {
+		return nil, err
+	}
+	return &pb.BatchDeleteNodesReply{
+		Deleted:      int32(deleted),
+		EdgesRemoved: int32(edgesRemoved),
+		NotFound:     int32(len(req.GetNodeIds()) - deleted),
 	}, nil
 }
 

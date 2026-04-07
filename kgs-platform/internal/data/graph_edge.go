@@ -78,3 +78,35 @@ func buildCreateEdgeQuery(cleanRelationType string) string {
 		RETURN rel
 	`, cleanRelationType)
 }
+
+// DeleteEdge removes an edge in the given namespace by ID.
+func (r *graphRepo) DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error {
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.delete_edge")
+	defer span.End()
+
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close(ctx)
+
+	_, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
+		_, err := tx.Run(traceCtx, buildDeleteEdgeQuery(), map[string]any{
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"edge_id":   edgeID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	})
+	if err != nil {
+		observability.RecordSpanError(span, err)
+	}
+	return err
+}
+
+func buildDeleteEdgeQuery() string {
+	return `
+		MATCH ()-[r {app_id: $app_id, tenant_id: $tenant_id, id: $edge_id}]->()
+		DELETE r
+	`
+}

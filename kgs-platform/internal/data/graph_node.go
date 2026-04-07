@@ -160,6 +160,105 @@ func (r *graphRepo) GetNode(ctx context.Context, appID, tenantID, nodeID string)
 	return result.(map[string]any), nil
 }
 
+// DeleteNode removes a node and all incident edges (detach delete).
+// It returns the number of edges removed by cascade delete.
+func (r *graphRepo) DeleteNode(ctx context.Context, appID, tenantID, nodeID string) (int, error) {
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.delete_node")
+	defer span.End()
+
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
+		countRes, err := tx.Run(traceCtx, buildDeleteNodeEdgeCountQuery(), map[string]any{
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"node_id":   nodeID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !countRes.Next(traceCtx) {
+			if err := countRes.Err(); err != nil {
+				return nil, err
+			}
+			return int64(0), nil
+		}
+		edgeCount, _ := countRes.Record().Get("edge_count")
+
+		_, err = tx.Run(traceCtx, buildDeleteNodeQuery(), map[string]any{
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"node_id":   nodeID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return toInt64(edgeCount), nil
+	})
+	if err != nil {
+		observability.RecordSpanError(span, err)
+		return 0, err
+	}
+
+	return int(toInt64(result)), nil
+}
+
+// BatchDeleteNodes removes multiple nodes (and their incident edges) in one transaction.
+func (r *graphRepo) BatchDeleteNodes(ctx context.Context, appID, tenantID string, nodeIDs []string) (deleted, edgesRemoved int, err error) {
+	if len(nodeIDs) == 0 {
+		return 0, 0, nil
+	}
+
+	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.batch_delete_nodes")
+	defer span.End()
+
+	session := r.data.neo4j.NewSession(traceCtx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteWrite(traceCtx, func(tx neo4j.ManagedTransaction) (any, error) {
+		countRes, err := tx.Run(traceCtx, buildBatchDeleteNodesCountQuery(), map[string]any{
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"node_ids":  nodeIDs,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !countRes.Next(traceCtx) {
+			if err := countRes.Err(); err != nil {
+				return nil, err
+			}
+			return []int64{0, 0}, nil
+		}
+
+		record := countRes.Record()
+		deletedCount, _ := record.Get("deleted")
+		edgeCount, _ := record.Get("edges_removed")
+
+		_, err = tx.Run(traceCtx, buildBatchDeleteNodesQuery(), map[string]any{
+			"app_id":    appID,
+			"tenant_id": tenantID,
+			"node_ids":  nodeIDs,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return []int64{toInt64(deletedCount), toInt64(edgeCount)}, nil
+	})
+	if err != nil {
+		observability.RecordSpanError(span, err)
+		return 0, 0, err
+	}
+
+	counts, _ := result.([]int64)
+	if len(counts) != 2 {
+		return 0, 0, nil
+	}
+	return int(counts[0]), int(counts[1]), nil
+}
+
 func ensureID(props map[string]any) string {
 	if props == nil {
 		return uuid.NewString()
@@ -170,6 +269,55 @@ func ensureID(props map[string]any) string {
 	id := uuid.NewString()
 	props["id"] = id
 	return id
+}
+
+func toInt64(v any) int64 {
+	switch n := v.(type) {
+	case int:
+		return int64(n)
+	case int32:
+		return int64(n)
+	case int64:
+		return n
+	case float64:
+		return int64(n)
+	default:
+		return 0
+	}
+}
+
+func buildDeleteNodeEdgeCountQuery() string {
+	return `
+		MATCH (n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
+		OPTIONAL MATCH (n)-[r]-()
+		RETURN count(r) AS edge_count
+	`
+}
+
+func buildDeleteNodeQuery() string {
+	return `
+		MATCH (n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})
+		DETACH DELETE n
+	`
+}
+
+func buildBatchDeleteNodesCountQuery() string {
+	return `
+		UNWIND $node_ids AS node_id
+		OPTIONAL MATCH (n {app_id: $app_id, tenant_id: $tenant_id, id: node_id})
+		WITH [x IN collect(DISTINCT n) WHERE x IS NOT NULL] AS nodes
+		OPTIONAL MATCH (m)-[r]-()
+		WHERE m IN nodes
+		RETURN size(nodes) AS deleted, count(DISTINCT r) AS edges_removed
+	`
+}
+
+func buildBatchDeleteNodesQuery() string {
+	return `
+		UNWIND $node_ids AS node_id
+		MATCH (n {app_id: $app_id, tenant_id: $tenant_id, id: node_id})
+		DETACH DELETE n
+	`
 }
 
 func cloneMap(in map[string]any) map[string]any {

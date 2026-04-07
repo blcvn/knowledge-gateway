@@ -65,6 +65,30 @@ func (m *Manager) AddEdgeDelta(ctx context.Context, overlayID, namespace, relati
 	return out, nil
 }
 
+func (m *Manager) DeleteEntityDelta(ctx context.Context, overlayID, nodeID string) error {
+	item, err := m.store.Get(ctx, overlayID)
+	if err != nil {
+		return err
+	}
+	if err := validateWritableOverlay(item, ""); err != nil {
+		return err
+	}
+	item.DeletedNodeIDs = append(item.DeletedNodeIDs, nodeID)
+	return m.store.Save(ctx, item, 0)
+}
+
+func (m *Manager) DeleteEdgeDelta(ctx context.Context, overlayID, edgeID string) error {
+	item, err := m.store.Get(ctx, overlayID)
+	if err != nil {
+		return err
+	}
+	if err := validateWritableOverlay(item, ""); err != nil {
+		return err
+	}
+	item.DeletedEdgeIDs = append(item.DeletedEdgeIDs, edgeID)
+	return m.store.Save(ctx, item, 0)
+}
+
 func validateWritableOverlay(item *OverlayGraph, namespace string) error {
 	if item == nil {
 		return fmt.Errorf("overlay not found")

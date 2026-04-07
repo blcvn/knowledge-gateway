@@ -19,12 +19,15 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationGraphBatchDeleteNodes = "/api.graph.v1.Graph/BatchDeleteNodes"
 const OperationGraphBatchUpsertEntities = "/api.graph.v1.Graph/BatchUpsertEntities"
 const OperationGraphCommitOverlay = "/api.graph.v1.Graph/CommitOverlay"
 const OperationGraphCreateEdge = "/api.graph.v1.Graph/CreateEdge"
 const OperationGraphCreateNode = "/api.graph.v1.Graph/CreateNode"
 const OperationGraphCreateOverlay = "/api.graph.v1.Graph/CreateOverlay"
 const OperationGraphCreateViewDefinition = "/api.graph.v1.Graph/CreateViewDefinition"
+const OperationGraphDeleteEdge = "/api.graph.v1.Graph/DeleteEdge"
+const OperationGraphDeleteNode = "/api.graph.v1.Graph/DeleteNode"
 const OperationGraphDeleteViewDefinition = "/api.graph.v1.Graph/DeleteViewDefinition"
 const OperationGraphDiffVersions = "/api.graph.v1.Graph/DiffVersions"
 const OperationGraphDiscardOverlay = "/api.graph.v1.Graph/DiscardOverlay"
@@ -43,6 +46,8 @@ const OperationGraphListViewDefinitions = "/api.graph.v1.Graph/ListViewDefinitio
 const OperationGraphRollbackVersion = "/api.graph.v1.Graph/RollbackVersion"
 
 type GraphHTTPServer interface {
+	// BatchDeleteNodes Batch delete nodes and their incident edges
+	BatchDeleteNodes(context.Context, *BatchDeleteNodesRequest) (*BatchDeleteNodesReply, error)
 	// BatchUpsertEntities Batch upsert entities
 	BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error)
 	// CommitOverlay Commit overlay changes into base graph and create new version
@@ -55,6 +60,10 @@ type GraphHTTPServer interface {
 	CreateOverlay(context.Context, *CreateOverlayRequest) (*CreateOverlayReply, error)
 	// CreateViewDefinition Create a view definition for role-based projection
 	CreateViewDefinition(context.Context, *CreateViewDefinitionRequest) (*CreateViewDefinitionReply, error)
+	// DeleteEdge Delete an edge by ID
+	DeleteEdge(context.Context, *DeleteEdgeRequest) (*DeleteEdgeReply, error)
+	// DeleteNode Delete a node and its incident edges (detach delete)
+	DeleteNode(context.Context, *DeleteNodeRequest) (*DeleteNodeReply, error)
 	// DeleteViewDefinition Delete a view definition
 	DeleteViewDefinition(context.Context, *DeleteViewDefinitionRequest) (*DeleteViewDefinitionReply, error)
 	// DiffVersions Diff two versions in current namespace
@@ -94,6 +103,9 @@ func RegisterGraphHTTPServer(s *http.Server, srv GraphHTTPServer) {
 	r.POST("/v1/graph/nodes", _Graph_CreateNode0_HTTP_Handler(srv))
 	r.GET("/v1/graph/nodes/{node_id}", _Graph_GetNode0_HTTP_Handler(srv))
 	r.POST("/v1/graph/edges", _Graph_CreateEdge0_HTTP_Handler(srv))
+	r.DELETE("/v1/graph/nodes/{node_id}", _Graph_DeleteNode0_HTTP_Handler(srv))
+	r.DELETE("/v1/graph/edges/{edge_id}", _Graph_DeleteEdge0_HTTP_Handler(srv))
+	r.POST("/v1/graph/nodes/batch-delete", _Graph_BatchDeleteNodes0_HTTP_Handler(srv))
 	r.GET("/v1/graph/nodes/{node_id}/context", _Graph_GetContext0_HTTP_Handler(srv))
 	r.GET("/v1/graph/nodes/{node_id}/impact", _Graph_GetImpact0_HTTP_Handler(srv))
 	r.GET("/v1/graph/nodes/{node_id}/coverage", _Graph_GetCoverage0_HTTP_Handler(srv))
@@ -177,6 +189,72 @@ func _Graph_CreateEdge0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context)
 			return err
 		}
 		reply := out.(*CreateEdgeReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_DeleteNode0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteNodeRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphDeleteNode)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteNode(ctx, req.(*DeleteNodeRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DeleteNodeReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_DeleteEdge0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteEdgeRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphDeleteEdge)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteEdge(ctx, req.(*DeleteEdgeRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DeleteEdgeReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_BatchDeleteNodes0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in BatchDeleteNodesRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphBatchDeleteNodes)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.BatchDeleteNodes(ctx, req.(*BatchDeleteNodesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*BatchDeleteNodesReply)
 		return ctx.Result(200, reply)
 	}
 }
@@ -597,6 +675,8 @@ func _Graph_DeleteViewDefinition0_HTTP_Handler(srv GraphHTTPServer) func(ctx htt
 }
 
 type GraphHTTPClient interface {
+	// BatchDeleteNodes Batch delete nodes and their incident edges
+	BatchDeleteNodes(ctx context.Context, req *BatchDeleteNodesRequest, opts ...http.CallOption) (rsp *BatchDeleteNodesReply, err error)
 	// BatchUpsertEntities Batch upsert entities
 	BatchUpsertEntities(ctx context.Context, req *BatchUpsertRequest, opts ...http.CallOption) (rsp *BatchUpsertReply, err error)
 	// CommitOverlay Commit overlay changes into base graph and create new version
@@ -609,6 +689,10 @@ type GraphHTTPClient interface {
 	CreateOverlay(ctx context.Context, req *CreateOverlayRequest, opts ...http.CallOption) (rsp *CreateOverlayReply, err error)
 	// CreateViewDefinition Create a view definition for role-based projection
 	CreateViewDefinition(ctx context.Context, req *CreateViewDefinitionRequest, opts ...http.CallOption) (rsp *CreateViewDefinitionReply, err error)
+	// DeleteEdge Delete an edge by ID
+	DeleteEdge(ctx context.Context, req *DeleteEdgeRequest, opts ...http.CallOption) (rsp *DeleteEdgeReply, err error)
+	// DeleteNode Delete a node and its incident edges (detach delete)
+	DeleteNode(ctx context.Context, req *DeleteNodeRequest, opts ...http.CallOption) (rsp *DeleteNodeReply, err error)
 	// DeleteViewDefinition Delete a view definition
 	DeleteViewDefinition(ctx context.Context, req *DeleteViewDefinitionRequest, opts ...http.CallOption) (rsp *DeleteViewDefinitionReply, err error)
 	// DiffVersions Diff two versions in current namespace
@@ -649,6 +733,20 @@ type GraphHTTPClientImpl struct {
 
 func NewGraphHTTPClient(client *http.Client) GraphHTTPClient {
 	return &GraphHTTPClientImpl{client}
+}
+
+// BatchDeleteNodes Batch delete nodes and their incident edges
+func (c *GraphHTTPClientImpl) BatchDeleteNodes(ctx context.Context, in *BatchDeleteNodesRequest, opts ...http.CallOption) (*BatchDeleteNodesReply, error) {
+	var out BatchDeleteNodesReply
+	pattern := "/v1/graph/nodes/batch-delete"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphBatchDeleteNodes))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // BatchUpsertEntities Batch upsert entities
@@ -729,6 +827,34 @@ func (c *GraphHTTPClientImpl) CreateViewDefinition(ctx context.Context, in *Crea
 	opts = append(opts, http.Operation(OperationGraphCreateViewDefinition))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteEdge Delete an edge by ID
+func (c *GraphHTTPClientImpl) DeleteEdge(ctx context.Context, in *DeleteEdgeRequest, opts ...http.CallOption) (*DeleteEdgeReply, error) {
+	var out DeleteEdgeReply
+	pattern := "/v1/graph/edges/{edge_id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphDeleteEdge))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteNode Delete a node and its incident edges (detach delete)
+func (c *GraphHTTPClientImpl) DeleteNode(ctx context.Context, in *DeleteNodeRequest, opts ...http.CallOption) (*DeleteNodeReply, error) {
+	var out DeleteNodeReply
+	pattern := "/v1/graph/nodes/{node_id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphDeleteNode))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

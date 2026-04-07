@@ -53,7 +53,7 @@ func TestPhase5Integration_OverlayVersion(t *testing.T) {
 	ctx := context.Background()
 	versionMgr := newIntegrationVersionManager(t)
 	store := newIntegrationOverlayStore()
-	mgr := overlay.NewManager(store, versionMgr, nil, log.NewStdLogger(io.Discard))
+	mgr := overlay.NewManager(store, versionMgr, nil, nil, log.NewStdLogger(io.Discard))
 
 	item, err := mgr.Create(ctx, "graph/app-1/tenant-1", "session-1", "current")
 	if err != nil {
