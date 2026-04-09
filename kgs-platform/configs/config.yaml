@@ -44,3 +44,9 @@ data:
     schema_validation: false
     edge_constraint_check: true
     sync_projection: true
+  outbox:
+    poll_interval_ms: 500
+    batch_size: 100
+    max_attempts: 10
+  reconcile:
+    cron: "0 3 * * *"

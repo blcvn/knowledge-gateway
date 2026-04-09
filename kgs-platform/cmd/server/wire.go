@@ -12,6 +12,7 @@ import (
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/lock"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/outbox"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
@@ -30,5 +31,5 @@ func newBizOntologyRepo(repo *data.OntologyRepo) biz.OntologyRepo {
 
 // wireApp init kratos application.
 func wireApp(*conf.Server, *conf.Data, log.Logger) (*kratos.App, func(), error) {
-	panic(wire.Build(server.ProviderSet, data.ProviderSet, lock.ProviderSet, batch.ProviderSet, search.ProviderSet, version.ProviderSet, overlay.ProviderSet, analytics.ProviderSet, projection.ProviderSet, biz.ProviderSet, service.ProviderSet, newOntologyValidatorConfig, newBizOntologyRepo, newBatchEntityValidator, newApp))
+	panic(wire.Build(server.ProviderSet, data.ProviderSet, lock.ProviderSet, batch.ProviderSet, search.ProviderSet, outbox.ProviderSet, version.ProviderSet, overlay.ProviderSet, analytics.ProviderSet, projection.ProviderSet, biz.ProviderSet, service.ProviderSet, newOntologyValidatorConfig, newBizOntologyRepo, newBatchEntityValidator, newApp))
 }

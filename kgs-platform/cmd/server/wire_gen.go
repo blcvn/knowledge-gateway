@@ -13,6 +13,7 @@ import (
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/lock"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/outbox"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
@@ -62,22 +63,24 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 		cleanup()
 		return nil, nil, err
 	}
-	neo4jWriter := batch.NewNeo4jWriter(contextDriver)
+	pgWriter := batch.NewPGWriter(db)
 	semanticDeduper := batch.NewSemanticDeduper(qdrantClient, embeddingClient)
-	qdrantIndexer := batch.NewQdrantIndexer(qdrantClient, embeddingClient)
 	entityValidator := newBatchEntityValidator(ontologyValidator)
-	usecase := batch.NewUsecaseWithIndexer(neo4jWriter, semanticDeduper, qdrantIndexer, entityValidator)
+	usecase := batch.NewUsecaseWithIndexer(pgWriter, semanticDeduper, nil, entityValidator)
 	vectorSearcher := search.NewVectorSearcher(qdrantClient, embeddingClient)
 	textSearcher := search.NewTextSearcher(contextDriver, logger)
 	neo4jCentralityProvider := search.NewNeo4jCentralityProvider(contextDriver)
 	engine := search.NewEngine(vectorSearcher, textSearcher, neo4jCentralityProvider)
 	versionManager := version.NewManager(db, logger)
 	redisStore := overlay.NewRedisStore(client)
-	overlayManager := overlay.NewManager(redisStore, versionManager, natsClient, graphRepo, logger)
+	overlayManager := overlay.NewManager(redisStore, db, versionManager, natsClient, logger)
+	graphBatchHandler := batch.NewGraphBatchHandler(db, overlayManager)
+	pGWriteRepo := data.NewPGWriteRepo(db)
+	entityReader := data.NewEntityReader(graphRepo, db)
 	engine2 := projection.NewEngine(db, logger)
 	viewResolver := biz.NewViewResolver(engine2)
-	graphUsecase := biz.NewGraphUsecase(graphRepo, queryPlanner, opaClient, ontologyValidator, client, redisLockManager, overlayManager, logger)
-	graphService := service.NewGraphService(graphUsecase, usecase, engine, overlayManager, versionManager, engine1, viewResolver, engine2)
+	graphUsecase := biz.NewGraphUsecaseWithStorage(graphRepo, pGWriteRepo, entityReader, queryPlanner, opaClient, ontologyValidator, client, redisLockManager, overlayManager, logger)
+	graphService := service.NewGraphServiceWithGraphBatchAndReader(graphUsecase, usecase, graphBatchHandler, entityReader, engine, overlayManager, versionManager, engine1, viewResolver, engine2)
 	rulesRepo := data.NewRulesRepo(dataData, logger)
 	rulesUsecase := biz.NewRulesUsecase(rulesRepo, logger)
 	rulesService := service.NewRulesService(rulesUsecase)
@@ -91,7 +94,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*
 	eventRunner := biz.NewEventRunner(rulesRepo, graphRepo, client, logger)
 	policySyncRunner := biz.NewPolicySyncRunner(policyRepo, opaClient, logger)
 	sessionCloseListener := overlay.NewSessionCloseListener(natsClient, overlayManager, logger)
-	workerServer := server.NewWorkerServer(ruleRunner, eventRunner, policySyncRunner, sessionCloseListener, logger)
+	neo4jSyncer := outbox.NewNeo4jSyncer(contextDriver, logger)
+	qdrantSyncer := outbox.NewQdrantSyncer(qdrantClient, embeddingClient)
+	outboxWorker := outbox.NewOutboxWorker(confData, db, neo4jSyncer, qdrantSyncer, logger)
+	reconcileJob := outbox.NewReconcileJob(db, contextDriver, qdrantClient, logger)
+	workerServer := server.NewWorkerServer(confData, ruleRunner, eventRunner, policySyncRunner, sessionCloseListener, outboxWorker, reconcileJob, logger)
 	app := newApp(logger, grpcServer, httpServer, workerServer)
 	return app, func() {
 		cleanup()

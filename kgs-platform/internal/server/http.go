@@ -1,6 +1,8 @@
 package server
 
 import (
+	stdhttp "net/http"
+
 	policy "github.com/blcvn/knowledge-gateway/kgs-platform/api/accesscontrol/v1"
 	graph "github.com/blcvn/knowledge-gateway/kgs-platform/api/graph/v1"
 	v1 "github.com/blcvn/knowledge-gateway/kgs-platform/api/helloworld/v1"
@@ -24,6 +26,7 @@ func NewHTTPServer(c *conf.Server, greeter *service.GreeterService, registry *se
 	var opts = []http.ServerOption{
 		http.Middleware(
 			middleware.Tracing(),
+			middleware.AccessLog(),
 			middleware.Metrics(),
 			recovery.Recovery(),
 			middleware.Auth(registryUC, redisCli),
@@ -45,6 +48,9 @@ func NewHTTPServer(c *conf.Server, greeter *service.GreeterService, registry *se
 	pb.RegisterRegistryHTTPServer(srv, registry)
 	ontology.RegisterOntologyHTTPServer(srv, ont)
 	graph.RegisterGraphHTTPServer(srv, g)
+	srv.HandlePrefix("/kg/", stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+		g.HandleKGNamespaceHTTP(w, r)
+	}))
 	rules.RegisterRulesHTTPServer(srv, ruleSrv)
 	policy.RegisterAccessControlHTTPServer(srv, policySrv)
 	srv.Handle("/metrics", promhttp.Handler())

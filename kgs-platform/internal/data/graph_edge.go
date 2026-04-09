@@ -79,6 +79,10 @@ func buildCreateEdgeQuery(cleanRelationType string) string {
 	`, cleanRelationType)
 }
 
+func BuildCreateEdgeQuery(cleanRelationType string) string {
+	return buildCreateEdgeQuery(cleanRelationType)
+}
+
 // DeleteEdge removes an edge in the given namespace by ID.
 func (r *graphRepo) DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error {
 	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.delete_edge")

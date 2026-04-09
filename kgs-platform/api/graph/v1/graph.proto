@@ -96,6 +96,14 @@ service Graph {
     };
   }
 
+  // Batch upsert entities + edges atomically
+  rpc BatchUpsertGraph (BatchUpsertGraphRequest) returns (BatchUpsertGraphReply) {
+    option (google.api.http) = {
+      post: "/v1/graph/batch"
+      body: "*"
+    };
+  }
+
   // Hybrid search across vector and full-text indexes
   rpc HybridSearch (HybridSearchRequest) returns (HybridSearchReply) {
     option (google.api.http) = {
@@ -334,6 +342,38 @@ message BatchUpsertReply {
   int32 created = 1;
   int32 updated = 2;
   int32 skipped = 3;
+}
+
+message BatchUpsertGraphEntity {
+  string label = 1;
+  string properties_json = 2;
+}
+
+message BatchUpsertGraphEdge {
+  string edge_id = 1;
+  string from_entity_id = 2;
+  string to_entity_id = 3;
+  string relation_type = 4;
+  string properties_json = 5;
+  double confidence = 6;
+  string version_id = 7;
+}
+
+message BatchUpsertGraphRequest {
+  repeated BatchUpsertGraphEntity entities = 1;
+  repeated BatchUpsertGraphEdge edges = 2;
+  string overlay_id = 3;
+  string conflict_policy = 4;
+}
+
+message BatchUpsertGraphReply {
+  int32 entities_created = 1;
+  int32 entities_updated = 2;
+  int32 entities_skipped = 3;
+  int32 edges_created = 4;
+  int32 edges_skipped = 5;
+  int32 conflicted = 6;
+  repeated string errors = 7;
 }
 
 message HybridSearchRequest {

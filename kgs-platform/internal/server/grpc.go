@@ -23,6 +23,7 @@ func NewGRPCServer(c *conf.Server, greeter *service.GreeterService, registry *se
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
 			middleware.Tracing(),
+			middleware.AccessLog(),
 			middleware.Metrics(),
 			recovery.Recovery(),
 			middleware.Auth(registryUC, redisCli),

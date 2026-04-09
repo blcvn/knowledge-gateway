@@ -9,6 +9,7 @@ import (
 
 	pb "github.com/blcvn/knowledge-gateway/kgs-platform/api/graph/v1"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/server/middleware"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
@@ -99,7 +100,7 @@ func TestPhase3OverlayLifecycleViaAPI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&version.GraphVersion{}); err != nil {
+	if err := db.AutoMigrate(&version.GraphVersion{}, &data.KGEntity{}, &data.KGEdge{}, &data.KGSyncOutbox{}); err != nil {
 		t.Fatalf("migrate graph versions: %v", err)
 	}
 
@@ -113,7 +114,7 @@ func TestPhase3OverlayLifecycleViaAPI(t *testing.T) {
 	}
 
 	store := newMemOverlayStore()
-	overlayMgr := overlay.NewManager(store, versionMgr, nil, nil, log.DefaultLogger)
+	overlayMgr := overlay.NewManager(store, db, versionMgr, nil, log.DefaultLogger)
 	repo := &phase3Repo{}
 	graphUC := biz.NewGraphUsecase(repo, biz.NewQueryPlanner(), nil, nil, nil, nil, overlayMgr, log.NewStdLogger(io.Discard))
 	svc := NewGraphService(graphUC, nil, nil, overlayMgr, versionMgr, nil, nil, nil)

@@ -30,6 +30,7 @@ func TestPhase4E2EOverlayCommitPublishesNATSEvent(t *testing.T) {
 	}
 	manager := &Manager{
 		store:      store,
+		db:         newOverlayTestDB(t),
 		versionMgr: vm,
 		publisher:  natsClient,
 	}

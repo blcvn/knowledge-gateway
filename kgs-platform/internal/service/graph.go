@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	stdlog "log"
+	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -28,12 +30,54 @@ type GraphService struct {
 	pb.UnimplementedGraphServer
 	uc           GraphUsecase
 	batchUC      *batch.Usecase
+	graphBatchUC *batch.GraphBatchHandler
+	entityReader GraphEntityReader
 	searchUC     search.SearchEngine
 	overlay      overlay.OverlayManager
 	version      version.VersionManager
 	analytics    analytics.AnalyticsEngine
 	projection   projection.ProjectionEngine
 	viewResolver *biz.ViewResolver
+}
+
+type GraphEntityReader interface {
+	GetEntity(ctx context.Context, appID, tenantID, entityID string) (map[string]any, error)
+	EnrichWithFreshVersions(ctx context.Context, appID, tenantID string, entities []map[string]any) ([]map[string]any, error)
+	ListEntities(
+		ctx context.Context,
+		appID, tenantID string,
+		limit int,
+		cursorID string,
+		entityType string,
+		sourceFile string,
+		domain string,
+		provenanceType string,
+		versionID string,
+		propertyKey string,
+		propertyValue string,
+		isDeleted bool,
+	) ([]map[string]any, string, bool, int64, error)
+	LookupEntities(
+		ctx context.Context,
+		appID, tenantID string,
+		entityType string,
+		sourceFile string,
+		matchMode string,
+		limit int,
+		properties map[string]string,
+	) ([]map[string]any, int64, error)
+	ListEdges(
+		ctx context.Context,
+		appID, tenantID string,
+		limit int,
+		cursorID string,
+		relationType string,
+		sourceFile string,
+		fromEntityID string,
+		toEntityID string,
+		versionID string,
+		isDeleted bool,
+	) ([]map[string]any, string, bool, int64, error)
 }
 
 type GraphUsecase interface {
@@ -72,6 +116,39 @@ func NewGraphService(
 	}
 }
 
+func NewGraphServiceWithGraphBatch(
+	uc GraphUsecase,
+	batchUC *batch.Usecase,
+	graphBatchUC *batch.GraphBatchHandler,
+	searchUC search.SearchEngine,
+	overlayMgr overlay.OverlayManager,
+	versionMgr version.VersionManager,
+	analyticsEngine analytics.AnalyticsEngine,
+	viewResolver *biz.ViewResolver,
+	projectionEngine projection.ProjectionEngine,
+) *GraphService {
+	svc := NewGraphService(uc, batchUC, searchUC, overlayMgr, versionMgr, analyticsEngine, viewResolver, projectionEngine)
+	svc.graphBatchUC = graphBatchUC
+	return svc
+}
+
+func NewGraphServiceWithGraphBatchAndReader(
+	uc GraphUsecase,
+	batchUC *batch.Usecase,
+	graphBatchUC *batch.GraphBatchHandler,
+	entityReader GraphEntityReader,
+	searchUC search.SearchEngine,
+	overlayMgr overlay.OverlayManager,
+	versionMgr version.VersionManager,
+	analyticsEngine analytics.AnalyticsEngine,
+	viewResolver *biz.ViewResolver,
+	projectionEngine projection.ProjectionEngine,
+) *GraphService {
+	svc := NewGraphServiceWithGraphBatch(uc, batchUC, graphBatchUC, searchUC, overlayMgr, versionMgr, analyticsEngine, viewResolver, projectionEngine)
+	svc.entityReader = entityReader
+	return svc
+}
+
 func (s *GraphService) CreateNode(ctx context.Context, req *pb.CreateNodeRequest) (*pb.CreateNodeReply, error) {
 	appCtx, err := getAppContext(ctx)
 	if err != nil {
@@ -96,7 +173,12 @@ func (s *GraphService) GetNode(ctx context.Context, req *pb.GetNodeRequest) (*pb
 	if err != nil {
 		return nil, err
 	}
-	out, err := s.uc.GetNode(ctx, appCtx.AppID, appCtx.TenantID, req.NodeId)
+	var out map[string]any
+	if s.entityReader != nil {
+		out, err = s.entityReader.GetEntity(ctx, appCtx.AppID, appCtx.TenantID, req.NodeId)
+	} else {
+		out, err = s.uc.GetNode(ctx, appCtx.AppID, appCtx.TenantID, req.NodeId)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -197,11 +279,19 @@ func (s *GraphService) GetContext(ctx context.Context, req *pb.GetContextRequest
 	if err != nil {
 		return nil, err
 	}
-	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	reply, err := s.enrichGraphReply(ctx, appCtx, toGraphReply(result))
 	if err != nil {
 		return nil, err
 	}
-	reply, err := applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
+	reply, err = s.ensureReplyContainsNodes(ctx, appCtx, reply, []string{req.GetNodeId()})
+	if err != nil {
+		return nil, err
+	}
+	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, reply)
+	if err != nil {
+		return nil, err
+	}
+	reply, err = applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -217,11 +307,15 @@ func (s *GraphService) GetImpact(ctx context.Context, req *pb.GetImpactRequest) 
 	if err != nil {
 		return nil, err
 	}
-	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	reply, err := s.enrichGraphReply(ctx, appCtx, toGraphReply(result))
 	if err != nil {
 		return nil, err
 	}
-	reply, err := applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
+	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, reply)
+	if err != nil {
+		return nil, err
+	}
+	reply, err = applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -237,11 +331,15 @@ func (s *GraphService) GetCoverage(ctx context.Context, req *pb.GetCoverageReque
 	if err != nil {
 		return nil, err
 	}
-	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	reply, err := s.enrichGraphReply(ctx, appCtx, toGraphReply(result))
 	if err != nil {
 		return nil, err
 	}
-	reply, err := applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
+	projectedReply, err := s.applyProjectionToGraphReply(ctx, appCtx, reply)
+	if err != nil {
+		return nil, err
+	}
+	reply, err = applyPagination(ctx, projectedReply, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +360,19 @@ func (s *GraphService) GetSubgraph(ctx context.Context, req *pb.GetSubgraphReque
 			appCtx.AppID, appCtx.TenantID, len(req.NodeIds), err)
 		return nil, err
 	}
-	reply, err := s.applyProjectionToGraphReply(ctx, appCtx, toGraphReply(result))
+	reply, err := s.enrichGraphReply(ctx, appCtx, toGraphReply(result))
+	if err != nil {
+		stdlog.Printf("[KGS][GraphService] GetSubgraph enrich failed app_id=%s tenant_id=%s requested_node_ids=%d err=%v",
+			appCtx.AppID, appCtx.TenantID, len(req.NodeIds), err)
+		return nil, err
+	}
+	reply, err = s.ensureReplyContainsNodes(ctx, appCtx, reply, req.GetNodeIds())
+	if err != nil {
+		stdlog.Printf("[KGS][GraphService] GetSubgraph fallback hydrate failed app_id=%s tenant_id=%s requested_node_ids=%d err=%v",
+			appCtx.AppID, appCtx.TenantID, len(req.NodeIds), err)
+		return nil, err
+	}
+	reply, err = s.applyProjectionToGraphReply(ctx, appCtx, reply)
 	if err != nil {
 		stdlog.Printf("[KGS][GraphService] GetSubgraph projection failed app_id=%s tenant_id=%s requested_node_ids=%d err=%v",
 			appCtx.AppID, appCtx.TenantID, len(req.NodeIds), err)
@@ -331,6 +441,15 @@ func (s *GraphService) GetFullGraph(ctx context.Context, req *pb.GetFullGraphReq
 			Properties:     stringifyMap(edge.Properties),
 		})
 	}
+	graphReply, err := s.enrichGraphReply(ctx, middleware.AppContext{AppID: appID, TenantID: tenantID}, &pb.GraphReply{
+		Nodes: reply.Nodes,
+		Edges: reply.Edges,
+	})
+	if err != nil {
+		return nil, err
+	}
+	reply.Nodes = graphReply.Nodes
+	reply.Edges = graphReply.Edges
 
 	stdlog.Printf("[KGS][GraphService] GetFullGraph done app_id=%s tenant_id=%s returned_nodes=%d returned_edges=%d total_nodes=%d total_edges=%d duration=%s",
 		appID, tenantID, len(reply.GetNodes()), len(reply.GetEdges()), reply.GetTotalNodes(), reply.GetTotalEdges(), time.Since(started))
@@ -385,6 +504,179 @@ func (s *GraphService) BatchUpsertEntities(ctx context.Context, req *pb.BatchUps
 	}, nil
 }
 
+func (s *GraphService) BatchUpsertGraph(ctx context.Context, req *pb.BatchUpsertGraphRequest) (*pb.BatchUpsertGraphReply, error) {
+	if s.graphBatchUC == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "graph batch handler is not configured")
+	}
+	if req == nil {
+		req = &pb.BatchUpsertGraphRequest{}
+	}
+
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entities := make([]batch.Entity, 0, len(req.GetEntities()))
+	for i, item := range req.GetEntities() {
+		props, err := parseJSON(item.GetPropertiesJson())
+		if err != nil {
+			return nil, fmt.Errorf("invalid properties_json at entities[%d]: %w", i, err)
+		}
+		entities = append(entities, batch.Entity{
+			Label:      item.GetLabel(),
+			Properties: props,
+		})
+	}
+
+	edges := make([]batch.Edge, 0, len(req.GetEdges()))
+	for i, item := range req.GetEdges() {
+		props, err := parseJSON(item.GetPropertiesJson())
+		if err != nil {
+			return nil, fmt.Errorf("invalid properties_json at edges[%d]: %w", i, err)
+		}
+		edges = append(edges, batch.Edge{
+			EdgeID:       item.GetEdgeId(),
+			FromEntityID: item.GetFromEntityId(),
+			ToEntityID:   item.GetToEntityId(),
+			RelationType: item.GetRelationType(),
+			Properties:   props,
+			Confidence:   item.GetConfidence(),
+			VersionID:    item.GetVersionId(),
+		})
+	}
+
+	batchReq := batch.GraphBatchRequest{
+		Entities:       entities,
+		Edges:          edges,
+		ConflictPolicy: req.GetConflictPolicy(),
+	}
+	if overlayID := strings.TrimSpace(req.GetOverlayId()); overlayID != "" {
+		batchReq.OverlayID = &overlayID
+	}
+
+	result, err := s.graphBatchUC.UpsertGraph(ctx, batchReq, appCtx.AppID, appCtx.TenantID)
+	reply := &pb.BatchUpsertGraphReply{}
+	if result != nil {
+		reply = &pb.BatchUpsertGraphReply{
+			EntitiesCreated: int32(result.EntitiesCreated),
+			EntitiesUpdated: int32(result.EntitiesUpdated),
+			EntitiesSkipped: int32(result.EntitiesSkipped),
+			EdgesCreated:    int32(result.EdgesCreated),
+			EdgesSkipped:    int32(result.EdgesSkipped),
+			Conflicted:      int32(result.Conflicted),
+			Errors:          append([]string(nil), result.Errors...),
+		}
+	}
+	if err != nil {
+		return reply, kerrors.Conflict("ERR_GRAPH_BATCH_CONFLICT", err.Error())
+	}
+	return reply, nil
+}
+
+// BatchUpsertGraphHTTP handles HTTP-only graph batch upsert until protobuf API is extended.
+func (s *GraphService) BatchUpsertGraphHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.graphBatchUC == nil {
+		http.Error(w, "graph batch handler is not configured", http.StatusInternalServerError)
+		return
+	}
+
+	appCtx, err := getAppContext(r.Context())
+	if err != nil {
+		appCtx, err = inferAppContextForKGBatch(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+	}
+
+	var req batch.GraphBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	pbReq := &pb.BatchUpsertGraphRequest{
+		Entities:       make([]*pb.BatchUpsertGraphEntity, 0, len(req.Entities)),
+		Edges:          make([]*pb.BatchUpsertGraphEdge, 0, len(req.Edges)),
+		ConflictPolicy: req.ConflictPolicy,
+	}
+	if req.OverlayID != nil {
+		pbReq.OverlayId = *req.OverlayID
+	}
+	for _, item := range req.Entities {
+		pbReq.Entities = append(pbReq.Entities, &pb.BatchUpsertGraphEntity{
+			Label:          item.Label,
+			PropertiesJson: mustJSON(item.Properties),
+		})
+	}
+	for _, item := range req.Edges {
+		pbReq.Edges = append(pbReq.Edges, &pb.BatchUpsertGraphEdge{
+			EdgeId:         item.EdgeID,
+			FromEntityId:   item.FromEntityID,
+			ToEntityId:     item.ToEntityID,
+			RelationType:   item.RelationType,
+			PropertiesJson: mustJSON(item.Properties),
+			Confidence:     item.Confidence,
+			VersionId:      item.VersionID,
+		})
+	}
+
+	reply, err := s.BatchUpsertGraph(context.WithValue(r.Context(), middleware.AppContextKey, appCtx), pbReq)
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusConflict
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(reply)
+}
+
+func inferAppContextForKGBatch(r *http.Request) (middleware.AppContext, error) {
+	if r == nil {
+		return middleware.AppContext{}, fmt.Errorf("missing app context")
+	}
+	if ns := strings.TrimSpace(r.Header.Get("X-KG-Namespace")); ns != "" {
+		return appContextFromNamespace(ns)
+	}
+	path := strings.TrimSpace(r.URL.Path)
+	trimmed := strings.Trim(path, "/")
+	if !strings.HasPrefix(trimmed, "kg/") || !strings.HasSuffix(trimmed, "/graph/batch") {
+		return middleware.AppContext{}, fmt.Errorf("missing app context")
+	}
+	nsPart := strings.TrimPrefix(trimmed, "kg/")
+	nsPart = strings.TrimSuffix(nsPart, "/graph/batch")
+	nsPart = strings.Trim(nsPart, "/")
+	if nsPart == "" {
+		return middleware.AppContext{}, fmt.Errorf("missing app context")
+	}
+	if decoded, err := url.PathUnescape(nsPart); err == nil {
+		nsPart = decoded
+	}
+	return appContextFromNamespace(nsPart)
+}
+
+func appContextFromNamespace(namespace string) (middleware.AppContext, error) {
+	parts := strings.Split(strings.Trim(namespace, "/"), "/")
+	if len(parts) == 3 && parts[0] == "graph" {
+		return middleware.AppContext{
+			AppID:    strings.TrimSpace(parts[1]),
+			TenantID: strings.TrimSpace(parts[2]),
+		}, nil
+	}
+	if len(parts) == 4 && parts[0] == "graph" {
+		return middleware.AppContext{
+			OrgID:    strings.TrimSpace(parts[1]),
+			AppID:    strings.TrimSpace(parts[2]),
+			TenantID: strings.TrimSpace(parts[3]),
+		}, nil
+	}
+	return middleware.AppContext{}, fmt.Errorf("missing app context")
+}
+
 func (s *GraphService) HybridSearch(ctx context.Context, req *pb.HybridSearchRequest) (*pb.HybridSearchReply, error) {
 	if s.searchUC == nil {
 		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "search engine is not configured")
@@ -411,6 +703,36 @@ func (s *GraphService) HybridSearch(ctx context.Context, req *pb.HybridSearchReq
 		stdlog.Printf("[KGS][GraphService] HybridSearch failed app_id=%s tenant_id=%s namespace=%s query=%q err=%v",
 			appCtx.AppID, appCtx.TenantID, namespace, req.Query, err)
 		return nil, err
+	}
+	if s.entityReader != nil && len(results) > 0 {
+		entityMaps := make([]map[string]any, 0, len(results))
+		for _, item := range results {
+			props := cloneAnyMap(item.Properties)
+			props["id"] = item.ID
+			props["label"] = item.Label
+			entityMaps = append(entityMaps, props)
+		}
+		fresh, err := s.entityReader.EnrichWithFreshVersions(ctx, appCtx.AppID, appCtx.TenantID, entityMaps)
+		if err != nil {
+			return nil, err
+		}
+		freshByID := make(map[string]map[string]any, len(fresh))
+		for _, item := range fresh {
+			id := mapString(item, "id")
+			if id != "" {
+				freshByID[id] = item
+			}
+		}
+		for i := range results {
+			freshItem, ok := freshByID[results[i].ID]
+			if !ok {
+				continue
+			}
+			results[i].Properties = freshItem
+			if label := strings.TrimSpace(mapString(freshItem, "label")); label != "" {
+				results[i].Label = label
+			}
+		}
 	}
 
 	reply := &pb.HybridSearchReply{
@@ -805,6 +1127,119 @@ func (s *GraphService) applyProjectionToGraphReply(ctx context.Context, appCtx m
 	return out, nil
 }
 
+func (s *GraphService) enrichGraphReply(ctx context.Context, appCtx middleware.AppContext, reply *pb.GraphReply) (*pb.GraphReply, error) {
+	if s.entityReader == nil || reply == nil || len(reply.Nodes) == 0 {
+		return reply, nil
+	}
+
+	nodeMaps := make([]map[string]any, 0, len(reply.Nodes))
+	for _, node := range reply.Nodes {
+		props, err := parseJSON(node.GetPropertiesJson())
+		if err != nil {
+			return nil, err
+		}
+		if node.GetId() != "" {
+			props["id"] = node.GetId()
+		}
+		if node.GetLabel() != "" {
+			props["label"] = node.GetLabel()
+		}
+		nodeMaps = append(nodeMaps, props)
+	}
+
+	fresh, err := s.entityReader.EnrichWithFreshVersions(ctx, appCtx.AppID, appCtx.TenantID, nodeMaps)
+	if err != nil {
+		return nil, err
+	}
+	freshByID := make(map[string]map[string]any, len(fresh))
+	for _, item := range fresh {
+		id := mapString(item, "id")
+		if id != "" {
+			freshByID[id] = item
+		}
+	}
+
+	for i := range reply.Nodes {
+		id := reply.Nodes[i].GetId()
+		freshItem, ok := freshByID[id]
+		if !ok {
+			continue
+		}
+		reply.Nodes[i].PropertiesJson = mustJSON(freshItem)
+		reply.Nodes[i].Properties = stringifyMap(freshItem)
+		if label := strings.TrimSpace(mapString(freshItem, "label")); label != "" {
+			reply.Nodes[i].Label = label
+		}
+	}
+	return reply, nil
+}
+
+func (s *GraphService) ensureReplyContainsNodes(ctx context.Context, appCtx middleware.AppContext, reply *pb.GraphReply, requiredIDs []string) (*pb.GraphReply, error) {
+	if len(requiredIDs) == 0 {
+		return reply, nil
+	}
+	if reply == nil {
+		reply = &pb.GraphReply{
+			Nodes: make([]*pb.GraphNode, 0),
+			Edges: make([]*pb.GraphEdge, 0),
+		}
+	}
+	existing := make(map[string]struct{}, len(reply.GetNodes()))
+	for _, node := range reply.GetNodes() {
+		id := strings.TrimSpace(node.GetId())
+		if id != "" {
+			existing[id] = struct{}{}
+		}
+	}
+	for _, requestedID := range requiredIDs {
+		nodeID := strings.TrimSpace(requestedID)
+		if nodeID == "" {
+			continue
+		}
+		if _, ok := existing[nodeID]; ok {
+			continue
+		}
+		node, _ := s.fetchNodeForReply(ctx, appCtx, nodeID)
+		if node == nil {
+			continue
+		}
+		id := strings.TrimSpace(mapString(node, "id"))
+		if id == "" {
+			id = nodeID
+			node["id"] = id
+		}
+		label := strings.TrimSpace(mapString(node, "label"))
+		if label == "" {
+			label = strings.TrimSpace(mapString(node, "entity_type"))
+		}
+		if label != "" {
+			node["label"] = label
+		}
+		reply.Nodes = append(reply.Nodes, &pb.GraphNode{
+			Id:             id,
+			Label:          label,
+			PropertiesJson: mustJSON(node),
+			Properties:     stringifyMap(node),
+		})
+		existing[id] = struct{}{}
+	}
+	return reply, nil
+}
+
+func (s *GraphService) fetchNodeForReply(ctx context.Context, appCtx middleware.AppContext, nodeID string) (map[string]any, error) {
+	if s.entityReader != nil {
+		if out, err := s.entityReader.GetEntity(ctx, appCtx.AppID, appCtx.TenantID, nodeID); err == nil && out != nil {
+			return out, nil
+		}
+	}
+	if s.uc != nil {
+		if out, err := s.uc.GetNode(ctx, appCtx.AppID, appCtx.TenantID, nodeID); err == nil && out != nil {
+			return out, nil
+		}
+	}
+	return nil, nil
+}
+
 func projectionRole(ctx context.Context, appCtx middleware.AppContext) string {
 	if tr, ok := transport.FromServerContext(ctx); ok {
 		role := strings.TrimSpace(tr.RequestHeader().Get("X-KG-Role"))
@@ -920,6 +1355,17 @@ func stringifyMap(m map[string]any) map[string]string {
 	out := make(map[string]string, len(m))
 	for k, v := range m {
 		out[k] = fmt.Sprint(v)
+	}
+	return out
+}
+
+func cloneAnyMap(in map[string]any) map[string]any {
+	if in == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }

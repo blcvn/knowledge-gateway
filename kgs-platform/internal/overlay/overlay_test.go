@@ -5,7 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type memoryStore struct {
@@ -120,6 +123,18 @@ type fakePublisher struct {
 	subjects  []string
 }
 
+func newOverlayTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&data.KGEntity{}, &data.KGEdge{}, &data.KGSyncOutbox{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	return db
+}
+
 func (f *fakePublisher) Publish(ctx context.Context, subject string, payload []byte) error {
 	_ = ctx
 	_ = payload
@@ -136,6 +151,7 @@ func TestOverlayLifecycle(t *testing.T) {
 	pub := &fakePublisher{}
 	manager := &Manager{
 		store:      store,
+		db:         newOverlayTestDB(t),
 		versionMgr: vm,
 		publisher:  pub,
 	}
@@ -156,7 +172,7 @@ func TestOverlayLifecycle(t *testing.T) {
 	if commit.NewVersionID == "" {
 		t.Fatalf("expected new version id")
 	}
-	if pub.published == 0 {
+	if !waitFor(500*time.Millisecond, func() bool { return pub.published > 0 }) {
 		t.Fatalf("expected publish event on commit")
 	}
 	if len(pub.subjects) == 0 || pub.subjects[0] != "overlay.committed.tenant" {

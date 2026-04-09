@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 const defaultOverlayTTL = time.Hour
@@ -27,9 +28,9 @@ type GraphDeleteApplier interface {
 
 type Manager struct {
 	store      Store
+	db         *gorm.DB
 	versionMgr version.VersionManager
 	publisher  EventPublisher
-	graphRepo  GraphDeleteApplier
 	log        *log.Helper
 }
 
@@ -41,12 +42,12 @@ type OverlayManager interface {
 	DiscardBySession(ctx context.Context, sessionID string) error
 }
 
-func NewManager(store Store, versionMgr version.VersionManager, publisher EventPublisher, graphRepo GraphDeleteApplier, logger log.Logger) *Manager {
+func NewManager(store Store, db *gorm.DB, versionMgr version.VersionManager, publisher EventPublisher, logger log.Logger) *Manager {
 	return &Manager{
 		store:      store,
+		db:         db,
 		versionMgr: versionMgr,
 		publisher:  publisher,
-		graphRepo:  graphRepo,
 		log:        log.NewHelper(logger),
 	}
 }

@@ -21,6 +21,7 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationGraphBatchDeleteNodes = "/api.graph.v1.Graph/BatchDeleteNodes"
 const OperationGraphBatchUpsertEntities = "/api.graph.v1.Graph/BatchUpsertEntities"
+const OperationGraphBatchUpsertGraph = "/api.graph.v1.Graph/BatchUpsertGraph"
 const OperationGraphCommitOverlay = "/api.graph.v1.Graph/CommitOverlay"
 const OperationGraphCreateEdge = "/api.graph.v1.Graph/CreateEdge"
 const OperationGraphCreateNode = "/api.graph.v1.Graph/CreateNode"
@@ -50,6 +51,8 @@ type GraphHTTPServer interface {
 	BatchDeleteNodes(context.Context, *BatchDeleteNodesRequest) (*BatchDeleteNodesReply, error)
 	// BatchUpsertEntities Batch upsert entities
 	BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error)
+	// BatchUpsertGraph Batch upsert entities + edges atomically
+	BatchUpsertGraph(context.Context, *BatchUpsertGraphRequest) (*BatchUpsertGraphReply, error)
 	// CommitOverlay Commit overlay changes into base graph and create new version
 	CommitOverlay(context.Context, *CommitOverlayRequest) (*CommitOverlayReply, error)
 	// CreateEdge Create an edge between two nodes
@@ -112,6 +115,7 @@ func RegisterGraphHTTPServer(s *http.Server, srv GraphHTTPServer) {
 	r.POST("/v1/graph/subgraph", _Graph_GetSubgraph0_HTTP_Handler(srv))
 	r.POST("/v1/graph/full", _Graph_GetFullGraph0_HTTP_Handler(srv))
 	r.POST("/v1/graph/entities/batch", _Graph_BatchUpsertEntities0_HTTP_Handler(srv))
+	r.POST("/v1/graph/batch", _Graph_BatchUpsertGraph0_HTTP_Handler(srv))
 	r.POST("/v1/graph/search/hybrid", _Graph_HybridSearch0_HTTP_Handler(srv))
 	r.GET("/v1/graph/coverage/{domain}", _Graph_GetCoverageReport0_HTTP_Handler(srv))
 	r.POST("/v1/graph/traceability", _Graph_GetTraceabilityMatrix0_HTTP_Handler(srv))
@@ -387,6 +391,28 @@ func _Graph_BatchUpsertEntities0_HTTP_Handler(srv GraphHTTPServer) func(ctx http
 			return err
 		}
 		reply := out.(*BatchUpsertReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_BatchUpsertGraph0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in BatchUpsertGraphRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphBatchUpsertGraph)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.BatchUpsertGraph(ctx, req.(*BatchUpsertGraphRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*BatchUpsertGraphReply)
 		return ctx.Result(200, reply)
 	}
 }
@@ -679,6 +705,8 @@ type GraphHTTPClient interface {
 	BatchDeleteNodes(ctx context.Context, req *BatchDeleteNodesRequest, opts ...http.CallOption) (rsp *BatchDeleteNodesReply, err error)
 	// BatchUpsertEntities Batch upsert entities
 	BatchUpsertEntities(ctx context.Context, req *BatchUpsertRequest, opts ...http.CallOption) (rsp *BatchUpsertReply, err error)
+	// BatchUpsertGraph Batch upsert entities + edges atomically
+	BatchUpsertGraph(ctx context.Context, req *BatchUpsertGraphRequest, opts ...http.CallOption) (rsp *BatchUpsertGraphReply, err error)
 	// CommitOverlay Commit overlay changes into base graph and create new version
 	CommitOverlay(ctx context.Context, req *CommitOverlayRequest, opts ...http.CallOption) (rsp *CommitOverlayReply, err error)
 	// CreateEdge Create an edge between two nodes
@@ -755,6 +783,20 @@ func (c *GraphHTTPClientImpl) BatchUpsertEntities(ctx context.Context, in *Batch
 	pattern := "/v1/graph/entities/batch"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationGraphBatchUpsertEntities))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// BatchUpsertGraph Batch upsert entities + edges atomically
+func (c *GraphHTTPClientImpl) BatchUpsertGraph(ctx context.Context, in *BatchUpsertGraphRequest, opts ...http.CallOption) (*BatchUpsertGraphReply, error) {
+	var out BatchUpsertGraphReply
+	pattern := "/v1/graph/batch"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationGraphBatchUpsertGraph))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

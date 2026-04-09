@@ -18,6 +18,7 @@ func TestSessionCloseListener(t *testing.T) {
 	store := newMemoryStore()
 	manager := &Manager{
 		store:      store,
+		db:         newOverlayTestDB(t),
 		versionMgr: &fakeVersionManager{},
 	}
 	ctx := context.Background()
@@ -62,6 +63,7 @@ func TestSessionCloseListenerCommitWhenOverlayHasDelta(t *testing.T) {
 	}
 	manager := &Manager{
 		store:      store,
+		db:         newOverlayTestDB(t),
 		versionMgr: vm,
 	}
 	ctx := context.Background()
@@ -92,10 +94,10 @@ func TestSessionCloseListenerCommitWhenOverlayHasDelta(t *testing.T) {
 	}
 
 	if !waitFor(2*time.Second, func() bool {
-		updated, getErr := store.Get(ctx, item.OverlayID)
-		return getErr == nil && updated.Status == StatusCommitted
+		_, getErr := store.Get(ctx, item.OverlayID)
+		return getErr != nil
 	}) {
-		t.Fatalf("expected committed status")
+		t.Fatalf("expected overlay cleanup after commit")
 	}
 }
 
@@ -106,6 +108,7 @@ func TestBudgetStopListenerCommitPartial(t *testing.T) {
 	}
 	manager := &Manager{
 		store:      store,
+		db:         newOverlayTestDB(t),
 		versionMgr: vm,
 	}
 	ctx := context.Background()
@@ -136,10 +139,10 @@ func TestBudgetStopListenerCommitPartial(t *testing.T) {
 	}
 
 	if !waitFor(2*time.Second, func() bool {
-		updated, getErr := store.Get(ctx, item.OverlayID)
-		return getErr == nil && updated.Status == StatusPartial
+		_, getErr := store.Get(ctx, item.OverlayID)
+		return getErr != nil
 	}) {
-		t.Fatalf("expected partial status")
+		t.Fatalf("expected overlay cleanup after partial commit")
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/analytics"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/batch"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
@@ -51,16 +52,19 @@ func TestPhase5Integration_Search(t *testing.T) {
 
 func TestPhase5Integration_OverlayVersion(t *testing.T) {
 	ctx := context.Background()
-	versionMgr := newIntegrationVersionManager(t)
+	versionMgr, db := newIntegrationVersionManager(t)
 	store := newIntegrationOverlayStore()
-	mgr := overlay.NewManager(store, versionMgr, nil, nil, log.NewStdLogger(io.Discard))
+	mgr := overlay.NewManager(store, db, versionMgr, nil, log.NewStdLogger(io.Discard))
 
 	item, err := mgr.Create(ctx, "graph/app-1/tenant-1", "session-1", "current")
 	if err != nil {
 		t.Fatalf("create overlay failed: %v", err)
 	}
-	if _, err := mgr.AddEntityDelta(ctx, item.OverlayID, item.Namespace, "Requirement", map[string]any{"name": "FR-001"}); err != nil {
+	if _, err := mgr.AddEntityDelta(ctx, item.OverlayID, item.Namespace, "Requirement", map[string]any{"id": "n1", "name": "FR-001"}); err != nil {
 		t.Fatalf("add entity delta failed: %v", err)
+	}
+	if _, err := mgr.AddEntityDelta(ctx, item.OverlayID, item.Namespace, "Requirement", map[string]any{"id": "n2", "name": "UC-001"}); err != nil {
+		t.Fatalf("add entity delta 2 failed: %v", err)
 	}
 	if _, err := mgr.AddEdgeDelta(ctx, item.OverlayID, item.Namespace, "IMPLEMENTS", "n1", "n2", map[string]any{}); err != nil {
 		t.Fatalf("add edge delta failed: %v", err)
@@ -69,7 +73,7 @@ func TestPhase5Integration_OverlayVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("commit overlay failed: %v", err)
 	}
-	if commit.NewVersionID == "" || commit.EntitiesCommitted != 1 || commit.EdgesCommitted != 1 {
+	if commit.NewVersionID == "" || commit.EntitiesCommitted != 2 || commit.EdgesCommitted != 1 {
 		t.Fatalf("unexpected commit result: %#v", commit)
 	}
 
@@ -216,15 +220,15 @@ func (s *integrationOverlayStore) FindBySession(ctx context.Context, sessionID s
 	return s.sessions[sessionID], nil
 }
 
-func newIntegrationVersionManager(t *testing.T) *version.Manager {
+func newIntegrationVersionManager(t *testing.T) (*version.Manager, *gorm.DB) {
 	t.Helper()
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=private", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&version.GraphVersion{}); err != nil {
+	if err := db.AutoMigrate(&version.GraphVersion{}, &data.KGEntity{}, &data.KGEdge{}, &data.KGSyncOutbox{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return version.NewManager(db, log.NewStdLogger(io.Discard))
+	return version.NewManager(db, log.NewStdLogger(io.Discard)), db
 }

@@ -340,6 +340,14 @@ func sanitizeCypherIdentifier(input string) (string, error) {
 	return input, nil
 }
 
+func BuildCreateNodeQuery(cleanLabel string) string {
+	return buildCreateNodeQuery(cleanLabel)
+}
+
+func SanitizeCypherIdentifier(input string) (string, error) {
+	return sanitizeCypherIdentifier(input)
+}
+
 func (r *graphRepo) ensureGlobalFullTextIndex(ctx context.Context) error {
 	traceCtx, span := observability.StartDependencySpan(ctx, "neo4j", "neo4j.ensure_fulltext_index")
 	defer span.End()

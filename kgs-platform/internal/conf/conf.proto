@@ -72,6 +72,14 @@ message Data {
     bool edge_constraint_check = 4;
     bool sync_projection = 5;
   }
+  message Outbox {
+    int32 poll_interval_ms = 1;
+    int32 batch_size = 2;
+    int32 max_attempts = 3;
+  }
+  message Reconcile {
+    string cron = 1;
+  }
   Database database = 1;
   Redis redis = 2;
   Neo4j neo4j = 3;
@@ -80,4 +88,6 @@ message Data {
   NATS nats = 6;
   Embedding embedding = 7;
   OntologyConfig ontology = 9;
+  Outbox outbox = 10;
+  Reconcile reconcile = 11;
 }

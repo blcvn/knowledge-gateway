@@ -53,7 +53,6 @@ type EntityValidator interface {
 type Usecase struct {
 	writer    Writer
 	deduper   Deduper
-	indexer   VectorIndexer
 	validator EntityValidator
 }
 
@@ -62,10 +61,10 @@ func NewUsecase(writer Writer, deduper Deduper) *Usecase {
 }
 
 func NewUsecaseWithIndexer(writer Writer, deduper Deduper, indexer VectorIndexer, validator EntityValidator) *Usecase {
+	_ = indexer // indexing is async through outbox worker in the Postgres write path.
 	return &Usecase{
 		writer:    writer,
 		deduper:   deduper,
-		indexer:   indexer,
 		validator: validator,
 	}
 }
@@ -105,11 +104,6 @@ func (u *Usecase) Execute(ctx context.Context, req BatchUpsertRequest) (*BatchUp
 	created, err := u.writer.BulkCreate(ctx, req.AppID, req.TenantID, unique)
 	if err != nil {
 		return nil, err
-	}
-	if u.indexer != nil {
-		if err := u.indexer.IndexEntities(ctx, req.AppID, req.TenantID, unique); err != nil {
-			return nil, err
-		}
 	}
 
 	return &BatchUpsertResult{

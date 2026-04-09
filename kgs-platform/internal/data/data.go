@@ -22,7 +22,7 @@ import (
 )
 
 // ProviderSet is data providers.
-var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewRegistryRepo, NewOntologyRepo, NewGraphRepo, NewRulesRepo, NewPolicyRepo, NewRedisClient, NewNeo4jDriver, NewQdrantClient, NewNATSClient, NewGormDB)
+var ProviderSet = wire.NewSet(NewData, NewGreeterRepo, NewRegistryRepo, NewOntologyRepo, NewGraphRepo, NewPGWriteRepo, NewEntityReader, NewRulesRepo, NewPolicyRepo, NewRedisClient, NewNeo4jDriver, NewQdrantClient, NewNATSClient, NewGormDB)
 
 // NewRedisClient exposes the redis client to wire
 func NewRedisClient(data *Data) *redis.Client {
@@ -83,6 +83,9 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 		&biz.Rule{},
 		&biz.RuleExecution{},
 		&biz.Policy{},
+		&KGEntity{},
+		&KGEdge{},
+		&KGSyncOutbox{},
 		&version.GraphVersion{},
 		&projection.ViewDefinitionRecord{},
 	); err != nil {
@@ -90,6 +93,9 @@ func NewData(c *conf.Data, logger log.Logger) (*Data, func(), error) {
 	}
 	if err := ensureOntologyUniqueIndexes(context.Background(), db, helper); err != nil {
 		helper.Fatalf("failed ensuring ontology unique indexes: %v", err)
+	}
+	if err := ensureKGIndexes(context.Background(), db); err != nil {
+		helper.Fatalf("failed ensuring KG indexes: %v", err)
 	}
 
 	// Neo4j Setup
@@ -312,6 +318,123 @@ WHERE t.id = r.id
 `, quoteIdent(table), quoteIdent(table))
 	tx := db.WithContext(ctx).Exec(sql)
 	return tx.RowsAffected, tx.Error
+}
+
+func ensureKGIndexes(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("nil db")
+	}
+	if db.Dialector.Name() != "postgres" {
+		return nil
+	}
+
+	statements := []string{
+		`DROP INDEX IF EXISTS idx_entity_unique_name`,
+		`CREATE INDEX IF NOT EXISTS idx_outbox_pending
+				ON kg_sync_outbox(status, id ASC)
+				WHERE status IN ('PENDING', 'FAILED')`,
+		`DO $$
+		BEGIN
+			IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_kg_edges_from_entity') THEN
+				ALTER TABLE kg_edges DROP CONSTRAINT fk_kg_edges_from_entity;
+			END IF;
+			IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_kg_edges_to_entity') THEN
+				ALTER TABLE kg_edges DROP CONSTRAINT fk_kg_edges_to_entity;
+			END IF;
+		END $$`,
+		`DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema = current_schema()
+				  AND table_name = 'kg_entities'
+				  AND column_name = 'entity_id'
+				  AND udt_name <> 'text'
+			) THEN
+				ALTER TABLE kg_entities ALTER COLUMN entity_id TYPE text USING entity_id::text;
+			END IF;
+		END $$`,
+		`DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema = current_schema()
+				  AND table_name = 'kg_edges'
+				  AND column_name = 'edge_id'
+				  AND udt_name <> 'text'
+			) THEN
+				ALTER TABLE kg_edges ALTER COLUMN edge_id TYPE text USING edge_id::text;
+			END IF;
+			IF EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema = current_schema()
+				  AND table_name = 'kg_edges'
+				  AND column_name = 'from_entity_id'
+				  AND udt_name <> 'text'
+			) THEN
+				ALTER TABLE kg_edges ALTER COLUMN from_entity_id TYPE text USING from_entity_id::text;
+			END IF;
+			IF EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema = current_schema()
+				  AND table_name = 'kg_edges'
+				  AND column_name = 'to_entity_id'
+				  AND udt_name <> 'text'
+			) THEN
+				ALTER TABLE kg_edges ALTER COLUMN to_entity_id TYPE text USING to_entity_id::text;
+			END IF;
+		END $$`,
+		`DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema = current_schema()
+				  AND table_name = 'kg_sync_outbox'
+				  AND column_name = 'entity_id'
+				  AND udt_name <> 'text'
+			) THEN
+				ALTER TABLE kg_sync_outbox ALTER COLUMN entity_id TYPE text USING entity_id::text;
+			END IF;
+			IF EXISTS (
+				SELECT 1
+				FROM information_schema.columns
+				WHERE table_schema = current_schema()
+				  AND table_name = 'kg_sync_outbox'
+				  AND column_name = 'edge_id'
+				  AND udt_name <> 'text'
+			) THEN
+				ALTER TABLE kg_sync_outbox ALTER COLUMN edge_id TYPE text USING edge_id::text;
+			END IF;
+		END $$`,
+		`DO $$
+		BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_kg_edges_from_entity') THEN
+				ALTER TABLE kg_edges
+				ADD CONSTRAINT fk_kg_edges_from_entity
+				FOREIGN KEY (from_entity_id) REFERENCES kg_entities(entity_id);
+			END IF;
+		END $$`,
+		`DO $$
+		BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_kg_edges_to_entity') THEN
+				ALTER TABLE kg_edges
+				ADD CONSTRAINT fk_kg_edges_to_entity
+				FOREIGN KEY (to_entity_id) REFERENCES kg_entities(entity_id);
+			END IF;
+		END $$`,
+	}
+
+	for _, stmt := range statements {
+		if err := db.WithContext(ctx).Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func isDuplicateConstraintDataError(err error) bool {

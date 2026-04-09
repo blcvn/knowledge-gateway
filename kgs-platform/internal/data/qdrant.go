@@ -209,6 +209,47 @@ func (c *QdrantClient) DeleteVectors(ctx context.Context, collection string, ids
 	return c.doJSON(ctx, http.MethodPost, "/collections/"+url.PathEscape(collection)+"/points/delete", body, nil)
 }
 
+func (c *QdrantClient) ExistingPointIDs(ctx context.Context, collection string, ids []string) (map[string]struct{}, error) {
+	out := map[string]struct{}{}
+	if c == nil || len(ids) == 0 {
+		return out, nil
+	}
+	collection = c.normalizeCollection(collection)
+	if collection == "" {
+		return out, nil
+	}
+	body := map[string]any{
+		"ids":          ids,
+		"with_payload": false,
+		"with_vector":  false,
+	}
+
+	var raw json.RawMessage
+	if err := c.doJSON(ctx, http.MethodPost, "/collections/"+url.PathEscape(collection)+"/points", body, &raw); err != nil {
+		return nil, err
+	}
+
+	points := []qdrantPoint{}
+	if err := json.Unmarshal(raw, &points); err != nil {
+		var wrapped struct {
+			Points []qdrantPoint `json:"points"`
+		}
+		if err2 := json.Unmarshal(raw, &wrapped); err2 != nil {
+			return nil, err
+		}
+		points = wrapped.Points
+	}
+
+	for _, point := range points {
+		id := strings.TrimSpace(fmt.Sprint(point.ID))
+		if id == "" || id == "<nil>" {
+			continue
+		}
+		out[id] = struct{}{}
+	}
+	return out, nil
+}
+
 func (c *QdrantClient) Ping(ctx context.Context) error {
 	if c == nil {
 		return nil

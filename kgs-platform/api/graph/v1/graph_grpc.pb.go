@@ -46,6 +46,8 @@ type GraphClient interface {
 	GetFullGraph(ctx context.Context, in *GetFullGraphRequest, opts ...grpc.CallOption) (*GetFullGraphResponse, error)
 	// Batch upsert entities
 	BatchUpsertEntities(ctx context.Context, in *BatchUpsertRequest, opts ...grpc.CallOption) (*BatchUpsertReply, error)
+	// Batch upsert entities + edges atomically
+	BatchUpsertGraph(ctx context.Context, in *BatchUpsertGraphRequest, opts ...grpc.CallOption) (*BatchUpsertGraphReply, error)
 	// Hybrid search across vector and full-text indexes
 	HybridSearch(ctx context.Context, in *HybridSearchRequest, opts ...grpc.CallOption) (*HybridSearchReply, error)
 	// Get coverage report by domain
@@ -184,6 +186,15 @@ func (c *graphClient) GetFullGraph(ctx context.Context, in *GetFullGraphRequest,
 func (c *graphClient) BatchUpsertEntities(ctx context.Context, in *BatchUpsertRequest, opts ...grpc.CallOption) (*BatchUpsertReply, error) {
 	out := new(BatchUpsertReply)
 	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/BatchUpsertEntities", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) BatchUpsertGraph(ctx context.Context, in *BatchUpsertGraphRequest, opts ...grpc.CallOption) (*BatchUpsertGraphReply, error) {
+	out := new(BatchUpsertGraphReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/BatchUpsertGraph", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -335,6 +346,8 @@ type GraphServer interface {
 	GetFullGraph(context.Context, *GetFullGraphRequest) (*GetFullGraphResponse, error)
 	// Batch upsert entities
 	BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error)
+	// Batch upsert entities + edges atomically
+	BatchUpsertGraph(context.Context, *BatchUpsertGraphRequest) (*BatchUpsertGraphReply, error)
 	// Hybrid search across vector and full-text indexes
 	HybridSearch(context.Context, *HybridSearchRequest) (*HybridSearchReply, error)
 	// Get coverage report by domain
@@ -403,6 +416,9 @@ func (UnimplementedGraphServer) GetFullGraph(context.Context, *GetFullGraphReque
 }
 func (UnimplementedGraphServer) BatchUpsertEntities(context.Context, *BatchUpsertRequest) (*BatchUpsertReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BatchUpsertEntities not implemented")
+}
+func (UnimplementedGraphServer) BatchUpsertGraph(context.Context, *BatchUpsertGraphRequest) (*BatchUpsertGraphReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BatchUpsertGraph not implemented")
 }
 func (UnimplementedGraphServer) HybridSearch(context.Context, *HybridSearchRequest) (*HybridSearchReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HybridSearch not implemented")
@@ -668,6 +684,24 @@ func _Graph_BatchUpsertEntities_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GraphServer).BatchUpsertEntities(ctx, req.(*BatchUpsertRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_BatchUpsertGraph_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchUpsertGraphRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).BatchUpsertGraph(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/BatchUpsertGraph",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).BatchUpsertGraph(ctx, req.(*BatchUpsertGraphRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -960,6 +994,10 @@ var Graph_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BatchUpsertEntities",
 			Handler:    _Graph_BatchUpsertEntities_Handler,
+		},
+		{
+			MethodName: "BatchUpsertGraph",
+			Handler:    _Graph_BatchUpsertGraph_Handler,
 		},
 		{
 			MethodName: "HybridSearch",
