@@ -805,6 +805,44 @@ func (s *GraphService) DiscardOverlay(ctx context.Context, req *pb.DiscardOverla
 	}, nil
 }
 
+func (s *GraphService) DeleteNodeFromOverlay(ctx context.Context, req *pb.DeleteNodeFromOverlayRequest) (*pb.DeleteNodeFromOverlayReply, error) {
+	if s.overlay == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "overlay manager is not configured")
+	}
+	if req == nil || strings.TrimSpace(req.GetOverlayId()) == "" {
+		return nil, kerrors.BadRequest("ERR_MISSING_OVERLAY_ID", "overlay_id is required")
+	}
+	if strings.TrimSpace(req.GetNodeId()) == "" {
+		return nil, kerrors.BadRequest("ERR_MISSING_NODE_ID", "node_id is required")
+	}
+	if err := s.overlay.DeleteEntityDelta(ctx, req.GetOverlayId(), req.GetNodeId()); err != nil {
+		return nil, err
+	}
+	return &pb.DeleteNodeFromOverlayReply{
+		OverlayId: req.GetOverlayId(),
+		NodeId:    req.GetNodeId(),
+	}, nil
+}
+
+func (s *GraphService) DeleteEdgeFromOverlay(ctx context.Context, req *pb.DeleteEdgeFromOverlayRequest) (*pb.DeleteEdgeFromOverlayReply, error) {
+	if s.overlay == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "overlay manager is not configured")
+	}
+	if req == nil || strings.TrimSpace(req.GetOverlayId()) == "" {
+		return nil, kerrors.BadRequest("ERR_MISSING_OVERLAY_ID", "overlay_id is required")
+	}
+	if strings.TrimSpace(req.GetEdgeId()) == "" {
+		return nil, kerrors.BadRequest("ERR_MISSING_EDGE_ID", "edge_id is required")
+	}
+	if err := s.overlay.DeleteEdgeDelta(ctx, req.GetOverlayId(), req.GetEdgeId()); err != nil {
+		return nil, err
+	}
+	return &pb.DeleteEdgeFromOverlayReply{
+		OverlayId: req.GetOverlayId(),
+		EdgeId:    req.GetEdgeId(),
+	}, nil
+}
+
 func (s *GraphService) ListVersions(ctx context.Context, req *pb.ListVersionsRequest) (*pb.ListVersionsReply, error) {
 	_ = req
 	if s.version == nil {

@@ -40,6 +40,8 @@ type OverlayManager interface {
 	Commit(ctx context.Context, overlayID, conflictPolicy string) (*CommitResult, error)
 	Discard(ctx context.Context, overlayID string) error
 	DiscardBySession(ctx context.Context, sessionID string) error
+	DeleteEntityDelta(ctx context.Context, overlayID, nodeID string) error
+	DeleteEdgeDelta(ctx context.Context, overlayID, edgeID string) error
 }
 
 func NewManager(store Store, db *gorm.DB, versionMgr version.VersionManager, publisher EventPublisher, logger log.Logger) *Manager {

@@ -60,6 +60,10 @@ type GraphClient interface {
 	CommitOverlay(ctx context.Context, in *CommitOverlayRequest, opts ...grpc.CallOption) (*CommitOverlayReply, error)
 	// Discard an overlay graph
 	DiscardOverlay(ctx context.Context, in *DiscardOverlayRequest, opts ...grpc.CallOption) (*DiscardOverlayReply, error)
+	// Stage a node deletion into an overlay (deleted on commit)
+	DeleteNodeFromOverlay(ctx context.Context, in *DeleteNodeFromOverlayRequest, opts ...grpc.CallOption) (*DeleteNodeFromOverlayReply, error)
+	// Stage an edge deletion into an overlay (deleted on commit)
+	DeleteEdgeFromOverlay(ctx context.Context, in *DeleteEdgeFromOverlayRequest, opts ...grpc.CallOption) (*DeleteEdgeFromOverlayReply, error)
 	// List versions in current namespace
 	ListVersions(ctx context.Context, in *ListVersionsRequest, opts ...grpc.CallOption) (*ListVersionsReply, error)
 	// Diff two versions in current namespace
@@ -255,6 +259,24 @@ func (c *graphClient) DiscardOverlay(ctx context.Context, in *DiscardOverlayRequ
 	return out, nil
 }
 
+func (c *graphClient) DeleteNodeFromOverlay(ctx context.Context, in *DeleteNodeFromOverlayRequest, opts ...grpc.CallOption) (*DeleteNodeFromOverlayReply, error) {
+	out := new(DeleteNodeFromOverlayReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/DeleteNodeFromOverlay", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *graphClient) DeleteEdgeFromOverlay(ctx context.Context, in *DeleteEdgeFromOverlayRequest, opts ...grpc.CallOption) (*DeleteEdgeFromOverlayReply, error) {
+	out := new(DeleteEdgeFromOverlayReply)
+	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/DeleteEdgeFromOverlay", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *graphClient) ListVersions(ctx context.Context, in *ListVersionsRequest, opts ...grpc.CallOption) (*ListVersionsReply, error) {
 	out := new(ListVersionsReply)
 	err := c.cc.Invoke(ctx, "/api.graph.v1.Graph/ListVersions", in, out, opts...)
@@ -360,6 +382,10 @@ type GraphServer interface {
 	CommitOverlay(context.Context, *CommitOverlayRequest) (*CommitOverlayReply, error)
 	// Discard an overlay graph
 	DiscardOverlay(context.Context, *DiscardOverlayRequest) (*DiscardOverlayReply, error)
+	// Stage a node deletion into an overlay (deleted on commit)
+	DeleteNodeFromOverlay(context.Context, *DeleteNodeFromOverlayRequest) (*DeleteNodeFromOverlayReply, error)
+	// Stage an edge deletion into an overlay (deleted on commit)
+	DeleteEdgeFromOverlay(context.Context, *DeleteEdgeFromOverlayRequest) (*DeleteEdgeFromOverlayReply, error)
 	// List versions in current namespace
 	ListVersions(context.Context, *ListVersionsRequest) (*ListVersionsReply, error)
 	// Diff two versions in current namespace
@@ -437,6 +463,12 @@ func (UnimplementedGraphServer) CommitOverlay(context.Context, *CommitOverlayReq
 }
 func (UnimplementedGraphServer) DiscardOverlay(context.Context, *DiscardOverlayRequest) (*DiscardOverlayReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DiscardOverlay not implemented")
+}
+func (UnimplementedGraphServer) DeleteNodeFromOverlay(context.Context, *DeleteNodeFromOverlayRequest) (*DeleteNodeFromOverlayReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteNodeFromOverlay not implemented")
+}
+func (UnimplementedGraphServer) DeleteEdgeFromOverlay(context.Context, *DeleteEdgeFromOverlayRequest) (*DeleteEdgeFromOverlayReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteEdgeFromOverlay not implemented")
 }
 func (UnimplementedGraphServer) ListVersions(context.Context, *ListVersionsRequest) (*ListVersionsReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListVersions not implemented")
@@ -814,6 +846,42 @@ func _Graph_DiscardOverlay_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Graph_DeleteNodeFromOverlay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNodeFromOverlayRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).DeleteNodeFromOverlay(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/DeleteNodeFromOverlay",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).DeleteNodeFromOverlay(ctx, req.(*DeleteNodeFromOverlayRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Graph_DeleteEdgeFromOverlay_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteEdgeFromOverlayRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphServer).DeleteEdgeFromOverlay(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.graph.v1.Graph/DeleteEdgeFromOverlay",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphServer).DeleteEdgeFromOverlay(ctx, req.(*DeleteEdgeFromOverlayRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Graph_ListVersions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListVersionsRequest)
 	if err := dec(in); err != nil {
@@ -1022,6 +1090,14 @@ var Graph_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DiscardOverlay",
 			Handler:    _Graph_DiscardOverlay_Handler,
+		},
+		{
+			MethodName: "DeleteNodeFromOverlay",
+			Handler:    _Graph_DeleteNodeFromOverlay_Handler,
+		},
+		{
+			MethodName: "DeleteEdgeFromOverlay",
+			Handler:    _Graph_DeleteEdgeFromOverlay_Handler,
 		},
 		{
 			MethodName: "ListVersions",

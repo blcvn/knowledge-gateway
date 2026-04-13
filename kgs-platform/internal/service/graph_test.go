@@ -523,9 +523,11 @@ func (f *fakeProjectionEngine) DeleteViewDefinition(ctx context.Context, namespa
 }
 
 type fakeOverlayManager struct {
-	createFn  func(ctx context.Context, namespace, sessionID, baseVersionID string) (*overlay.OverlayGraph, error)
-	commitFn  func(ctx context.Context, overlayID, conflictPolicy string) (*overlay.CommitResult, error)
-	discardFn func(ctx context.Context, overlayID string) error
+	createFn            func(ctx context.Context, namespace, sessionID, baseVersionID string) (*overlay.OverlayGraph, error)
+	commitFn            func(ctx context.Context, overlayID, conflictPolicy string) (*overlay.CommitResult, error)
+	discardFn           func(ctx context.Context, overlayID string) error
+	deleteEntityDeltaFn func(ctx context.Context, overlayID, nodeID string) error
+	deleteEdgeDeltaFn   func(ctx context.Context, overlayID, edgeID string) error
 }
 
 func (f *fakeOverlayManager) Create(ctx context.Context, namespace, sessionID, baseVersionID string) (*overlay.OverlayGraph, error) {
@@ -546,6 +548,20 @@ func (f *fakeOverlayManager) Discard(ctx context.Context, overlayID string) erro
 
 func (f *fakeOverlayManager) DiscardBySession(ctx context.Context, sessionID string) error {
 	return nil
+}
+
+func (f *fakeOverlayManager) DeleteEntityDelta(ctx context.Context, overlayID, nodeID string) error {
+	if f.deleteEntityDeltaFn == nil {
+		return nil
+	}
+	return f.deleteEntityDeltaFn(ctx, overlayID, nodeID)
+}
+
+func (f *fakeOverlayManager) DeleteEdgeDelta(ctx context.Context, overlayID, edgeID string) error {
+	if f.deleteEdgeDeltaFn == nil {
+		return nil
+	}
+	return f.deleteEdgeDeltaFn(ctx, overlayID, edgeID)
 }
 
 type fakeVersionManager struct {

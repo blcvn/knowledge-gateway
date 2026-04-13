@@ -28,7 +28,9 @@ const OperationGraphCreateNode = "/api.graph.v1.Graph/CreateNode"
 const OperationGraphCreateOverlay = "/api.graph.v1.Graph/CreateOverlay"
 const OperationGraphCreateViewDefinition = "/api.graph.v1.Graph/CreateViewDefinition"
 const OperationGraphDeleteEdge = "/api.graph.v1.Graph/DeleteEdge"
+const OperationGraphDeleteEdgeFromOverlay = "/api.graph.v1.Graph/DeleteEdgeFromOverlay"
 const OperationGraphDeleteNode = "/api.graph.v1.Graph/DeleteNode"
+const OperationGraphDeleteNodeFromOverlay = "/api.graph.v1.Graph/DeleteNodeFromOverlay"
 const OperationGraphDeleteViewDefinition = "/api.graph.v1.Graph/DeleteViewDefinition"
 const OperationGraphDiffVersions = "/api.graph.v1.Graph/DiffVersions"
 const OperationGraphDiscardOverlay = "/api.graph.v1.Graph/DiscardOverlay"
@@ -65,8 +67,12 @@ type GraphHTTPServer interface {
 	CreateViewDefinition(context.Context, *CreateViewDefinitionRequest) (*CreateViewDefinitionReply, error)
 	// DeleteEdge Delete an edge by ID
 	DeleteEdge(context.Context, *DeleteEdgeRequest) (*DeleteEdgeReply, error)
+	// DeleteEdgeFromOverlay Stage an edge deletion into an overlay (deleted on commit)
+	DeleteEdgeFromOverlay(context.Context, *DeleteEdgeFromOverlayRequest) (*DeleteEdgeFromOverlayReply, error)
 	// DeleteNode Delete a node and its incident edges (detach delete)
 	DeleteNode(context.Context, *DeleteNodeRequest) (*DeleteNodeReply, error)
+	// DeleteNodeFromOverlay Stage a node deletion into an overlay (deleted on commit)
+	DeleteNodeFromOverlay(context.Context, *DeleteNodeFromOverlayRequest) (*DeleteNodeFromOverlayReply, error)
 	// DeleteViewDefinition Delete a view definition
 	DeleteViewDefinition(context.Context, *DeleteViewDefinitionRequest) (*DeleteViewDefinitionReply, error)
 	// DiffVersions Diff two versions in current namespace
@@ -122,6 +128,8 @@ func RegisterGraphHTTPServer(s *http.Server, srv GraphHTTPServer) {
 	r.POST("/v1/graph/overlays", _Graph_CreateOverlay0_HTTP_Handler(srv))
 	r.POST("/v1/graph/overlays/{overlay_id}/commit", _Graph_CommitOverlay0_HTTP_Handler(srv))
 	r.DELETE("/v1/graph/overlays/{overlay_id}", _Graph_DiscardOverlay0_HTTP_Handler(srv))
+	r.DELETE("/v1/graph/overlays/{overlay_id}/nodes/{node_id}", _Graph_DeleteNodeFromOverlay0_HTTP_Handler(srv))
+	r.DELETE("/v1/graph/overlays/{overlay_id}/edges/{edge_id}", _Graph_DeleteEdgeFromOverlay0_HTTP_Handler(srv))
 	r.GET("/v1/graph/versions", _Graph_ListVersions0_HTTP_Handler(srv))
 	r.GET("/v1/graph/versions/diff", _Graph_DiffVersions0_HTTP_Handler(srv))
 	r.POST("/v1/graph/versions/{version_id}/rollback", _Graph_RollbackVersion0_HTTP_Handler(srv))
@@ -552,6 +560,50 @@ func _Graph_DiscardOverlay0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Cont
 	}
 }
 
+func _Graph_DeleteNodeFromOverlay0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteNodeFromOverlayRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphDeleteNodeFromOverlay)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteNodeFromOverlay(ctx, req.(*DeleteNodeFromOverlayRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DeleteNodeFromOverlayReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Graph_DeleteEdgeFromOverlay0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteEdgeFromOverlayRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationGraphDeleteEdgeFromOverlay)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteEdgeFromOverlay(ctx, req.(*DeleteEdgeFromOverlayRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DeleteEdgeFromOverlayReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _Graph_ListVersions0_HTTP_Handler(srv GraphHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListVersionsRequest
@@ -719,8 +771,12 @@ type GraphHTTPClient interface {
 	CreateViewDefinition(ctx context.Context, req *CreateViewDefinitionRequest, opts ...http.CallOption) (rsp *CreateViewDefinitionReply, err error)
 	// DeleteEdge Delete an edge by ID
 	DeleteEdge(ctx context.Context, req *DeleteEdgeRequest, opts ...http.CallOption) (rsp *DeleteEdgeReply, err error)
+	// DeleteEdgeFromOverlay Stage an edge deletion into an overlay (deleted on commit)
+	DeleteEdgeFromOverlay(ctx context.Context, req *DeleteEdgeFromOverlayRequest, opts ...http.CallOption) (rsp *DeleteEdgeFromOverlayReply, err error)
 	// DeleteNode Delete a node and its incident edges (detach delete)
 	DeleteNode(ctx context.Context, req *DeleteNodeRequest, opts ...http.CallOption) (rsp *DeleteNodeReply, err error)
+	// DeleteNodeFromOverlay Stage a node deletion into an overlay (deleted on commit)
+	DeleteNodeFromOverlay(ctx context.Context, req *DeleteNodeFromOverlayRequest, opts ...http.CallOption) (rsp *DeleteNodeFromOverlayReply, err error)
 	// DeleteViewDefinition Delete a view definition
 	DeleteViewDefinition(ctx context.Context, req *DeleteViewDefinitionRequest, opts ...http.CallOption) (rsp *DeleteViewDefinitionReply, err error)
 	// DiffVersions Diff two versions in current namespace
@@ -889,12 +945,40 @@ func (c *GraphHTTPClientImpl) DeleteEdge(ctx context.Context, in *DeleteEdgeRequ
 	return &out, nil
 }
 
+// DeleteEdgeFromOverlay Stage an edge deletion into an overlay (deleted on commit)
+func (c *GraphHTTPClientImpl) DeleteEdgeFromOverlay(ctx context.Context, in *DeleteEdgeFromOverlayRequest, opts ...http.CallOption) (*DeleteEdgeFromOverlayReply, error) {
+	var out DeleteEdgeFromOverlayReply
+	pattern := "/v1/graph/overlays/{overlay_id}/edges/{edge_id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphDeleteEdgeFromOverlay))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // DeleteNode Delete a node and its incident edges (detach delete)
 func (c *GraphHTTPClientImpl) DeleteNode(ctx context.Context, in *DeleteNodeRequest, opts ...http.CallOption) (*DeleteNodeReply, error) {
 	var out DeleteNodeReply
 	pattern := "/v1/graph/nodes/{node_id}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationGraphDeleteNode))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeleteNodeFromOverlay Stage a node deletion into an overlay (deleted on commit)
+func (c *GraphHTTPClientImpl) DeleteNodeFromOverlay(ctx context.Context, in *DeleteNodeFromOverlayRequest, opts ...http.CallOption) (*DeleteNodeFromOverlayReply, error) {
+	var out DeleteNodeFromOverlayReply
+	pattern := "/v1/graph/overlays/{overlay_id}/nodes/{node_id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationGraphDeleteNodeFromOverlay))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
 	if err != nil {
