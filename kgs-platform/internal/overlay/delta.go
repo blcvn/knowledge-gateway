@@ -3,8 +3,7 @@ package overlay
 import (
 	"context"
 	"fmt"
-
-	"github.com/google/uuid"
+	"strings"
 )
 
 func (m *Manager) AddEntityDelta(ctx context.Context, overlayID, namespace, label string, properties map[string]any) (map[string]any, error) {
@@ -16,7 +15,10 @@ func (m *Manager) AddEntityDelta(ctx context.Context, overlayID, namespace, labe
 		return nil, err
 	}
 
-	id := ensureID(properties)
+	id, err := requiredID(properties, "entity")
+	if err != nil {
+		return nil, err
+	}
 	delta := EntityDelta{
 		ID:         id,
 		Label:      label,
@@ -43,7 +45,10 @@ func (m *Manager) AddEdgeDelta(ctx context.Context, overlayID, namespace, relati
 		return nil, err
 	}
 
-	id := ensureID(properties)
+	id, err := requiredID(properties, "edge")
+	if err != nil {
+		return nil, err
+	}
 	delta := EdgeDelta{
 		ID:         id,
 		SourceID:   sourceNodeID,
@@ -102,16 +107,17 @@ func validateWritableOverlay(item *OverlayGraph, namespace string) error {
 	return nil
 }
 
-func ensureID(properties map[string]any) string {
+func requiredID(properties map[string]any, kind string) (string, error) {
 	if properties == nil {
-		return uuid.NewString()
+		return "", fmt.Errorf("%s delta missing id", kind)
 	}
-	if id, ok := properties["id"].(string); ok && id != "" {
-		return id
+	id := strings.TrimSpace(fmt.Sprint(properties["id"]))
+	switch strings.ToLower(id) {
+	case "", "<nil>", "nil", "null":
+		return "", fmt.Errorf("%s delta missing id", kind)
 	}
-	id := uuid.NewString()
 	properties["id"] = id
-	return id
+	return id, nil
 }
 
 func cloneMap(in map[string]any) map[string]any {

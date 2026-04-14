@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	stdlog "log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/analytics"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/batch"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
@@ -569,6 +571,9 @@ func (s *GraphService) BatchUpsertGraph(ctx context.Context, req *pb.BatchUpsert
 		}
 	}
 	if err != nil {
+		if errors.Is(err, batch.ErrOverlayEntityIDRequired) || errors.Is(err, batch.ErrOverlayEdgeIDRequired) {
+			return reply, kerrors.BadRequest("ERR_GRAPH_BATCH_INVALID_INPUT", err.Error())
+		}
 		return reply, kerrors.Conflict("ERR_GRAPH_BATCH_CONFLICT", err.Error())
 	}
 	return reply, nil
@@ -628,7 +633,10 @@ func (s *GraphService) BatchUpsertGraphHTTP(w http.ResponseWriter, r *http.Reque
 	reply, err := s.BatchUpsertGraph(context.WithValue(r.Context(), middleware.AppContextKey, appCtx), pbReq)
 	status := http.StatusOK
 	if err != nil {
-		status = http.StatusConflict
+		status = int(kerrors.Code(err))
+		if status <= 0 || status == http.StatusInternalServerError {
+			status = http.StatusConflict
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -782,6 +790,12 @@ func (s *GraphService) CommitOverlay(ctx context.Context, req *pb.CommitOverlayR
 	}
 	result, err := s.overlay.Commit(ctx, req.OverlayId, req.ConflictPolicy)
 	if err != nil {
+		if errors.Is(err, overlay.ErrOverlayConflict) ||
+			errors.Is(err, data.ErrAlreadyExists) ||
+			errors.Is(err, data.ErrVersionConflict) ||
+			errors.Is(err, data.ErrNameConflict) {
+			return nil, kerrors.Conflict("ERR_OVERLAY_COMMIT_CONFLICT", err.Error())
+		}
 		return nil, err
 	}
 	return &pb.CommitOverlayReply{

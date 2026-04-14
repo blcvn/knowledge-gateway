@@ -11,11 +11,13 @@ import (
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/analytics"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/batch"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/server/middleware"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type mockGraphUsecase struct {
@@ -796,6 +798,51 @@ func TestGraphServiceOverlayAndVersionRPCs(t *testing.T) {
 	rollbackResp, err := svc.RollbackVersion(ctx, &pb.RollbackVersionRequest{VersionId: "v1", Reason: "test"})
 	if err != nil || rollbackResp.RollbackVersionId != "v3" {
 		t.Fatalf("RollbackVersion failed resp=%#v err=%v", rollbackResp, err)
+	}
+}
+
+func TestGraphServiceCommitOverlayMapsDomainConflictTo409(t *testing.T) {
+	svc := NewGraphService(&mockGraphUsecase{
+		createNodeFn: func(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error) {
+			return nil, nil
+		},
+		getNodeFn: func(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error) {
+			return nil, nil
+		},
+	}, nil, nil, &fakeOverlayManager{
+		createFn: func(ctx context.Context, namespace, sessionID, baseVersionID string) (*overlay.OverlayGraph, error) {
+			return nil, nil
+		},
+		commitFn: func(ctx context.Context, overlayID, conflictPolicy string) (*overlay.CommitResult, error) {
+			return nil, data.ErrAlreadyExists
+		},
+		discardFn: func(ctx context.Context, overlayID string) error {
+			return nil
+		},
+	}, nil, nil, nil, nil)
+
+	ctx := context.WithValue(context.Background(), middleware.AppContextKey, middleware.AppContext{
+		AppID:    "app-1",
+		TenantID: "tenant-1",
+		Scopes:   "read,write",
+	})
+
+	_, err := svc.CommitOverlay(ctx, &pb.CommitOverlayRequest{
+		OverlayId:      "ov-1",
+		ConflictPolicy: "KEEP_OVERLAY",
+	})
+	if err == nil {
+		t.Fatalf("expected conflict error")
+	}
+	kerr := kerrors.FromError(err)
+	if kerr == nil {
+		t.Fatalf("expected kratos error, got %T", err)
+	}
+	if kerr.Code != 409 {
+		t.Fatalf("expected code 409, got %d", kerr.Code)
+	}
+	if kerr.Reason != "ERR_OVERLAY_COMMIT_CONFLICT" {
+		t.Fatalf("expected reason ERR_OVERLAY_COMMIT_CONFLICT, got %s", kerr.Reason)
 	}
 }
 

@@ -223,6 +223,183 @@ func TestCommitV2OverlayNotActive(t *testing.T) {
 	}
 }
 
+func TestCommitV2UpsertsExistingEntity(t *testing.T) {
+	ctx := context.Background()
+	db := newOverlayTestDB(t)
+	store := newMemoryStore()
+	vm := &fakeVersionManager{
+		versions: []version.GraphVersion{{ID: "v1", Namespace: "graph/app/tenant"}},
+	}
+	manager := &Manager{
+		store:      store,
+		db:         db,
+		versionMgr: vm,
+	}
+
+	seed := data.KGEntity{
+		EntityID:   "e-upsert",
+		AppID:      "app",
+		TenantID:   "tenant",
+		EntityType: "Requirement",
+		Name:       "Old Name",
+		Properties: data.JSONMap{"id": "e-upsert", "name": "Old Name"},
+		Version:    1,
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed entity: %v", err)
+	}
+
+	item, err := manager.Create(ctx, "graph/app/tenant", "s-upsert", "")
+	if err != nil {
+		t.Fatalf("create overlay: %v", err)
+	}
+	if _, err := manager.AddEntityDelta(ctx, item.OverlayID, "graph/app/tenant", "Requirement", map[string]any{
+		"id":   "e-upsert",
+		"name": "New Name",
+	}); err != nil {
+		t.Fatalf("add entity delta: %v", err)
+	}
+
+	result, err := manager.Commit(ctx, item.OverlayID, PolicyKeepOverlay)
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if result.EntitiesCommitted != 1 {
+		t.Fatalf("expected entities committed=1, got %d", result.EntitiesCommitted)
+	}
+
+	var got data.KGEntity
+	if err := db.Where("entity_id = ?", "e-upsert").Take(&got).Error; err != nil {
+		t.Fatalf("load entity: %v", err)
+	}
+	if got.Name != "New Name" {
+		t.Fatalf("expected updated name New Name, got %q", got.Name)
+	}
+	if got.Version != 2 {
+		t.Fatalf("expected version=2 after upsert update, got %d", got.Version)
+	}
+}
+
+func TestCommitV2DedupesDuplicateEntityDeltasByID(t *testing.T) {
+	ctx := context.Background()
+	db := newOverlayTestDB(t)
+	store := newMemoryStore()
+	vm := &fakeVersionManager{
+		versions: []version.GraphVersion{{ID: "v1", Namespace: "graph/app/tenant"}},
+	}
+	manager := &Manager{
+		store:      store,
+		db:         db,
+		versionMgr: vm,
+	}
+
+	item, err := manager.Create(ctx, "graph/app/tenant", "s-dedupe", "")
+	if err != nil {
+		t.Fatalf("create overlay: %v", err)
+	}
+	if _, err := manager.AddEntityDelta(ctx, item.OverlayID, "graph/app/tenant", "Requirement", map[string]any{
+		"id":   "e-dedupe",
+		"name": "First",
+	}); err != nil {
+		t.Fatalf("add first delta: %v", err)
+	}
+	if _, err := manager.AddEntityDelta(ctx, item.OverlayID, "graph/app/tenant", "Requirement", map[string]any{
+		"id":   "e-dedupe",
+		"name": "Second",
+	}); err != nil {
+		t.Fatalf("add second delta: %v", err)
+	}
+
+	result, err := manager.Commit(ctx, item.OverlayID, PolicyKeepOverlay)
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if result.EntitiesCommitted != 1 {
+		t.Fatalf("expected deduped entities committed=1, got %d", result.EntitiesCommitted)
+	}
+
+	var outboxCount int64
+	if err := db.Model(&data.KGSyncOutbox{}).Count(&outboxCount).Error; err != nil {
+		t.Fatalf("count outbox: %v", err)
+	}
+	if outboxCount != 1 {
+		t.Fatalf("expected 1 outbox record after dedupe, got %d", outboxCount)
+	}
+
+	var got data.KGEntity
+	if err := db.Where("entity_id = ?", "e-dedupe").Take(&got).Error; err != nil {
+		t.Fatalf("load entity: %v", err)
+	}
+	if got.Name != "Second" {
+		t.Fatalf("expected last delta to win, got %q", got.Name)
+	}
+}
+
+func TestCommitV2DedupesDuplicateEdgeDeltasBySemanticKey(t *testing.T) {
+	ctx := context.Background()
+	db := newOverlayTestDB(t)
+	store := newMemoryStore()
+	vm := &fakeVersionManager{
+		versions: []version.GraphVersion{{ID: "v1", Namespace: "graph/app/tenant"}},
+	}
+	manager := &Manager{
+		store:      store,
+		db:         db,
+		versionMgr: vm,
+	}
+
+	item, err := manager.Create(ctx, "graph/app/tenant", "s-edge-dedupe", "")
+	if err != nil {
+		t.Fatalf("create overlay: %v", err)
+	}
+	if _, err := manager.AddEntityDelta(ctx, item.OverlayID, "graph/app/tenant", "Requirement", map[string]any{
+		"id":   "e1",
+		"name": "N1",
+	}); err != nil {
+		t.Fatalf("add entity e1: %v", err)
+	}
+	if _, err := manager.AddEntityDelta(ctx, item.OverlayID, "graph/app/tenant", "Requirement", map[string]any{
+		"id":   "e2",
+		"name": "N2",
+	}); err != nil {
+		t.Fatalf("add entity e2: %v", err)
+	}
+	if _, err := manager.AddEdgeDelta(ctx, item.OverlayID, "graph/app/tenant", "RELATES_TO", "e1", "e2", map[string]any{
+		"id": "edge-first",
+	}); err != nil {
+		t.Fatalf("add edge first: %v", err)
+	}
+	if _, err := manager.AddEdgeDelta(ctx, item.OverlayID, "graph/app/tenant", "RELATES_TO", "e1", "e2", map[string]any{
+		"id": "edge-second",
+	}); err != nil {
+		t.Fatalf("add edge second: %v", err)
+	}
+
+	result, err := manager.Commit(ctx, item.OverlayID, PolicyKeepOverlay)
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if result.EdgesCommitted != 1 {
+		t.Fatalf("expected deduped edges committed=1, got %d", result.EdgesCommitted)
+	}
+
+	var edgeCount int64
+	if err := db.Model(&data.KGEdge{}).Count(&edgeCount).Error; err != nil {
+		t.Fatalf("count edges: %v", err)
+	}
+	if edgeCount != 1 {
+		t.Fatalf("expected 1 edge after dedupe, got %d", edgeCount)
+	}
+
+	var got data.KGEdge
+	if err := db.Where("from_entity_id = ? AND to_entity_id = ? AND relation_type = ?", "e1", "e2", "RELATES_TO").Take(&got).Error; err != nil {
+		t.Fatalf("load deduped edge: %v", err)
+	}
+	if got.EdgeID != "edge-second" {
+		t.Fatalf("expected last edge delta to win, got edge_id=%q", got.EdgeID)
+	}
+}
+
 type failDeleteStore struct {
 	*memoryStore
 	failNextDelete bool

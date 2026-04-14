@@ -153,6 +153,7 @@ func TestPhase3OverlayLifecycleViaAPI(t *testing.T) {
 
 	edgeProps, _ := json.Marshal(map[string]any{
 		"overlay_id": createOverlayResp.OverlayId,
+		"id":         "phase3-edge-1",
 		"strength":   0.9,
 	})
 	createEdgeResp, err := svc.CreateEdge(ctx, &pb.CreateEdgeRequest{
