@@ -1,40 +1,35 @@
-# KGS Docker Deployment - Makefile helpers
+SERVER_IP ?= 10.10.141.23
+REMOTE_DIR = /opt/ba-agent-system/services/ai-kg-service/deployment/docker
+IMAGE_NAME = kgs-platform:dev
+TAR_FILE = kgs-platform.tar
 
-COMPOSE=docker compose -f docker-compose.yml
+.PHONY: all build package upload deploy clean
 
-.PHONY: up down ps logs clean build
+# Default behavior: run everything
+all: build package upload deploy clean
 
-## Start all services in the background
-up:
-	@if [ ! -f .env ]; then \
-		echo "No .env found — copying from .env.example ..."; \
-		cp .env.example .env; \
-	fi
-	$(COMPOSE) up -d
+build:
+	@echo "=> Building Docker image..."
+	docker compose -f docker-compose.dev.yml build kgs-platform
 
-## Stop and remove containers (keeps volumes)
-down:
-	$(COMPOSE) down
+package:
+	@echo "=> Saving Docker image to tar..."
+	docker save -o $(TAR_FILE) $(IMAGE_NAME)
 
-## Rebuild and restart kgs-platform only (no dependency restart)
-rebuild:
-	$(COMPOSE) build --no-cache kgs-platform
-	$(COMPOSE) up -d --no-deps kgs-platform
+upload:
+	@echo "=> Uploading files to server $(SERVER_IP)..."
+	ssh $(SERVER_IP) "mkdir -p $(REMOTE_DIR)/config"
+	scp $(TAR_FILE) $(SERVER_IP):$(REMOTE_DIR)/
+	scp docker-compose.dev.yml $(SERVER_IP):$(REMOTE_DIR)/
+	scp -r config/* $(SERVER_IP):$(REMOTE_DIR)/config/
 
-## Show status of all containers
-ps:
-	$(COMPOSE) ps
+deploy:
+	@echo "=> Deploying on server $(SERVER_IP)..."
+	ssh $(SERVER_IP) "cd $(REMOTE_DIR) && \
+		docker load -i $(TAR_FILE) && \
+		docker compose -f docker-compose.dev.yml up -d kgs-platform && \
+		rm $(TAR_FILE)"
 
-## Tail logs (optionally pass SERVICE=<name> to filter)
-logs:
-	$(COMPOSE) logs -f $(SERVICE)
-
-## Remove containers AND volumes (full reset)
 clean:
-	$(COMPOSE) down -v --remove-orphans
-
-## Show this help
-help:
-	@grep -E '^##' Makefile | sed 's/## //'
-
-.DEFAULT_GOAL := help
+	@echo "=> Cleaning up local files..."
+	rm -f $(TAR_FILE)

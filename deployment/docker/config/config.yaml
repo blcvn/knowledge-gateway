@@ -8,7 +8,7 @@ server:
 data:
   database:
     driver: postgres
-    source: host=postgres user=ba_agent password=secret dbname=ba_agent_db port=5432 sslmode=disable TimeZone=Asia/Ho_Chi_Minh
+    source: host=postgres user=kgs password=kgspassword dbname=kgs_platform port=5432 sslmode=disable TimeZone=Asia/Ho_Chi_Minh
   redis:
     network: tcp
     addr: redis:6379
@@ -16,19 +16,19 @@ data:
     read_timeout: 0.2s
     write_timeout: 0.2s
   neo4j:
-    uri: bolt://kgs-neo4j:7687
+    uri: bolt://neo4j:7687
     user: neo4j
     password: neo4jpassword
     database: kgs
   opa:
-    url: http://kgs-opa:8181
+    url: http://opa:8181
   qdrant:
-    host: kgs-qdrant
+    host: qdrant
     port: 6333
     collection: kgs-vectors-default
     vector_size: 1536
   nats:
-    url: nats://kgs-nats:4222
+    url: nats://nats:4222
     stream: kgs-events
   embedding:
     provider: deterministic
