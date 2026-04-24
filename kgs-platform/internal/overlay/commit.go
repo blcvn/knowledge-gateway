@@ -11,6 +11,7 @@ import (
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/observability"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/version"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -55,14 +56,16 @@ func (m *Manager) commit(ctx context.Context, overlayID, conflictPolicy string, 
 
 	entitiesDeleted := len(overlay.DeletedNodeIDs)
 	edgesDeleted := len(overlay.DeletedEdgeIDs)
+	entityDeltas := dedupeEntityDeltas(overlay.EntitiesDelta)
+	edgeDeltas := dedupeEdgeDeltas(overlay.EdgesDelta)
 
 	if err := m.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, delta := range overlay.EntitiesDelta {
+		for _, delta := range entityDeltas {
 			entity, err := entityDeltaToKGEntity(delta, overlay.Namespace)
 			if err != nil {
 				return err
 			}
-			if _, err := data.UpsertEntityTx(tx, entity); err != nil {
+			if _, err := upsertEntityForCommit(tx, entity, conflictPolicy); err != nil {
 				return err
 			}
 			rec, err := entityOutboxRecord(data.OutboxOpUpsertEntity, entity)
@@ -74,7 +77,7 @@ func (m *Manager) commit(ctx context.Context, overlayID, conflictPolicy string, 
 			}
 		}
 
-		for _, delta := range overlay.EdgesDelta {
+		for _, delta := range edgeDeltas {
 			edge, err := edgeDeltaToKGEdge(delta, overlay.Namespace)
 			if err != nil {
 				return err
@@ -140,8 +143,8 @@ func (m *Manager) commit(ctx context.Context, overlayID, conflictPolicy string, 
 	var newVersionID string
 	if m.versionMgr != nil {
 		newVersionID, err = m.versionMgr.CreateDelta(ctx, overlay.Namespace, version.ChangeSet{
-			EntitiesAdded:   len(overlay.EntitiesDelta),
-			EdgesAdded:      len(overlay.EdgesDelta),
+			EntitiesAdded:   len(entityDeltas),
+			EdgesAdded:      len(edgeDeltas),
 			EntitiesDeleted: entitiesDeleted,
 			EdgesDeleted:    edgesDeleted,
 			CommitMessage:   "overlay commit: " + overlay.OverlayID,
@@ -168,8 +171,8 @@ func (m *Manager) commit(ctx context.Context, overlayID, conflictPolicy string, 
 
 	result := &CommitResult{
 		NewVersionID:      newVersionID,
-		EntitiesCommitted: len(overlay.EntitiesDelta),
-		EdgesCommitted:    len(overlay.EdgesDelta),
+		EntitiesCommitted: len(entityDeltas),
+		EdgesCommitted:    len(edgeDeltas),
 		ConflictsResolved: resolved,
 	}
 	if m.publisher != nil {
@@ -257,7 +260,7 @@ func edgeDeltaToKGEdge(delta EdgeDelta, namespace string) (data.KGEdge, error) {
 		RelationType: delta.Type,
 		Properties:   data.JSONMap(props),
 		Confidence:   toFloat(props["confidence"], 1.0),
-		VersionID:    strings.TrimSpace(fmt.Sprint(props["version_id"])),
+		VersionID:    normalizeOptionalUUIDValue(props["version_id"]),
 	}, nil
 }
 
@@ -345,5 +348,124 @@ func toFloat(v any, def float64) float64 {
 		return float64(x)
 	default:
 		return def
+	}
+}
+
+func normalizeOptionalUUIDValue(v any) string {
+	if v == nil {
+		return ""
+	}
+	s := strings.TrimSpace(fmt.Sprint(v))
+	if s == "" {
+		return ""
+	}
+	switch strings.ToLower(s) {
+	case "<nil>", "nil", "null":
+		return ""
+	}
+	if _, err := uuid.Parse(s); err != nil {
+		return ""
+	}
+	return s
+}
+
+func upsertEntityForCommit(tx *gorm.DB, entity data.KGEntity, conflictPolicy string) (data.UpsertOp, error) {
+	if strings.EqualFold(strings.TrimSpace(conflictPolicy), PolicyRequireManual) {
+		return data.UpsertEntityTx(tx, entity)
+	}
+	return data.UpsertEntityTxOverlay(tx, entity)
+}
+
+func dedupeEntityDeltas(in []EntityDelta) []EntityDelta {
+	if len(in) <= 1 {
+		return in
+	}
+	lastByID := make(map[string]int, len(in))
+	for i, delta := range in {
+		id := normalizeDeltaEntityID(delta)
+		if id == "" {
+			continue
+		}
+		lastByID[id] = i
+	}
+
+	out := make([]EntityDelta, 0, len(in))
+	for i, delta := range in {
+		id := normalizeDeltaEntityID(delta)
+		if id == "" {
+			out = append(out, delta)
+			continue
+		}
+		if lastByID[id] == i {
+			out = append(out, delta)
+		}
+	}
+	return out
+}
+
+func dedupeEdgeDeltas(in []EdgeDelta) []EdgeDelta {
+	if len(in) <= 1 {
+		return in
+	}
+	lastByID := make(map[string]int, len(in))
+	lastBySemanticKey := make(map[string]int, len(in))
+	for i, delta := range in {
+		if id := normalizeDeltaEdgeID(delta); id != "" {
+			lastByID[id] = i
+		}
+		if key := normalizeDeltaEdgeSemanticKey(delta); key != "" {
+			lastBySemanticKey[key] = i
+		}
+	}
+
+	out := make([]EdgeDelta, 0, len(in))
+	for i, delta := range in {
+		if id := normalizeDeltaEdgeID(delta); id != "" && lastByID[id] != i {
+			continue
+		}
+		if key := normalizeDeltaEdgeSemanticKey(delta); key != "" && lastBySemanticKey[key] != i {
+			continue
+		}
+		out = append(out, delta)
+	}
+	return out
+}
+
+func normalizeDeltaEntityID(delta EntityDelta) string {
+	id := normalizeOptionalString(delta.ID)
+	if id != "" {
+		return id
+	}
+	return normalizeOptionalString(delta.Properties["id"])
+}
+
+func normalizeDeltaEdgeID(delta EdgeDelta) string {
+	id := normalizeOptionalString(delta.ID)
+	if id != "" {
+		return id
+	}
+	return normalizeOptionalString(delta.Properties["id"])
+}
+
+func normalizeDeltaEdgeSemanticKey(delta EdgeDelta) string {
+	sourceID := normalizeOptionalString(delta.SourceID)
+	targetID := normalizeOptionalString(delta.TargetID)
+	relationType := normalizeOptionalString(delta.Type)
+	if sourceID == "" || targetID == "" || relationType == "" {
+		return ""
+	}
+	return sourceID + "|" + targetID + "|" + strings.ToUpper(relationType)
+}
+
+func normalizeOptionalString(v any) string {
+	if v == nil {
+		return ""
+	}
+	s := strings.TrimSpace(fmt.Sprint(v))
+	switch strings.ToLower(s) {
+	case "", "<nil>", "nil", "null":
+		return ""
+	default:
+		return s
 	}
 }

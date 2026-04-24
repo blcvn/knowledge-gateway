@@ -131,6 +131,126 @@ func upsertEntityTx(tx *gorm.DB, e KGEntity) (upsertOp, error) {
 	return updateEntityTx(tx, e)
 }
 
+// upsertEntityTxOverlay performs insert-or-update semantics for overlay commit paths.
+// Unlike upsertEntityTx, this path does not use optimistic version matching.
+func upsertEntityTxOverlay(tx *gorm.DB, e KGEntity) (upsertOp, error) {
+	if tx == nil {
+		return opConflict, fmt.Errorf("upsertEntityTxOverlay: nil transaction")
+	}
+	if tx.Dialector.Name() != "postgres" {
+		return upsertEntityTxOverlayPortable(tx, e)
+	}
+
+	var inserted bool
+	row := tx.Raw(`
+		INSERT INTO kg_entities
+			(entity_id, app_id, tenant_id, entity_type, name, properties,
+			 confidence, source_file, chunk_id, skill_id, version_id,
+			 provenance_type, domains, aliases, version, is_deleted, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1,FALSE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+		ON CONFLICT (entity_id) DO UPDATE
+		   SET app_id          = EXCLUDED.app_id,
+		       tenant_id       = EXCLUDED.tenant_id,
+		       entity_type     = EXCLUDED.entity_type,
+		       name            = EXCLUDED.name,
+		       properties      = EXCLUDED.properties,
+		       confidence      = EXCLUDED.confidence,
+		       source_file     = EXCLUDED.source_file,
+		       chunk_id        = EXCLUDED.chunk_id,
+		       skill_id        = EXCLUDED.skill_id,
+		       version_id      = EXCLUDED.version_id,
+		       provenance_type = EXCLUDED.provenance_type,
+		       domains         = EXCLUDED.domains,
+		       aliases         = EXCLUDED.aliases,
+		       version         = kg_entities.version + 1,
+		       is_deleted      = FALSE,
+		       updated_at      = CURRENT_TIMESTAMP
+		RETURNING (xmax = 0) AS inserted
+	`,
+		e.EntityID,
+		e.AppID,
+		e.TenantID,
+		e.EntityType,
+		e.Name,
+		e.Properties,
+		e.Confidence,
+		e.SourceFile,
+		e.ChunkID,
+		e.SkillID,
+		nullableUUID(e.VersionID),
+		e.ProvenanceType,
+		e.Domains,
+		e.Aliases,
+	).Row()
+	if err := row.Scan(&inserted); err != nil {
+		if isPGCode(err, "23505") || isUniqueConstraintViolation(err) {
+			return opConflict, ErrNameConflict
+		}
+		return opConflict, err
+	}
+	if inserted {
+		return opCreated, nil
+	}
+	return opUpdated, nil
+}
+
+func upsertEntityTxOverlayPortable(tx *gorm.DB, e KGEntity) (upsertOp, error) {
+	var exists int64
+	if err := tx.Model(&KGEntity{}).Where("entity_id = ?", e.EntityID).Count(&exists).Error; err != nil {
+		return opConflict, err
+	}
+
+	res := tx.Exec(`
+		INSERT INTO kg_entities
+			(entity_id, app_id, tenant_id, entity_type, name, properties,
+			 confidence, source_file, chunk_id, skill_id, version_id,
+			 provenance_type, domains, aliases, version, is_deleted, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1,FALSE,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+		ON CONFLICT (entity_id) DO UPDATE
+		   SET app_id          = EXCLUDED.app_id,
+		       tenant_id       = EXCLUDED.tenant_id,
+		       entity_type     = EXCLUDED.entity_type,
+		       name            = EXCLUDED.name,
+		       properties      = EXCLUDED.properties,
+		       confidence      = EXCLUDED.confidence,
+		       source_file     = EXCLUDED.source_file,
+		       chunk_id        = EXCLUDED.chunk_id,
+		       skill_id        = EXCLUDED.skill_id,
+		       version_id      = EXCLUDED.version_id,
+		       provenance_type = EXCLUDED.provenance_type,
+		       domains         = EXCLUDED.domains,
+		       aliases         = EXCLUDED.aliases,
+		       version         = kg_entities.version + 1,
+		       is_deleted      = FALSE,
+		       updated_at      = CURRENT_TIMESTAMP
+	`,
+		e.EntityID,
+		e.AppID,
+		e.TenantID,
+		e.EntityType,
+		e.Name,
+		e.Properties,
+		e.Confidence,
+		e.SourceFile,
+		e.ChunkID,
+		e.SkillID,
+		nullableUUID(e.VersionID),
+		e.ProvenanceType,
+		e.Domains,
+		e.Aliases,
+	)
+	if res.Error != nil {
+		if isPGCode(res.Error, "23505") || isUniqueConstraintViolation(res.Error) {
+			return opConflict, ErrNameConflict
+		}
+		return opConflict, res.Error
+	}
+	if exists > 0 {
+		return opUpdated, nil
+	}
+	return opCreated, nil
+}
+
 func getEntityPG(ctx context.Context, db *gorm.DB, entityID string) (*KGEntity, error) {
 	if db == nil {
 		return nil, fmt.Errorf("getEntityPG: nil db")
@@ -254,6 +374,10 @@ func isUniqueConstraintViolation(err error) bool {
 
 func UpsertEntityTx(tx *gorm.DB, e KGEntity) (UpsertOp, error) {
 	return upsertEntityTx(tx, e)
+}
+
+func UpsertEntityTxOverlay(tx *gorm.DB, e KGEntity) (UpsertOp, error) {
+	return upsertEntityTxOverlay(tx, e)
 }
 
 func GetEntityPG(ctx context.Context, db *gorm.DB, entityID string) (*KGEntity, error) {

@@ -150,6 +150,20 @@ service Graph {
     };
   }
 
+  // Stage a node deletion into an overlay (deleted on commit)
+  rpc DeleteNodeFromOverlay (DeleteNodeFromOverlayRequest) returns (DeleteNodeFromOverlayReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/overlays/{overlay_id}/nodes/{node_id}"
+    };
+  }
+
+  // Stage an edge deletion into an overlay (deleted on commit)
+  rpc DeleteEdgeFromOverlay (DeleteEdgeFromOverlayRequest) returns (DeleteEdgeFromOverlayReply) {
+    option (google.api.http) = {
+      delete: "/v1/graph/overlays/{overlay_id}/edges/{edge_id}"
+    };
+  }
+
   // List versions in current namespace
   rpc ListVersions (ListVersionsRequest) returns (ListVersionsReply) {
     option (google.api.http) = {
@@ -481,6 +495,26 @@ message DiscardOverlayRequest {
 message DiscardOverlayReply {
   string overlay_id = 1;
   string status = 2;
+}
+
+message DeleteNodeFromOverlayRequest {
+  string overlay_id = 1;
+  string node_id = 2;
+}
+
+message DeleteNodeFromOverlayReply {
+  string overlay_id = 1;
+  string node_id = 2;
+}
+
+message DeleteEdgeFromOverlayRequest {
+  string overlay_id = 1;
+  string edge_id = 2;
+}
+
+message DeleteEdgeFromOverlayReply {
+  string overlay_id = 1;
+  string edge_id = 2;
 }
 
 message VersionInfo {

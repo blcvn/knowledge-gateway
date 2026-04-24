@@ -2,6 +2,7 @@ package batch
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
@@ -10,15 +11,19 @@ import (
 type fakeOverlayAppender struct {
 	entityCalls int
 	edgeCalls   int
+	lastEntity  map[string]any
+	lastEdge    map[string]any
 }
 
 func (f *fakeOverlayAppender) AddEntityDelta(ctx context.Context, overlayID, namespace, label string, properties map[string]any) (map[string]any, error) {
 	f.entityCalls++
+	f.lastEntity = cloneProperties(properties)
 	return map[string]any{"overlay_id": overlayID}, nil
 }
 
 func (f *fakeOverlayAppender) AddEdgeDelta(ctx context.Context, overlayID, namespace, relationType, sourceNodeID, targetNodeID string, properties map[string]any) (map[string]any, error) {
 	f.edgeCalls++
+	f.lastEdge = cloneProperties(properties)
 	return map[string]any{"overlay_id": overlayID}, nil
 }
 
@@ -178,5 +183,58 @@ func TestGraphBatchHandlerOverlayPath(t *testing.T) {
 	}
 	if overlay.entityCalls != 1 || overlay.edgeCalls != 1 {
 		t.Fatalf("expected overlay appender calls 1/1, got %d/%d", overlay.entityCalls, overlay.edgeCalls)
+	}
+	if got := toString(overlay.lastEntity["id"]); got != "a1111111-1111-1111-1111-111111111111" {
+		t.Fatalf("expected entity id propagated to overlay properties, got %q", got)
+	}
+	if got := toString(overlay.lastEdge["id"]); got != "c3333333-3333-3333-3333-333333333333" {
+		t.Fatalf("expected edge id propagated to overlay properties, got %q", got)
+	}
+}
+
+func TestGraphBatchHandlerOverlayPathRequiresEntityID(t *testing.T) {
+	db := newBatchWriterTestDB(t)
+	overlay := &fakeOverlayAppender{}
+	h := NewGraphBatchHandler(db, overlay)
+
+	overlayID := "ov-1"
+	req := GraphBatchRequest{
+		OverlayID: &overlayID,
+		Entities: []Entity{
+			{Label: "Requirement", Properties: map[string]any{"name": "FR-001"}},
+		},
+	}
+
+	_, err := h.UpsertGraph(context.Background(), req, "app-1", "tenant-1")
+	if !errors.Is(err, ErrOverlayEntityIDRequired) {
+		t.Fatalf("expected ErrOverlayEntityIDRequired, got %v", err)
+	}
+	if overlay.entityCalls != 0 || overlay.edgeCalls != 0 {
+		t.Fatalf("expected no overlay appender calls, got %d/%d", overlay.entityCalls, overlay.edgeCalls)
+	}
+}
+
+func TestGraphBatchHandlerOverlayPathRequiresEdgeID(t *testing.T) {
+	db := newBatchWriterTestDB(t)
+	overlay := &fakeOverlayAppender{}
+	h := NewGraphBatchHandler(db, overlay)
+
+	overlayID := "ov-1"
+	req := GraphBatchRequest{
+		OverlayID: &overlayID,
+		Entities: []Entity{
+			{Label: "Requirement", Properties: map[string]any{"id": "a1111111-1111-1111-1111-111111111111", "name": "FR-001"}},
+		},
+		Edges: []Edge{
+			{FromEntityID: "a1111111-1111-1111-1111-111111111111", ToEntityID: "b2222222-2222-2222-2222-222222222222", RelationType: "DEPENDS_ON"},
+		},
+	}
+
+	_, err := h.UpsertGraph(context.Background(), req, "app-1", "tenant-1")
+	if !errors.Is(err, ErrOverlayEdgeIDRequired) {
+		t.Fatalf("expected ErrOverlayEdgeIDRequired, got %v", err)
+	}
+	if overlay.entityCalls != 1 || overlay.edgeCalls != 0 {
+		t.Fatalf("expected only entity overlay call before edge validation fails, got %d/%d", overlay.entityCalls, overlay.edgeCalls)
 	}
 }

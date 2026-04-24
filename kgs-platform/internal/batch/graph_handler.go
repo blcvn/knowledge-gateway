@@ -19,6 +19,11 @@ const (
 	ConflictPolicySkip     = "SKIP"
 )
 
+var (
+	ErrOverlayEntityIDRequired = errors.New("overlay entity id is required")
+	ErrOverlayEdgeIDRequired   = errors.New("overlay edge id is required")
+)
+
 type Edge struct {
 	EdgeID       string         `json:"edgeId"`
 	FromEntityID string         `json:"fromEntityId"`
@@ -74,8 +79,14 @@ func (h *GraphBatchHandler) UpsertGraph(ctx context.Context, req GraphBatchReque
 			return nil, fmt.Errorf("overlay store is not configured")
 		}
 		namespace := biz.ComputeNamespace(appID, tenantID)
-		for _, e := range req.Entities {
-			if _, err := h.overlay.AddEntityDelta(ctx, *req.OverlayID, namespace, e.Label, cloneProperties(e.Properties)); err != nil {
+		for idx, e := range req.Entities {
+			props := cloneProperties(e.Properties)
+			entityID := strings.TrimSpace(toString(props["id"]))
+			if entityID == "" {
+				return nil, fmt.Errorf("overlay entities[%d]: %w", idx, ErrOverlayEntityIDRequired)
+			}
+			props["id"] = entityID
+			if _, err := h.overlay.AddEntityDelta(ctx, *req.OverlayID, namespace, e.Label, props); err != nil {
 				stdlog.Printf("[KGS][GraphBatchHandler] overlay entity failed app_id=%s tenant_id=%s overlay_id=%s label=%s err=%v",
 					appID, tenantID, *req.OverlayID, e.Label, err)
 				return nil, err
@@ -83,8 +94,17 @@ func (h *GraphBatchHandler) UpsertGraph(ctx context.Context, req GraphBatchReque
 			stdlog.Printf("[KGS][GraphBatchHandler] overlay entity queued app_id=%s tenant_id=%s overlay_id=%s label=%s", appID, tenantID, *req.OverlayID, e.Label)
 			res.EntitiesCreated++
 		}
-		for _, e := range req.Edges {
-			if _, err := h.overlay.AddEdgeDelta(ctx, *req.OverlayID, namespace, e.RelationType, e.FromEntityID, e.ToEntityID, cloneProperties(e.Properties)); err != nil {
+		for idx, e := range req.Edges {
+			props := cloneProperties(e.Properties)
+			edgeID := strings.TrimSpace(e.EdgeID)
+			if edgeID == "" {
+				edgeID = strings.TrimSpace(toString(props["id"]))
+			}
+			if edgeID == "" {
+				return nil, fmt.Errorf("overlay edges[%d]: %w", idx, ErrOverlayEdgeIDRequired)
+			}
+			props["id"] = edgeID
+			if _, err := h.overlay.AddEdgeDelta(ctx, *req.OverlayID, namespace, e.RelationType, e.FromEntityID, e.ToEntityID, props); err != nil {
 				stdlog.Printf("[KGS][GraphBatchHandler] overlay edge failed app_id=%s tenant_id=%s overlay_id=%s relation=%s from=%s to=%s err=%v",
 					appID, tenantID, *req.OverlayID, e.RelationType, e.FromEntityID, e.ToEntityID, err)
 				return nil, err

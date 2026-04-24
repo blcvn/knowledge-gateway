@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	stdlog "log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/analytics"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/batch"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/projection"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/search"
@@ -569,6 +571,9 @@ func (s *GraphService) BatchUpsertGraph(ctx context.Context, req *pb.BatchUpsert
 		}
 	}
 	if err != nil {
+		if errors.Is(err, batch.ErrOverlayEntityIDRequired) || errors.Is(err, batch.ErrOverlayEdgeIDRequired) {
+			return reply, kerrors.BadRequest("ERR_GRAPH_BATCH_INVALID_INPUT", err.Error())
+		}
 		return reply, kerrors.Conflict("ERR_GRAPH_BATCH_CONFLICT", err.Error())
 	}
 	return reply, nil
@@ -628,7 +633,10 @@ func (s *GraphService) BatchUpsertGraphHTTP(w http.ResponseWriter, r *http.Reque
 	reply, err := s.BatchUpsertGraph(context.WithValue(r.Context(), middleware.AppContextKey, appCtx), pbReq)
 	status := http.StatusOK
 	if err != nil {
-		status = http.StatusConflict
+		status = int(kerrors.Code(err))
+		if status <= 0 || status == http.StatusInternalServerError {
+			status = http.StatusConflict
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -782,6 +790,12 @@ func (s *GraphService) CommitOverlay(ctx context.Context, req *pb.CommitOverlayR
 	}
 	result, err := s.overlay.Commit(ctx, req.OverlayId, req.ConflictPolicy)
 	if err != nil {
+		if errors.Is(err, overlay.ErrOverlayConflict) ||
+			errors.Is(err, data.ErrAlreadyExists) ||
+			errors.Is(err, data.ErrVersionConflict) ||
+			errors.Is(err, data.ErrNameConflict) {
+			return nil, kerrors.Conflict("ERR_OVERLAY_COMMIT_CONFLICT", err.Error())
+		}
 		return nil, err
 	}
 	return &pb.CommitOverlayReply{
@@ -802,6 +816,44 @@ func (s *GraphService) DiscardOverlay(ctx context.Context, req *pb.DiscardOverla
 	return &pb.DiscardOverlayReply{
 		OverlayId: req.OverlayId,
 		Status:    string(overlay.StatusDiscarded),
+	}, nil
+}
+
+func (s *GraphService) DeleteNodeFromOverlay(ctx context.Context, req *pb.DeleteNodeFromOverlayRequest) (*pb.DeleteNodeFromOverlayReply, error) {
+	if s.overlay == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "overlay manager is not configured")
+	}
+	if req == nil || strings.TrimSpace(req.GetOverlayId()) == "" {
+		return nil, kerrors.BadRequest("ERR_MISSING_OVERLAY_ID", "overlay_id is required")
+	}
+	if strings.TrimSpace(req.GetNodeId()) == "" {
+		return nil, kerrors.BadRequest("ERR_MISSING_NODE_ID", "node_id is required")
+	}
+	if err := s.overlay.DeleteEntityDelta(ctx, req.GetOverlayId(), req.GetNodeId()); err != nil {
+		return nil, err
+	}
+	return &pb.DeleteNodeFromOverlayReply{
+		OverlayId: req.GetOverlayId(),
+		NodeId:    req.GetNodeId(),
+	}, nil
+}
+
+func (s *GraphService) DeleteEdgeFromOverlay(ctx context.Context, req *pb.DeleteEdgeFromOverlayRequest) (*pb.DeleteEdgeFromOverlayReply, error) {
+	if s.overlay == nil {
+		return nil, kerrors.InternalServer("ERR_NOT_CONFIGURED", "overlay manager is not configured")
+	}
+	if req == nil || strings.TrimSpace(req.GetOverlayId()) == "" {
+		return nil, kerrors.BadRequest("ERR_MISSING_OVERLAY_ID", "overlay_id is required")
+	}
+	if strings.TrimSpace(req.GetEdgeId()) == "" {
+		return nil, kerrors.BadRequest("ERR_MISSING_EDGE_ID", "edge_id is required")
+	}
+	if err := s.overlay.DeleteEdgeDelta(ctx, req.GetOverlayId(), req.GetEdgeId()); err != nil {
+		return nil, err
+	}
+	return &pb.DeleteEdgeFromOverlayReply{
+		OverlayId: req.GetOverlayId(),
+		EdgeId:    req.GetEdgeId(),
 	}, nil
 }
 

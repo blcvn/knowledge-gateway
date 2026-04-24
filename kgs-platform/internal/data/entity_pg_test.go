@@ -106,6 +106,49 @@ func TestUpdateEntityTxVersionConflict(t *testing.T) {
 	}
 }
 
+func TestUpsertEntityTxOverlayCreated(t *testing.T) {
+	db := newKGTestDB(t)
+	e := makeKGEntity("app-1", "tenant-1", "Requirement", "FR-001", 0)
+
+	op, err := upsertEntityTxOverlay(db, e)
+	if err != nil {
+		t.Fatalf("upsertEntityTxOverlay create error: %v", err)
+	}
+	if op != opCreated {
+		t.Fatalf("expected opCreated, got %v", op)
+	}
+}
+
+func TestUpsertEntityTxOverlayUpdatesExisting(t *testing.T) {
+	db := newKGTestDB(t)
+	e := makeKGEntity("app-1", "tenant-1", "Requirement", "FR-001", 0)
+	if _, err := insertEntityTx(db, e); err != nil {
+		t.Fatalf("seed insertEntityTx error: %v", err)
+	}
+
+	e.Name = "FR-001 Updated By Overlay"
+	e.Properties = JSONMap{"id": e.EntityID, "name": e.Name}
+
+	op, err := upsertEntityTxOverlay(db, e)
+	if err != nil {
+		t.Fatalf("upsertEntityTxOverlay update error: %v", err)
+	}
+	if op != opUpdated {
+		t.Fatalf("expected opUpdated, got %v", op)
+	}
+
+	got, err := getEntityPG(context.Background(), db, e.EntityID)
+	if err != nil {
+		t.Fatalf("getEntityPG error: %v", err)
+	}
+	if got.Name != e.Name {
+		t.Fatalf("expected name=%q, got %q", e.Name, got.Name)
+	}
+	if got.Version != 2 {
+		t.Fatalf("expected version=2, got %d", got.Version)
+	}
+}
+
 func TestSoftDeleteEntityPG(t *testing.T) {
 	db := newKGTestDB(t)
 	e := makeKGEntity("app-1", "tenant-1", "Requirement", "FR-001", 0)

@@ -40,7 +40,7 @@ func TestPhase4E2EOverlayCommitPublishesNATSEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create overlay: %v", err)
 	}
-	if _, err := manager.AddEntityDelta(ctx, item.OverlayID, "graph/app/tenant", "Requirement", map[string]any{"name": "N1"}); err != nil {
+	if _, err := manager.AddEntityDelta(ctx, item.OverlayID, "graph/app/tenant", "Requirement", map[string]any{"id": "phase4-e2e-e1", "name": "N1"}); err != nil {
 		t.Fatalf("add entity delta: %v", err)
 	}
 
