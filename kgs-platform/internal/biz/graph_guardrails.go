@@ -1,15 +1,9 @@
 package biz
 
-import "errors"
-
 const (
 	MaxAllowedDepth = 10
-	MaxAllowedNodes = 1000
-)
-
-var (
-	ErrDepthExceeded = errors.New("requested query depth exceeds the maximum allowed limit")
-	ErrNodesExceeded = errors.New("requested query node count exceeds the maximum allowed limit")
+	// Keep in sync with search max top-k so full graph hydration does not fail on subgraph query.
+	MaxAllowedNodes = 10000
 )
 
 // ValidateDepth limits how deep an impact/coverage/context query can go to prevent recursive blowups.

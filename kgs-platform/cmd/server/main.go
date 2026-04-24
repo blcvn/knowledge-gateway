@@ -4,8 +4,8 @@ import (
 	"flag"
 	"os"
 
-	"kgs-platform/internal/conf"
-	"kgs-platform/internal/server"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/conf"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/server"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
