@@ -1,0 +1,763 @@
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/cmd/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: ""
+    version: 0.0.1
+paths:
+    /helloworld/{name}:
+        get:
+            tags:
+                - Greeter
+            description: Sends a greeting
+            operationId: Greeter_SayHello
+            parameters:
+                - name: name
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/helloworld.v1.HelloReply'
+    /v1/apps:
+        get:
+            tags:
+                - Registry
+            description: List all applications
+            operationId: Registry_ListApps
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.registry.v1.ListAppsReply'
+        post:
+            tags:
+                - Registry
+            description: Create a new application
+            operationId: Registry_CreateApp
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.registry.v1.CreateAppRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.registry.v1.CreateAppReply'
+    /v1/apps/{appId}:
+        get:
+            tags:
+                - Registry
+            description: Get application details
+            operationId: Registry_GetApp
+            parameters:
+                - name: appId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.registry.v1.GetAppReply'
+    /v1/apps/{appId}/keys:
+        post:
+            tags:
+                - Registry
+            description: Issue a new API key for an application
+            operationId: Registry_IssueApiKey
+            parameters:
+                - name: appId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.registry.v1.IssueApiKeyRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.registry.v1.IssueApiKeyReply'
+    /v1/graph/edges:
+        post:
+            tags:
+                - Graph
+            description: Create an edge between two nodes
+            operationId: Graph_CreateEdge
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.graph.v1.CreateEdgeRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.graph.v1.CreateEdgeReply'
+    /v1/graph/nodes:
+        post:
+            tags:
+                - Graph
+            description: Create a new node in the Knowledge Graph
+            operationId: Graph_CreateNode
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.graph.v1.CreateNodeRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.graph.v1.CreateNodeReply'
+    /v1/graph/nodes/{nodeId}:
+        get:
+            tags:
+                - Graph
+            description: Get a node by ID
+            operationId: Graph_GetNode
+            parameters:
+                - name: nodeId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.graph.v1.GetNodeReply'
+    /v1/graph/nodes/{nodeId}/context:
+        get:
+            tags:
+                - Graph
+            description: Get contextual neighborhood around a node
+            operationId: Graph_GetContext
+            parameters:
+                - name: nodeId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: depth
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: direction
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.graph.v1.GraphReply'
+    /v1/graph/nodes/{nodeId}/coverage:
+        get:
+            tags:
+                - Graph
+            description: Get upstream coverage of a node
+            operationId: Graph_GetCoverage
+            parameters:
+                - name: nodeId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: maxDepth
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.graph.v1.GraphReply'
+    /v1/graph/nodes/{nodeId}/impact:
+        get:
+            tags:
+                - Graph
+            description: Get downstream impact of a node
+            operationId: Graph_GetImpact
+            parameters:
+                - name: nodeId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: maxDepth
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.graph.v1.GraphReply'
+    /v1/graph/subgraph:
+        post:
+            tags:
+                - Graph
+            description: Get subgraph for a list of node IDs
+            operationId: Graph_GetSubgraph
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.graph.v1.GetSubgraphRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.graph.v1.GraphReply'
+    /v1/keys/{keyHash}:
+        delete:
+            tags:
+                - Registry
+            description: Revoke an existing API key
+            operationId: Registry_RevokeApiKey
+            parameters:
+                - name: keyHash
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.registry.v1.RevokeApiKeyReply'
+    /v1/ontology/entities:
+        get:
+            tags:
+                - Ontology
+            description: Get schema definitions for EntityTypes
+            operationId: Ontology_ListEntityTypes
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.ontology.v1.ListEntityTypesReply'
+        post:
+            tags:
+                - Ontology
+            description: Define a new EntityType in the Knowledge Graph
+            operationId: Ontology_CreateEntityType
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.ontology.v1.CreateEntityTypeRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.ontology.v1.CreateEntityTypeReply'
+    /v1/ontology/relations:
+        get:
+            tags:
+                - Ontology
+            description: Get schema definitions for RelationTypes
+            operationId: Ontology_ListRelationTypes
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.ontology.v1.ListRelationTypesReply'
+        post:
+            tags:
+                - Ontology
+            description: Define a new RelationType in the Knowledge Graph
+            operationId: Ontology_CreateRelationType
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.ontology.v1.CreateRelationTypeRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.ontology.v1.CreateRelationTypeReply'
+    /v1/policies:
+        get:
+            tags:
+                - AccessControl
+            description: List all policies for the app
+            operationId: AccessControl_ListPolicies
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.accesscontrol.v1.ListPoliciesReply'
+        post:
+            tags:
+                - AccessControl
+            description: Create a new OPA Policy
+            operationId: AccessControl_CreatePolicy
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.accesscontrol.v1.CreatePolicyRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.accesscontrol.v1.PolicyReply'
+    /v1/policies/{id}:
+        get:
+            tags:
+                - AccessControl
+            description: Get a specific policy
+            operationId: AccessControl_GetPolicy
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.accesscontrol.v1.PolicyReply'
+    /v1/rules:
+        get:
+            tags:
+                - Rules
+            description: List all rules for the app
+            operationId: Rules_ListRules
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.rules.v1.ListRulesReply'
+        post:
+            tags:
+                - Rules
+            description: Create a new business rule
+            operationId: Rules_CreateRule
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/api.rules.v1.CreateRuleRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.rules.v1.RuleReply'
+    /v1/rules/{id}:
+        get:
+            tags:
+                - Rules
+            description: Get a specific rule
+            operationId: Rules_GetRule
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/api.rules.v1.RuleReply'
+components:
+    schemas:
+        api.accesscontrol.v1.CreatePolicyRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                description:
+                    type: string
+                regoContent:
+                    type: string
+        api.accesscontrol.v1.ListPoliciesReply:
+            type: object
+            properties:
+                policies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.accesscontrol.v1.PolicyReply'
+        api.accesscontrol.v1.PolicyReply:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                description:
+                    type: string
+                regoContent:
+                    type: string
+                isActive:
+                    type: boolean
+        api.graph.v1.CreateEdgeReply:
+            type: object
+            properties:
+                edgeId:
+                    type: string
+                sourceNodeId:
+                    type: string
+                targetNodeId:
+                    type: string
+                relationType:
+                    type: string
+                propertiesJson:
+                    type: string
+        api.graph.v1.CreateEdgeRequest:
+            type: object
+            properties:
+                sourceNodeId:
+                    type: string
+                targetNodeId:
+                    type: string
+                relationType:
+                    type: string
+                propertiesJson:
+                    type: string
+        api.graph.v1.CreateNodeReply:
+            type: object
+            properties:
+                nodeId:
+                    type: string
+                label:
+                    type: string
+                propertiesJson:
+                    type: string
+        api.graph.v1.CreateNodeRequest:
+            type: object
+            properties:
+                label:
+                    type: string
+                propertiesJson:
+                    type: string
+        api.graph.v1.GetNodeReply:
+            type: object
+            properties:
+                nodeId:
+                    type: string
+                label:
+                    type: string
+                propertiesJson:
+                    type: string
+        api.graph.v1.GetSubgraphRequest:
+            type: object
+            properties:
+                nodeIds:
+                    type: array
+                    items:
+                        type: string
+        api.graph.v1.GraphEdge:
+            type: object
+            properties:
+                id:
+                    type: string
+                source:
+                    type: string
+                target:
+                    type: string
+                type:
+                    type: string
+                propertiesJson:
+                    type: string
+        api.graph.v1.GraphNode:
+            type: object
+            properties:
+                id:
+                    type: string
+                label:
+                    type: string
+                propertiesJson:
+                    type: string
+        api.graph.v1.GraphReply:
+            type: object
+            properties:
+                nodes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.graph.v1.GraphNode'
+                edges:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.graph.v1.GraphEdge'
+        api.ontology.v1.CreateEntityTypeReply:
+            type: object
+            properties:
+                id:
+                    type: integer
+                    format: uint32
+                name:
+                    type: string
+                status:
+                    type: string
+        api.ontology.v1.CreateEntityTypeRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                description:
+                    type: string
+                schema:
+                    type: string
+        api.ontology.v1.CreateRelationTypeReply:
+            type: object
+            properties:
+                id:
+                    type: integer
+                    format: uint32
+                name:
+                    type: string
+                status:
+                    type: string
+        api.ontology.v1.CreateRelationTypeRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                description:
+                    type: string
+                propertiesSchema:
+                    type: string
+                sourceTypes:
+                    type: array
+                    items:
+                        type: string
+                targetTypes:
+                    type: array
+                    items:
+                        type: string
+        api.ontology.v1.EntityTypeInfo:
+            type: object
+            properties:
+                id:
+                    type: integer
+                    format: uint32
+                name:
+                    type: string
+                schema:
+                    type: string
+        api.ontology.v1.ListEntityTypesReply:
+            type: object
+            properties:
+                entities:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.ontology.v1.EntityTypeInfo'
+        api.ontology.v1.ListRelationTypesReply:
+            type: object
+            properties:
+                relations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.ontology.v1.RelationTypeInfo'
+        api.ontology.v1.RelationTypeInfo:
+            type: object
+            properties:
+                id:
+                    type: integer
+                    format: uint32
+                name:
+                    type: string
+                propertiesSchema:
+                    type: string
+                sourceTypes:
+                    type: array
+                    items:
+                        type: string
+                targetTypes:
+                    type: array
+                    items:
+                        type: string
+        api.registry.v1.CreateAppReply:
+            type: object
+            properties:
+                appId:
+                    type: string
+                status:
+                    type: string
+        api.registry.v1.CreateAppRequest:
+            type: object
+            properties:
+                appName:
+                    type: string
+                description:
+                    type: string
+                owner:
+                    type: string
+        api.registry.v1.GetAppReply:
+            type: object
+            properties:
+                appId:
+                    type: string
+                appName:
+                    type: string
+                description:
+                    type: string
+                owner:
+                    type: string
+                status:
+                    type: string
+        api.registry.v1.IssueApiKeyReply:
+            type: object
+            properties:
+                apiKey:
+                    type: string
+                keyHash:
+                    type: string
+                keyPrefix:
+                    type: string
+        api.registry.v1.IssueApiKeyRequest:
+            type: object
+            properties:
+                appId:
+                    type: string
+                name:
+                    type: string
+                scopes:
+                    type: string
+                ttlSeconds:
+                    type: string
+        api.registry.v1.ListAppsReply:
+            type: object
+            properties:
+                apps:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.registry.v1.GetAppReply'
+        api.registry.v1.RevokeApiKeyReply:
+            type: object
+            properties:
+                success:
+                    type: boolean
+        api.rules.v1.CreateRuleRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                description:
+                    type: string
+                triggerType:
+                    type: string
+                cron:
+                    type: string
+                cypherQuery:
+                    type: string
+                action:
+                    type: string
+                payloadJson:
+                    type: string
+        api.rules.v1.ListRulesReply:
+            type: object
+            properties:
+                rules:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/api.rules.v1.RuleReply'
+        api.rules.v1.RuleReply:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                description:
+                    type: string
+                triggerType:
+                    type: string
+                cron:
+                    type: string
+                cypherQuery:
+                    type: string
+                action:
+                    type: string
+                payloadJson:
+                    type: string
+                isActive:
+                    type: boolean
+        helloworld.v1.HelloReply:
+            type: object
+            properties:
+                message:
+                    type: string
+            description: The response message containing the greetings
+tags:
+    - name: AccessControl
+    - name: Graph
+    - name: Greeter
+      description: The greeting service definition.
+    - name: Ontology
+    - name: Registry
+    - name: Rules
