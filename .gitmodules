@@ -1,0 +1,12 @@
+[submodule "services/OpenViking"]
+	path = services/OpenViking
+	url = git@github.com:vnp-community/OpenViking.git
+[submodule "services/cognee"]
+	path = services/cognee
+	url = https://github.com/vnp-community/cognee.git
+[submodule "services/graphiti"]
+	path = services/graphiti
+	url = https://github.com/vnp-community/graphiti.git
+[submodule "services/zep"]
+	path = services/zep
+	url = https://github.com/vnp-community/zep.git

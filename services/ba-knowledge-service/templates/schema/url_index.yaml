@@ -1,0 +1,111 @@
+name: "URD Index"
+type: "urd_index"
+version: "1.0"
+description: "High-level index structure for Use Case Requirements (headers only)"
+
+metadata:
+  - name: "Module"
+    pattern: '^> \*\*Module:\*\* .+$'
+    required: true
+  - name: "Version"
+    pattern: '^> \*\*Version:\*\* .+$'
+    required: true
+  - name: "Created Date"
+    pattern: '^> \*\*Created Date:\*\* .+$'
+    required: true
+
+sections:
+  - id: "uc-mapping"
+    title: "US → Use Case Mapping"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 1 US → Use Case Mapping$'
+
+  - id: "actor-definition"
+    title: "Actor Definition"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 2 Actor Definition$'
+    subsections:
+      - id: "human-actors"
+        title: "Human Actors"
+        level: 2
+        type: "section"
+        required: true
+        pattern: '^## 2\.1 Human Actors$'
+      
+      - id: "system-actors"
+        title: "System Actors"
+        level: 2
+        type: "section"
+        required: true
+        pattern: '^## 2\.2 System Actors$'
+
+  - id: "system-boundary"
+    title: "System Boundary"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 3 System Boundary$'
+    subsections:
+      - id: "boundary-diagram"
+        title: "Diagram"
+        level: 2
+        type: "section"
+        required: true
+        pattern: '^## 3\.1 Diagram$'
+
+  - id: "use-case-summary"
+    title: "Use Case Summary Table"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 4 Use Case Summary Table$'
+
+  - id: "main-flow"
+    title: "Main Flow Sketch (High-Level)"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 5 Main Flow Sketch \(High-Level\)$'
+
+  - id: "integration-touchpoints"
+    title: "Integration Touchpoints"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 6 Integration Touchpoints$'
+
+  - id: "data-entities"
+    title: "Data Entities Overview"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 7 Data Entities Overview$'
+    subsections:
+      - id: "entities-diagram"
+        title: "Diagram"
+        level: 2
+        type: "section"
+        required: true
+        pattern: '^## 7\.1 Diagram:?$'
+
+  - id: "technical-notes"
+    title: "Technical Notes & Concerns"
+    level: 1
+    type: "section"
+    required: true
+    pattern: '^# 8 Technical Notes & Concerns$'
+
+validation_rules:
+  - name: "no-tables-in-index"
+    pattern: '^\|.+\|.+\|$'
+    severity: "warning"
+    message: "URD Index should not contain tables with data, only headers"
+  
+  - name: "no-diagrams-in-index"
+    pattern: '```mermaid'
+    severity: "warning"
+    message: "URD Index should not contain rendered diagrams, only placeholders"

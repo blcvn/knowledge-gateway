@@ -1,0 +1,52 @@
+# =============================================================================
+# Dockerfile.kgs — KGS Platform (Go)
+# =============================================================================
+# Image: vnp/kgs-platform:latest  (local, KHÔNG dùng registry)
+#
+# Build (tự động qua Makefile):
+#   make image-build-kgs      # Build local
+#   make image-upload-kgs     # Build + export .tar.gz + SCP + docker load
+#
+# Build context: project root  (.)
+# Source:        services/knowledge-gateway/kgs-platform/
+# =============================================================================
+
+# Stage 1: Build Go Binary
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /src
+
+# Cache dependencies
+COPY kgs-platform/go.mod services/knowledge-gateway/kgs-platform/go.sum ./
+RUN go mod download
+
+# Copy full service source
+COPY kgs-platform/ .
+
+# Build binary — output tên rõ ràng (cmd/server → bin/server)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build \
+    -ldflags="-w -s" \
+    -o ./bin/server \
+    ./cmd/server
+
+# Stage 2: Runtime
+FROM alpine:3.19
+
+WORKDIR /app
+
+RUN apk --no-cache add ca-certificates tzdata
+
+# Copy binary và configs
+COPY --from=builder /src/bin /app
+COPY --from=builder /src/configs /app/configs
+
+ENV TZ=Asia/Ho_Chi_Minh
+
+EXPOSE 8000
+EXPOSE 9000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD wget -qO- http://localhost:8000/healthz 2>/dev/null || exit 0
+
+CMD ["./server", "-conf", "/app/configs/config.yaml"]
