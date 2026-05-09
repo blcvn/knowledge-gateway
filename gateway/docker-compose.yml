@@ -1,0 +1,82 @@
+# vnp-gateway — Local Development Stack
+# Usage: docker compose up -d
+
+services:
+  # ─── Gateway ───────────────────────────────────
+  gateway:
+    build: .
+    container_name: vnp-gateway
+    ports:
+      - "8080:8080"   # REST API
+      - "8081:8081"   # gRPC
+      - "8082:8082"   # MCP Server
+      - "11080:11080" # Health + Metrics
+    environment:
+      - AUTH_DEV_MODE=true
+      - REST_PORT=8080
+      - GRPC_PORT=8081
+      - MCP_PORT=8082
+      - HEALTH_PORT=11080
+      - LOG_LEVEL=debug
+      - LOG_FORMAT=json
+      - POSTGRES_DSN=postgres://vnp:vnp@postgres:5432/vnp_gateway?sslmode=disable
+      - REDIS_ADDR=redis:6379
+      - NATS_URL=nats://nats:4222
+      - RATELIMIT_ENABLED=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:11080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ─── PostgreSQL ────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: vnp-gateway-postgres
+    environment:
+      POSTGRES_USER: vnp
+      POSTGRES_PASSWORD: vnp
+      POSTGRES_DB: vnp_gateway
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vnp -d vnp_gateway"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── Redis ─────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: vnp-gateway-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── NATS JetStream ────────────────────────────
+  nats:
+    image: nats:2.10-alpine
+    container_name: vnp-gateway-nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # HTTP monitoring
+    command: --jetstream --http_port 8222
+
+volumes:
+  pgdata:

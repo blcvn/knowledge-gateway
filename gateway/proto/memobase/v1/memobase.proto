@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package vnp.gateway.memobase.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/memobase/v1;memobasev1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// MemobaseIngestionService handles blob insertion and buffer management.
+service MemobaseIngestionService {
+  rpc InsertBlob(InsertBlobRequest) returns (InsertBlobResponse);
+  rpc FlushBuffer(FlushBufferRequest) returns (FlushResponse);
+  rpc GetBufferStatus(BufferStatusRequest) returns (BufferStatus);
+  rpc DeleteBlob(DeleteBlobRequest) returns (DeleteBlobResponse);
+}
+
+// MemobaseContextService provides user context and profile queries.
+service MemobaseContextService {
+  rpc GetContext(GetContextRequest) returns (ContextResponse);
+  rpc GetProfiles(GetProfilesRequest) returns (ProfilesResponse);
+  rpc GetEvents(GetEventsRequest) returns (EventsResponse);
+}
+
+message InsertBlobRequest {
+  string user_id = 1;
+  string blob_type = 2; // "chat", "doc", "event"
+  google.protobuf.Struct blob_data = 3;
+  map<string, string> metadata = 4;
+}
+
+message InsertBlobResponse {
+  string blob_id = 1;
+  string buffer_id = 2;
+  string status = 3; // "buffered", "flushed"
+}
+
+message FlushBufferRequest {
+  string user_id = 1;
+  string project_id = 2;
+}
+
+message FlushResponse {
+  int32 blobs_processed = 1;
+  int32 profiles_updated = 2;
+  string status = 3;
+}
+
+message BufferStatusRequest {
+  string user_id = 1;
+}
+
+message BufferStatus {
+  string buffer_id = 1;
+  string state = 2; // "collecting", "ready", "flushing"
+  int32 blob_count = 3;
+  int32 token_count = 4;
+}
+
+message DeleteBlobRequest {
+  string blob_id = 1;
+}
+
+message DeleteBlobResponse {
+  string status = 1;
+}
+
+message GetContextRequest {
+  string user_id = 1;
+  string context_type = 2; // "full", "summary", "recent"
+  int32 max_tokens = 3;
+}
+
+message ContextResponse {
+  string user_id = 1;
+  string context = 2;
+  int32 token_count = 3;
+  repeated ProfileEntry profiles = 4;
+}
+
+message GetProfilesRequest {
+  string user_id = 1;
+  repeated string profile_types = 2; // "basic", "interest", "preference"
+}
+
+message ProfilesResponse {
+  repeated ProfileEntry profiles = 1;
+}
+
+message ProfileEntry {
+  string topic = 1;
+  string sub_topic = 2;
+  string content = 3;
+  double confidence = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message GetEventsRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+  int32 limit = 4;
+}
+
+message EventsResponse {
+  repeated EventEntry events = 1;
+}
+
+message EventEntry {
+  string id = 1;
+  string event_type = 2;
+  string content = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}

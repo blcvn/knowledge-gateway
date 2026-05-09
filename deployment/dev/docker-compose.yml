@@ -1,166 +1,517 @@
+###############################################################################
+# VNP Memory — Dev Server Docker Compose (172.20.2.39)
+#
+# Runs all four memory services (Cognee, Graphiti, OpenViking, Zep) with
+# shared infrastructure: Neo4j, PostgreSQL (pgvector), Redis, Qdrant,
+# and routes LLM calls through the external Bifrost AI Gateway.
+#
+# Usage:
+#   cp .env.example .env                         # fill in API keys
+#   docker compose --profile memory up -d        # start Memory services
+#   docker compose --profile memory --profile ui up -d  # + Cognee UI
+#   docker compose logs -f                       # watch logs
+#
+# Profiles:
+#   memory     — Cognee, Graphiti, OpenViking, Zep (+ shared infra)
+#   kgs        — KGS Platform + NATS + OPA (+ shared infra)
+#   surrealdb  — SurrealDB (for KGS unified mode)
+#   ui         — Cognee frontend
+#   monitoring — RedisInsight
+###############################################################################
+name: vnp-memory-dev
+
 networks:
-  kgs-net:
+  memory-net:
     driver: bridge
 
 volumes:
-  postgres_data:
-  redis_data:
   neo4j_data:
+    name: vnp_memory_neo4j_data
   neo4j_logs:
-  opa_policies:
+    name: vnp_memory_neo4j_logs
+  postgres_data:
+    name: vnp_memory_postgres_data
+  redis_data:
+    name: vnp_memory_redis_data
+  qdrant_data:
+    name: vnp_memory_qdrant_data
+  openviking_data:
+    name: vnp_memory_openviking_data
+  nats_data:
+    name: vnp_memory_nats_data
+  surrealdb_data:
+    name: vnp_memory_surrealdb_data
 
 
+# =============================================================================
+#  INFRASTRUCTURE
+# =============================================================================
 services:
 
   # ---------------------------------------------------------------------------
-  # PostgreSQL – relational store for App Registry, Rules, Policies
-  # ---------------------------------------------------------------------------
-  postgres:
-    image: postgres:15-alpine
-    container_name: kgs_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-kgs}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kgspassword}
-      POSTGRES_DB: ${POSTGRES_DB:-kgs_platform}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - kgs-net
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kgs} -d ${POSTGRES_DB:-kgs_platform}" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ---------------------------------------------------------------------------
-  # Redis – caching and event streaming (Redis Streams)
-  # ---------------------------------------------------------------------------
-  redis:
-    image: redis:7-alpine
-    container_name: kgs_redis
-    restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-}
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - kgs-net
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ---------------------------------------------------------------------------
-  # Neo4j – graph database backend
+  # Neo4j — Shared graph database (Cognee, Graphiti, Zep)
   # ---------------------------------------------------------------------------
   neo4j:
-    image: neo4j:5.15-community
-    container_name: kgs_neo4j
+    image: neo4j:latest
+    container_name: vnp_neo4j
     restart: unless-stopped
     environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-neo4jpassword}
-      NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_dbms_security_procedures_unrestricted: apoc.*
-      NEO4J_dbms_security_procedures_allowlist: apoc.*
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4jpassword}
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*,gds.*
+      NEO4J_dbms_security_procedures_allowlist: apoc.*,gds.*
+      # Performance tuning
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512m
     ports:
-      - "7474:7474" # Neo4j Browser (HTTP)
-      - "7687:7687" # Bolt protocol
+      - "${NEO4J_HTTP_PORT:-7474}:7474"   # Browser UI
+      - "${NEO4J_BOLT_PORT:-7687}:7687"   # Bolt protocol
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
     networks:
-      - kgs-net
+      - memory-net
     healthcheck:
-      test: [ "CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-neo4jpassword}", "RETURN 1" ]
-      interval: 15s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
       timeout: 10s
-      retries: 10
+      retries: 20
       start_period: 30s
 
   # ---------------------------------------------------------------------------
-  # OPA – Open Policy Agent for attribute-based access control
+  # PostgreSQL + pgvector — Shared relational store (Cognee, Zep)
   # ---------------------------------------------------------------------------
-  opa:
-    image: openpolicyagent/opa:latest
-    container_name: kgs_opa
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: vnp_postgres
     restart: unless-stopped
-    command:
-      - "run"
-      - "--server"
-      - "--log-level=info"
-      - "--addr=0.0.0.0:8181"
-      - "--set=decision_logs.console=true"
-      - "/policies"
+    shm_size: "256mb"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-vnp_memory}
     ports:
-      - "8181:8181"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - opa_policies:/policies
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     networks:
-      - kgs-net
+      - memory-net
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8181/health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vnp_memory}"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
 
   # ---------------------------------------------------------------------------
-  # Qdrant – Vector Database for sematic search
+  # Redis — Caching & queues
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: vnp_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Qdrant — Vector database (Cognee)
   # ---------------------------------------------------------------------------
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: kgs_qdrant
+    container_name: vnp_qdrant
     restart: unless-stopped
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
-      - ./qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     networks:
-      - kgs-net
+      - memory-net
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:6333/readyz" ]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
+
+  # ===========================================================================
+  #  APPLICATION SERVICES
+  # ===========================================================================
 
   # ---------------------------------------------------------------------------
-  # KGS Platform – main Go/Kratos application
+  # Cognee — Knowledge engine (Python/FastAPI)
+  # Built locally and deployed as image: vnp/cognee:latest
   # ---------------------------------------------------------------------------
-  kgs-platform:
-    build:
-      context: ../../kgs-platform
-      dockerfile: Dockerfile
-    image: kgs-platform:latest
-    container_name: kgs_platform
+  cognee:
+    container_name: vnp_cognee
+    profiles:
+      - memory
     restart: unless-stopped
+    image: vnp/cognee:latest
+    environment:
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - ENVIRONMENT=dev
+      - LOG_LEVEL=INFO
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+      # LLM — routed through external Bifrost AI Gateway
+      - LLM_API_KEY=${BIFROST_API_KEY:-bifrost}
+      - LLM_MODEL=${LLM_MODEL:-openai/gpt-4o-mini}
+      - LLM_PROVIDER=openai
+      - LLM_ENDPOINT=${BIFROST_URL:-https://b9.openledger.vn}/v1
+      # Embedding — routed through Bifrost; use tiktoken-compatible model name
+      # (Cognee uses tiktoken which cannot map gemini model names to tokenizers)
+      - EMBEDDING_ENDPOINT=${BIFROST_URL:-https://b9.openledger.vn}/v1
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-bifrost}
+      - EMBEDDING_MODEL=text-embedding-3-large
+      # Database — use shared PostgreSQL
+      - DB_PROVIDER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_NAME=cognee_db
+      # Graph — use shared Neo4j
+      - GRAPH_DATABASE_PROVIDER=neo4j
+      - GRAPH_DATABASE_URL=bolt://neo4j:7687
+      - GRAPH_DATABASE_NAME=neo4j
+      - GRAPH_DATABASE_USERNAME=${NEO4J_USER:-neo4j}
+      - GRAPH_DATABASE_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}
+      # Vector — use PGVector (cognee v1.0.3 supports: LanceDB, PGVector, neptune_analytics, ChromaDB)
+      - VECTOR_DB_PROVIDER=pgvector
+      - VECTOR_DB_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/cognee_db
+      # Access control
+      - ENABLE_BACKEND_ACCESS_CONTROL=false
+    ports:
+      - "${COGNEE_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
       neo4j:
-        condition: service_healthy
-      opa:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-    ports:
-      - "8000:8000" # HTTP API
-      - "9000:9000" # gRPC
-    volumes:
-      - ./config:/data/conf
-    environment:
-      # These are exported as OS env vars; config.yaml references can be
-      # overridden via Kratos env substitution if you enable it.
-      POSTGRES_USER: ${POSTGRES_USER:-kgs}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kgspassword}
-      POSTGRES_DB: ${POSTGRES_DB:-kgs_platform}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-neo4jpassword}
     networks:
-      - kgs-net
+      - memory-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8GB
+
+  # ---------------------------------------------------------------------------
+  # Graphiti — Temporal knowledge graph service (Python/FastAPI)
+  # Built locally and deployed as image: vnp/graphiti:latest
+  # ---------------------------------------------------------------------------
+  graphiti:
+    container_name: vnp_graphiti
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: vnp/graphiti:latest
+    environment:
+      # LLM — routed through external Bifrost AI Gateway
+      - OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
+      - OPENAI_BASE_URL=${BIFROST_URL:-https://b9.openledger.vn}/v1
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}
+      - PORT=8000
+      - db_backend=neo4j
+    ports:
+      - "${GRAPHITI_PORT:-8001}:8000"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthcheck')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # OpenViking — Vector search engine (Rust + Python)
+  # ---------------------------------------------------------------------------
+  openviking:
+    container_name: vnp_openviking
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: ghcr.io/volcengine/openviking:latest
+    environment:
+      # Config injected via entrypoint — writes to /app/.openviking/ov.conf
+      - OPENVIKING_CONF_CONTENT={"server":{"host":"0.0.0.0","port":1933,"auth_mode":"api_key","root_api_key":"${BIFROST_API_KEY:-bifrost}"},"embedding":{"dense":{"provider":"openai","model":"${EMBEDDING_MODEL:-gemini/gemini-embedding-001}","api_key":"${EMBEDDING_API_KEY:-bifrost}","api_base":"${BIFROST_URL:-https://b9.openledger.vn}/v1","dimension":3072}},"storage":{"workspace":"/app/.openviking/data"}}
+      - OPENVIKING_WITH_BOT=0
+    ports:
+      - "${OPENVIKING_HTTP_PORT:-1933}:1933"
+      - "${OPENVIKING_GRPC_PORT:-8020}:8020"
+    volumes:
+      - openviking_data:/app/.openviking
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:1933/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Zep — Context engineering platform (Go)
+  # ---------------------------------------------------------------------------
+  zep:
+    container_name: vnp_zep
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: ghcr.io/getzep/zep:latest
+    ports:
+      - "${ZEP_PORT:-8002}:8000"
+    volumes:
+      - ./config/zep.yaml:/app/config.yaml:ro
+    environment:
+      - ZEP_OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
+    depends_on:
+      graphiti-zep:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Graphiti for Zep — Dedicated Graphiti instance for Zep (port 8003)
+  # Zep requires its own Graphiti instance with a specific configuration
+  # ---------------------------------------------------------------------------
+  graphiti-zep:
+    container_name: vnp_graphiti_zep
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: zepai/graphiti:0.3
+    environment:
+      # LLM — routed through external Bifrost AI Gateway
+      - OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
+      - OPENAI_BASE_URL=${BIFROST_URL:-https://b9.openledger.vn}/v1
+      - MODEL_NAME=${ZEP_MODEL_NAME:-gpt-4o-mini}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}
+      - PORT=8003
+    ports:
+      - "${GRAPHITI_ZEP_PORT:-8003}:8003"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/healthcheck')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ===========================================================================
+  #  OPTIONAL SERVICES (via profiles)
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Cognee Frontend (profile: ui)
+  # Built locally and deployed as image: vnp/cognee-frontend:latest
+  # ---------------------------------------------------------------------------
+  cognee-frontend:
+    container_name: vnp_cognee_frontend
+    profiles:
+      - ui
+    restart: unless-stopped
+    image: vnp/cognee-frontend:latest
+    environment:
+      - NEXT_PUBLIC_LOCAL_API_URL=${COGNEE_BACKEND_URL:-https://c6.openledger.vn/cognee}
+    ports:
+      - "${COGNEE_FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      cognee:
+        condition: service_healthy
+    networks:
+      - memory-net
+
+  # ---------------------------------------------------------------------------
+  # RedisInsight (profile: monitoring)
+  # ---------------------------------------------------------------------------
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    container_name: vnp_redisinsight
+    profiles:
+      - monitoring
+    restart: unless-stopped
+    ports:
+      - "${REDISINSIGHT_PORT:-5540}:5540"
+    networks:
+      - memory-net
+
+  # ===========================================================================
+  #  KGS PLATFORM SERVICES (profile: kgs)
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # NATS — Event streaming for KGS outbox & overlay
+  # ---------------------------------------------------------------------------
+  nats:
+    image: nats:2.10-alpine
+    container_name: vnp_nats
+    profiles:
+      - kgs
+    restart: unless-stopped
+    command: ["--jetstream", "--store_dir=/data", "--http_port=8222"]
+    ports:
+      - "${NATS_PORT:-4222}:4222"
+    volumes:
+      - nats_data:/data
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # OPA — Policy engine for KGS ABAC
+  # ---------------------------------------------------------------------------
+  opa:
+    image: openpolicyagent/opa:latest-static
+    container_name: vnp_opa
+    profiles:
+      - kgs
+    restart: unless-stopped
+    command: "run --server --log-level info"
+    ports:
+      - "${OPA_PORT:-8181}:8181"
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD-SHELL", "/opa eval 'true' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # KGS Platform — Knowledge Graph Service (Go/Kratos)
+  # Uses shared Neo4j, PostgreSQL, Redis, Qdrant + NATS, OPA
+  # ---------------------------------------------------------------------------
+  kgs-platform:
+    container_name: vnp_kgs_platform
+    profiles:
+      - kgs
+    restart: unless-stopped
+    platform: linux/amd64
+    image: vnp/kgs-platform:latest
+    volumes:
+      - ./config/kgs.yaml:/data/conf/config.yaml:ro
+    environment:
+      # Storage mode
+      - KGS_STORAGE_MODE=${KGS_STORAGE_MODE:-specialized}
+      # Database
+      - KGS_DB_SOURCE=host=postgres user=${KGS_DB_USER:-ba_agent} password=${KGS_DB_PASSWORD:-secret} dbname=${KGS_DB_NAME:-ba_agent_db} port=5432 sslmode=disable
+      # Neo4j
+      - KGS_NEO4J_URI=bolt://neo4j:7687
+      - KGS_NEO4J_USER=${NEO4J_USER:-neo4j}
+      - KGS_NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}
+      # Redis
+      - KGS_REDIS_ADDR=redis:6379
+      # Qdrant
+      - KGS_QDRANT_HOST=qdrant
+      - KGS_QDRANT_PORT=6333
+      # NATS
+      - KGS_NATS_URL=nats://nats:4222
+      # OPA
+      - KGS_OPA_URL=http://opa:8181
+      # SurrealDB (only used when storage_mode=surrealdb)
+      - KGS_SURREALDB_URL=ws://surrealdb:8000
+      - KGS_SURREALDB_NAMESPACE=${SURREALDB_NAMESPACE:-kgs}
+      - KGS_SURREALDB_DATABASE=${SURREALDB_DATABASE:-production}
+      - KGS_SURREALDB_USER=${SURREALDB_USER:-root}
+      - KGS_SURREALDB_PASSWORD=${SURREALDB_PASSWORD:-secret}
+    ports:
+      - "${KGS_HTTP_PORT:-8010}:8000"
+      - "${KGS_GRPC_PORT:-9010}:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================================
+  #  SURREALDB (profile: surrealdb)
+  #  Use when KGS_STORAGE_MODE=surrealdb — replaces PG+Neo4j+Qdrant+Redis
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # SurrealDB — Unified multi-model database
+  # ---------------------------------------------------------------------------
+  surrealdb:
+    image: surrealdb/surrealdb:v2.1.4
+    container_name: vnp_surrealdb
+    profiles:
+      - surrealdb
+    restart: unless-stopped
+    command: >
+      start
+        --user ${SURREALDB_USER:-root}
+        --pass ${SURREALDB_PASSWORD:-secret}
+        --log info
+        file:/data/kgs.db
+    ports:
+      - "${SURREALDB_PORT:-8100}:8000"
+    volumes:
+      - surrealdb_data:/data
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s

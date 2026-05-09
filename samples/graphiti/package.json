@@ -1,0 +1,31 @@
+{
+  "name": "graphiti-samples",
+  "version": "1.0.0",
+  "description": "Sample scripts demonstrating Graphiti temporal knowledge graph API usage",
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --runInBand --forceExit",
+    "test:health": "jest --runInBand --testPathPattern='01-health'",
+    "test:ingest": "jest --runInBand --testPathPattern='02-ingest'",
+    "test:search": "jest --runInBand --testPathPattern='03-search'",
+    "test:memory": "jest --runInBand --testPathPattern='04-memory'",
+    "test:lifecycle": "jest --runInBand --testPathPattern='05-lifecycle'",
+    "demo": "node scripts/demo-conversation.mjs",
+    "demo:entity": "node scripts/demo-entity-graph.mjs",
+    "demo:search": "node scripts/demo-search.mjs"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "dotenv": "^16.4.7",
+    "jest": "^29.7.0",
+    "@jest/types": "^29.6.3"
+  },
+  "jest": {
+    "transform": {},
+    "testTimeout": 60000,
+    "testMatch": [
+      "**/__tests__/**/*.test.mjs"
+    ],
+    "verbose": true
+  }
+}

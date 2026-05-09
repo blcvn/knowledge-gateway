@@ -76,7 +76,7 @@ func main() {
 		panic(err)
 	}
 
-	app, cleanup, err := wireApp(bc.Server, bc.Data, logger)
+	app, cleanup, err := initApp(bc.Server, bc.Data, logger)
 	if err != nil {
 		panic(err)
 	}
@@ -85,5 +85,21 @@ func main() {
 	// start and wait for stop signal
 	if err := app.Run(); err != nil {
 		panic(err)
+	}
+}
+
+// initApp selects the appropriate wire function based on storage_mode config.
+// storage_mode: "specialized" (default) → wireApp (PG+Neo4j+Qdrant+Redis+NATS)
+// storage_mode: "surrealdb"             → wireAppSurrealDB (SurrealDB only)
+func initApp(confServer *conf.Server, confData *conf.Data, logger log.Logger) (*kratos.App, func(), error) {
+	mode := conf.StorageMode(confData)
+	l := log.NewHelper(logger)
+	l.Infof("[KGS] Storage mode: %s", mode)
+
+	switch mode {
+	case "surrealdb":
+		return wireAppSurrealDB(confServer, confData, logger)
+	default:
+		return wireApp(confServer, confData, logger)
 	}
 }

@@ -50,3 +50,11 @@ data:
     max_attempts: 10
   reconcile:
     cron: "0 3 * * *"
+  # Dual-mode storage: "specialized" (default) | "surrealdb"
+  storage_mode: specialized
+  # surrealdb:
+  #   url: ws://kgs-surrealdb:8000
+  #   namespace: kgs
+  #   database: production
+  #   user: root
+  #   password: secret

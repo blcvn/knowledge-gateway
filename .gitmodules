@@ -1,12 +1,18 @@
-[submodule "services/OpenViking"]
-	path = services/OpenViking
-	url = git@github.com:vnp-community/OpenViking.git
-[submodule "services/cognee"]
-	path = services/cognee
+[submodule "references/cognee"]
+	path = references/cognee
 	url = https://github.com/vnp-community/cognee.git
-[submodule "services/graphiti"]
-	path = services/graphiti
+[submodule "references/graphiti"]
+	path = references/graphiti
 	url = https://github.com/vnp-community/graphiti.git
-[submodule "services/zep"]
-	path = services/zep
+[submodule "references/memobase"]
+	path = references/memobase
+	url = git@github.com:memodb-io/memobase.git 
+[submodule "references/OpenViking"]
+	path = references/OpenViking
+	url = https://github.com/vnp-community/OpenViking.git
+[submodule "references/supermemory"]
+	path = references/supermemory
+	url = git@github.com:supermemoryai/supermemory.git
+[submodule "references/zep"]
+	path = references/zep
 	url = https://github.com/vnp-community/zep.git

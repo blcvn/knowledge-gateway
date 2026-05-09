@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package vnp.gateway.supermemory.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/supermemory/v1;supermemoryv1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// SMDocumentService manages document lifecycle.
+service SMDocumentService {
+  rpc CreateDocument(CreateDocumentRequest) returns (CreateDocumentResponse);
+  rpc GetDocument(GetDocumentRequest) returns (Document);
+}
+
+// SMMemoryService stores and manages memories.
+service SMMemoryService {
+  rpc CreateMemory(CreateMemoryRequest) returns (CreateMemoryResponse);
+}
+
+// SMSearchService handles semantic search and RAG.
+service SMSearchService {
+  rpc Search(SMSearchRequest) returns (SMSearchResponse);
+  rpc RAG(RAGRequest) returns (RAGResponse);
+}
+
+// SMProfileService manages user profiles.
+service SMProfileService {
+  rpc GetProfile(GetProfileRequest) returns (Profile);
+}
+
+// SMConnectorService manages data source connections.
+service SMConnectorService {
+  rpc CreateConnection(CreateConnectionRequest) returns (Connection);
+  rpc SyncConnection(SyncConnectionRequest) returns (SyncResponse);
+}
+
+// SMProjectService manages project spaces.
+service SMProjectService {
+  rpc CreateSpace(CreateSpaceRequest) returns (Space);
+}
+
+// ─── Document ───
+
+message CreateDocumentRequest {
+  string content = 1;
+  string content_type = 2; // "text", "markdown", "html", "url"
+  map<string, string> metadata = 3;
+  string space_id = 4;
+}
+
+message CreateDocumentResponse {
+  string id = 1;
+  string status = 2;
+}
+
+message GetDocumentRequest {
+  string id = 1;
+}
+
+message Document {
+  string id = 1;
+  string content = 2;
+  string content_type = 3;
+  map<string, string> metadata = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+// ─── Memory ───
+
+message CreateMemoryRequest {
+  string content = 1;
+  string space_id = 2;
+  map<string, string> metadata = 3;
+}
+
+message CreateMemoryResponse {
+  string id = 1;
+  string status = 2;
+}
+
+// ─── Search ───
+
+message SMSearchRequest {
+  string query = 1;
+  string space_id = 2;
+  int32 limit = 3;
+  map<string, string> filters = 4;
+}
+
+message SMSearchResponse {
+  repeated SMSearchResult results = 1;
+}
+
+message SMSearchResult {
+  string id = 1;
+  string content = 2;
+  double score = 3;
+  string source_type = 4;
+  map<string, string> metadata = 5;
+}
+
+message RAGRequest {
+  string query = 1;
+  string space_id = 2;
+  int32 context_limit = 3;
+  string model = 4;
+}
+
+message RAGResponse {
+  string answer = 1;
+  repeated string sources = 2;
+  int32 tokens_used = 3;
+}
+
+// ─── Profile ───
+
+message GetProfileRequest {
+  string user_id = 1;
+}
+
+message Profile {
+  string user_id = 1;
+  repeated string interests = 2;
+  map<string, string> preferences = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+// ─── Connector ───
+
+message CreateConnectionRequest {
+  string type = 1; // "notion", "gdrive", "slack", "twitter"
+  map<string, string> credentials = 2;
+  string space_id = 3;
+}
+
+message Connection {
+  string id = 1;
+  string type = 2;
+  string status = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message SyncConnectionRequest {
+  string connection_id = 1;
+  bool full_sync = 2;
+}
+
+message SyncResponse {
+  int32 documents_synced = 1;
+  string status = 2;
+}
+
+// ─── Project ───
+
+message CreateSpaceRequest {
+  string name = 1;
+  string description = 2;
+}
+
+message Space {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Timestamp created_at = 4;
+}

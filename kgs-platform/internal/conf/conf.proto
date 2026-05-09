@@ -80,6 +80,13 @@ message Data {
   message Reconcile {
     string cron = 1;
   }
+  message SurrealDB {
+    string url = 1;           // ws://surrealdb:8000
+    string namespace = 2;     // e.g. "kgs"
+    string database = 3;      // e.g. "production"
+    string user = 4;
+    string password = 5;
+  }
   Database database = 1;
   Redis redis = 2;
   Neo4j neo4j = 3;
@@ -90,4 +97,8 @@ message Data {
   OntologyConfig ontology = 9;
   Outbox outbox = 10;
   Reconcile reconcile = 11;
+
+  // Dual-mode storage: "specialized" (default) | "surrealdb"
+  string storage_mode = 20;
+  SurrealDB surrealdb = 21;
 }

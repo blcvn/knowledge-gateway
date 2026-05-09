@@ -1,0 +1,84 @@
+###############################################################################
+# Zep CE (OSS) — Configuration for dev server deployment
+# Config format: github.com/getzep/zep (open-source version)
+# Keys use Go PascalCase convention as required by the Zep config parser.
+###############################################################################
+
+LLM:
+  Service: openai
+  Model: gpt-4o-mini
+  AnthropicAPIKey: ""
+  OpenAIAPIKey: ""
+  AzureOpenAIEndpoint: ""
+  AzureOpenAIModel:
+    LLMDeployment: ""
+    EmbeddingDeployment: ""
+  OpenAIEndpoint: https://b9.openledger.vn/v1
+  OpenAIOrgID: ""
+
+NLP:
+  ServerURL: ""
+
+Memory:
+  MessageWindow: 12
+
+Extractors:
+  Messages:
+    Summarizer:
+      Enabled: true
+      Embeddings:
+        Enabled: true
+        Dimensions: 1536
+        Service: openai
+        ChunkSize: 1000
+      Entities:
+        Enabled: true
+    Embeddings:
+      Enabled: true
+      Dimensions: 1536
+      Service: openai
+      ChunkSize: 1000
+    Entities:
+      Enabled: true
+    Intent:
+      Enabled: false
+  Documents:
+    Embeddings:
+      Enabled: true
+      Dimensions: 1536
+      Service: openai
+      ChunkSize: 1000
+
+Store:
+  Type: postgres
+  Postgres:
+    DSN: postgres://postgres:postgres@postgres:5432/zep_db?sslmode=disable
+    AvailableIndexes:
+      IVFFLAT: false
+      HSNW: true
+
+Server:
+  Host: 0.0.0.0
+  Port: 8000
+  WebEnabled: true
+  MaxRequestSize: 5242880
+
+Log:
+  Level: info
+
+Auth:
+  Secret: ""
+  Required: false
+
+OpenTelemetry:
+  Enabled: false
+
+DataConfig:
+  PurgeEvery: 60
+
+Development: false
+
+CustomPrompts:
+  SummarizerPrompts:
+    OpenAI: ""
+    Anthropic: ""

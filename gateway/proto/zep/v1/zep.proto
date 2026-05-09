@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package vnp.gateway.zep.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/zep/v1;zepv1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// ZepUserService manages user entities.
+service ZepUserService {
+  rpc CreateUser(CreateUserRequest) returns (User);
+  rpc GetUser(GetUserRequest) returns (User);
+  rpc UpdateUser(UpdateUserRequest) returns (User);
+}
+
+// ZepMemoryService manages session memory.
+service ZepMemoryService {
+  rpc PutMemory(PutMemoryRequest) returns (PutMemoryResponse);
+  rpc GetMemory(GetMemoryRequest) returns (GetMemoryResponse);
+}
+
+// ZepSearchService handles session and graph search.
+service ZepSearchService {
+  rpc SessionSearch(SessionSearchRequest) returns (SearchResponse);
+  rpc GraphSearch(GraphSearchRequest) returns (SearchResponse);
+}
+
+// ZepGraphService manages knowledge graph facts and ontology.
+service ZepGraphService {
+  rpc AddFact(AddFactRequest) returns (AddFactResponse);
+  rpc SetOntology(SetOntologyRequest) returns (SetOntologyResponse);
+}
+
+// ─── User ───
+
+message CreateUserRequest {
+  string user_id = 1;
+  string email = 2;
+  string first_name = 3;
+  string last_name = 4;
+  google.protobuf.Struct metadata = 5;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message UpdateUserRequest {
+  string user_id = 1;
+  string email = 2;
+  string first_name = 3;
+  string last_name = 4;
+  google.protobuf.Struct metadata = 5;
+}
+
+message User {
+  string id = 1;
+  string user_id = 2;
+  string email = 3;
+  string first_name = 4;
+  string last_name = 5;
+  google.protobuf.Struct metadata = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+// ─── Memory ───
+
+message PutMemoryRequest {
+  string session_id = 1;
+  repeated Message messages = 2;
+}
+
+message PutMemoryResponse {
+  string status = 1;
+}
+
+message GetMemoryRequest {
+  string session_id = 1;
+  int32 lastn = 2;
+  string memory_type = 3; // "perpetual", "message_window"
+}
+
+message GetMemoryResponse {
+  repeated Message messages = 1;
+  string summary = 2;
+  repeated Fact facts = 3;
+  google.protobuf.Struct context = 4;
+}
+
+message Message {
+  string role = 1;
+  string role_type = 2; // "user", "assistant", "system", "tool"
+  string content = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  google.protobuf.Struct metadata = 5;
+}
+
+// ─── Search ───
+
+message SessionSearchRequest {
+  string session_id = 1;
+  string text = 2;
+  int32 limit = 3;
+  string search_type = 4; // "similarity", "mmr"
+}
+
+message GraphSearchRequest {
+  string text = 1;
+  string user_id = 2;
+  int32 limit = 3;
+  string search_scope = 4; // "edges", "nodes"
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  string content = 1;
+  double score = 2;
+  google.protobuf.Struct metadata = 3;
+}
+
+// ─── Graph ───
+
+message Fact {
+  string id = 1;
+  string name = 2;
+  string fact = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp valid_at = 5;
+  google.protobuf.Timestamp expired_at = 6;
+}
+
+message AddFactRequest {
+  string user_id = 1;
+  string name = 2;
+  string fact = 3;
+}
+
+message AddFactResponse {
+  string fact_id = 1;
+}
+
+message SetOntologyRequest {
+  string user_id = 1;
+  google.protobuf.Struct ontology = 2; // JSON Schema-like
+}
+
+message SetOntologyResponse {
+  string status = 1;
+}

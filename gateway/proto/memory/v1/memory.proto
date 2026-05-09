@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package vnp.gateway.memory.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/memory/v1;memoryv1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// MemoryService — unified memory API gateway.
+// Routes requests to appropriate cognitive engines based on content type.
+service MemoryService {
+  // Store a memory with auto-classification routing.
+  rpc Store(StoreRequest) returns (StoreResponse);
+  // Recall memories across all engines (fan-out search).
+  rpc Recall(RecallRequest) returns (RecallResponse);
+  // Forget (delete) memories from specified engines.
+  rpc Forget(ForgetRequest) returns (ForgetResponse);
+  // Timeline query for temporal events.
+  rpc Timeline(TimelineRequest) returns (TimelineResponse);
+}
+
+// StoreRequest — auto-routed memory storage.
+message StoreRequest {
+  // Memory type: "auto", "semantic", "episodic", "conversational", "profile", "procedural"
+  string type = 1;
+  // Content to store.
+  string content = 2;
+  // Optional metadata key-value pairs.
+  map<string, string> metadata = 3;
+  // Source identifier for tracing origin.
+  string source_id = 4;
+  // User ID for user-scoped memories.
+  string user_id = 5;
+}
+
+message StoreResponse {
+  string id = 1;
+  string engine = 2;
+  string status = 3;
+  int64 latency_ms = 4;
+}
+
+message RecallRequest {
+  string query = 1;
+  repeated string engines = 2; // empty = all engines
+  int32 limit = 3;
+  map<string, string> filters = 4;
+}
+
+message RecallResponse {
+  repeated MemoryResult results = 1;
+  int64 total_latency_ms = 2;
+}
+
+message MemoryResult {
+  string id = 1;
+  string engine = 2;
+  string content = 3;
+  double score = 4;
+  map<string, string> metadata = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ForgetRequest {
+  string target_id = 1;
+  repeated string engines = 2; // empty = all engines
+  bool cascade = 3;
+}
+
+message ForgetResponse {
+  map<string, string> results = 1; // engine → status
+}
+
+message TimelineRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+  int32 limit = 4;
+}
+
+message TimelineResponse {
+  repeated TimelineEvent events = 1;
+}
+
+message TimelineEvent {
+  string id = 1;
+  string type = 2;
+  string content = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  map<string, string> metadata = 5;
+}

@@ -10,8 +10,10 @@ Các mảnh ghép bạn nêu thực ra đang đại diện cho các lớp rất 
 | **Cognee**     | Memory orchestration / extraction pipeline                              |
 | **Zep**        | Long-term memory + conversational context infra                         |
 | **OpenViking** | Agentic knowledge workflows / graph reasoning layer                     |
+| **Memobase**   | User profile-based long-term memory + event timeline                    |
+| **Supermemory**| Living knowledge graph + auto-forgetting + external connectors          |
 | **SurrealDB**  | Unified multi-model storage (graph + document + relational + vector)    |
-| **KGS Platform** | Multi-tenant Knowledge Graph Service — namespace isolation, ontology, rule engine, ABAC |
+| **KGS Platform** | Multi-tenant Knowledge Graph Service — 5 layers: Transport, Governance, Query & Intelligence, Sync & Processing, Storage (PG→Neo4j+Qdrant via Outbox CQRS) |
 
 Nếu ghép đúng cách, bạn không tạo ra "một framework nữa", mà là:
 
@@ -51,6 +53,8 @@ Các hệ thống hiện tại thường chỉ làm tốt **một mảnh**:
 | Mem0              | Lightweight memory     |
 | Graphiti          | Temporal graph memory  |
 | Cognee            | Extraction pipeline    |
+| Memobase          | User profile extraction, low-cost LLM |
+| Supermemory       | Auto-forgetting, KG versioning, connectors |
 | Neo4j stack       | Graph reasoning        |
 | Weaviate/Pinecone | Retrieval              |
 | LangGraph         | Orchestration          |
@@ -63,60 +67,68 @@ Các hệ thống hiện tại thường chỉ làm tốt **một mảnh**:
 Kiến trúc tổng thể khi tích hợp KGS Platform:
 
 ```
-                 Applications / Agents
-                         |
-                  Memory API Gateway
-                         |
-          ┌──────────────┼──────────────┐
-          |              |              |
-    Episodic Layer  Semantic Layer  Procedural Layer
-     (events/time)   (facts/docs)    (workflows)
-          |              |              |
-        Graphiti      Zep/Cognee     OpenViking
-          |              |              |
-          └──────────────┼──────────────┘
-                         |
-              ┌──────────┴──────────┐
-              |                     |
-        KGS Platform          SurrealDB
-    (Graph Governance)     (Unified Storage)
-    ┌─────────────────┐
-    │ App Registry    │
-    │ Ontology Svc    │
-    │ Graph API       │
-    │ Rule Engine     │
-    │ Policy (ABAC)   │
-    │ Query Planner   │
-    └────────┬────────┘
-             |
-     Neo4j (Namespaced)
-     PostgreSQL (Metadata)
-     Redis (Cache/Streams)
+                    Applications / Agents
+                            │
+                     Memory API Gateway
+                            │
+            ┌──────────┬──────────┬──────────┬──────────┬──────────┐
+            │          │          │          │          │          │
+      Episodic    Semantic    Conversa-   Procedural  Profile   Adaptive
+      (time)      (facts)     tional      (workflows) (user)    (KG+forget)
+            │          │     (sessions)       │          │          │
+          Graphiti   Cognee    Zep        OpenViking  Memobase  Supermemory
+            │          │          │          │          │          │
+            └──────────┴──────────┴──────────┴──────────┴──────────┘
+                            │
+  ╔═════════════════════════╧══════════════════════════════════╗
+  ║              KGS Platform (5-Layer Architecture)           ║
+  ╠════════════════════════════════════════════════════════════╣
+  ║  L5 — Transport    gRPC/HTTP servers · Middleware · Workers║
+  ╠════════════════════════════════════════════════════════════╣
+  ║  L4 — Governance   Registry · Ontology · Rules · Policy   ║
+  ╠════════════════════════════════════════════════════════════╣
+  ║  L3 — Query & Intelligence                                ║
+  ║    QueryPlanner · HybridSearch · Analytics · Projection    ║
+  ║    Namespace · Guardrails · ViewResolver                   ║
+  ╠════════════════════════════════════════════════════════════╣
+  ║  L2 — Sync & Processing                                   ║
+  ║    OutboxWorker · BatchHandler · Overlay · Lock · Reconcile║
+  ╠════════════════════════════════════════════════════════════╣
+  ║  L1 — Storage                                             ║
+  ║  ┌─────────────────────────────┐  ┌────────────────────┐  ║
+  ║  │ Specialized Stack           │  │ Unified (Planned)  │  ║
+  ║  │  PostgreSQL (source-of-truth)│  │ SurrealDB          │  ║
+  ║  │  Neo4j      (graph queries) │  │  graph + doc       │  ║
+  ║  │  Qdrant     (vector search) │  │  + vector          │  ║
+  ║  │  Redis      (cache/locks)   │  │  + realtime        │  ║
+  ║  │  NATS       (event stream)  │  │                    │  ║
+  ║  └─────────────────────────────┘  └────────────────────┘  ║
+  ╚════════════════════════════════════════════════════════════╝
 ```
 
-**Vai trò của KGS Platform trong kiến trúc:**
+**KGS Platform 5-Layer Architecture (dựa trên code thực tế):**
 
-- **Graph Governance Layer** — mọi memory write từ Graphiti/Cognee/OpenViking đều đi qua KGS để enforce ontology, namespace isolation, và access policies
-- **Multi-tenant Backbone** — mỗi app/agent đăng ký tenant riêng, dữ liệu hoàn toàn isolated
-- **Rule Engine** — tự động enrich và kiểm tra consistency trên graph (async via Redis Streams)
+- **L5 — Transport:** gRPC/HTTP servers (Kratos), auth middleware (API key→tenant), background WorkerServer (rule scheduler, outbox, overlay, reconcile)
+- **L4 — Governance:** App Registry (lifecycle, API keys, quotas), Ontology Service (schema validation, constraint sync), Rule Engine (cron + event-driven), Policy Engine (OPA ABAC)
+- **L3 — Query & Intelligence:** QueryPlanner (Cypher generation, batched traversal), Namespace injection, Guardrails (max depth/nodes), Hybrid Search (vector + text + centrality reranking), Analytics (coverage, traceability matrix, clustering), Projection (role-based views, PII masking)
+- **L2 — Sync & Processing:** Outbox Worker (PG→Neo4j+Qdrant async fan-out), Batch Handler (bulk writes), Overlay graphs (commit/discard/conflict), Distributed locks (Redis), Reconciliation jobs
+- **L1 — Storage:** PostgreSQL là **source-of-truth** (ACID), Neo4j + Qdrant là **read replicas** (synced via Outbox). Redis cho cache/locks, NATS cho event streaming. SurrealDB là alternative unified stack (planned)
 
-SurrealDB là lựa chọn rất thông minh cho **unified storage** vì:
+> **Key Insight từ code:** Architecture thực tế là **Event-Driven CQRS** — write vào PostgreSQL, async fan-out tới Neo4j (graph queries) và Qdrant (vector search) qua Outbox pattern.
 
-- Graph native
-- Document native
-- Vector native
-- Realtime
-- Multi-model
+**So sánh hai Storage backend ngang hàng:**
 
-=> Giảm complexity rất mạnh.
+| Tiêu chí         | Specialized Stack (Neo4j+Postgres+Qdrant+Redis) | Unified Stack (SurrealDB)             |
+| ---------------- | ------------------------------------------------ | ------------------------------------- |
+| Graph queries    | Neo4j — Cypher, mature, battle-tested            | SurrealDB — graph native, đang mature |
+| Vector search    | Qdrant — chuyên biệt, high performance           | SurrealDB — vector native, built-in   |
+| Metadata/Config  | PostgreSQL — ACID, relational, enterprise        | SurrealDB — document + relational     |
+| Cache/Streaming  | Redis — pub/sub, TTL, streams                    | SurrealDB — realtime subscriptions    |
+| Infra complexity | Cao (4 engines cần sync)                         | Thấp (1 engine duy nhất)             |
+| Enterprise trust | Rất cao (proven stack)                           | Đang xây dựng                         |
+| Scaling          | Mỗi engine scale độc lập                         | Scale đồng nhất                       |
 
-Nếu dùng Neo4j + Postgres + Qdrant + Redis:
-
-- Infra nightmare
-- Sync nightmare
-- Tenancy nightmare
-
-> **Tuy nhiên**, KGS Platform hiện sử dụng Neo4j + PostgreSQL + Redis. Lộ trình dài hạn có thể migrate sang SurrealDB để đơn giản hóa infra, hoặc giữ song song nếu cần từng engine chuyên biệt.
+> **Chiến lược:** Query Planner (Layer 2) abstract hóa storage backend. Cả hai stack có thể chạy song song hoặc chuyển đổi dần mà không ảnh hưởng Layer 3 (Management) và các memory engines phía trên.
 
 ### 3. Enterprise đang rất cần "Memory Governance"
 
@@ -181,17 +193,27 @@ Bao gồm:
 
 KGS (Knowledge Graph Service) là một nền tảng **graph-as-a-service** cho phép nhiều ứng dụng độc lập (tenants) đăng ký và sử dụng hạ tầng graph chung, trong khi vẫn duy trì sự cô lập hoàn toàn về dữ liệu, ontology, rules và access control.
 
-### Core Components
+### Core Components (5-Layer — từ code)
 
-| Component        | Trách nhiệm                                | Technology            |
-| ---------------- | ------------------------------------------- | --------------------- |
-| Service Layer    | Interface gRPC/HTTP, Auth, Middleware       | Go + Kratos           |
-| App Registry     | Quản lý app lifecycle, API key, quota       | Go + GORM (PostgreSQL)|
-| Ontology Service | CRUD ontology, validation schema per app    | Go + GORM (PostgreSQL)|
-| Graph API        | CRUD nodes/edges, namespaced Cypher         | Go + Neo4j Driver     |
-| Rule Engine      | Quản lý và chạy Cypher rules (async)        | Go + Redis Streams    |
-| Policy Engine    | Evaluate access policies (ABAC)             | Go + OPA              |
-| Query Planner    | Translate generic query → namespaced Cypher | Go Internal           |
+> Chi tiết đầy đủ: [ARCHITECTURE.md](architecture/ARCHITECTURE.md)
+
+| Layer | Package(s)           | Component                     | Technology            |
+| ----- | -------------------- | ----------------------------- | --------------------- |
+| L5    | `server/`, `service/`| gRPC/HTTP, Auth Middleware, Workers | Go + Kratos      |
+| L4    | `biz/registry*`      | App Registry (lifecycle, keys, quotas) | Go + GORM (PG)  |
+| L4    | `biz/ontology*`      | Ontology Service (schema validation)   | Go + GORM (PG)  |
+| L4    | `biz/rules*`         | Rule Engine (cron + event-driven)      | Go + gocron     |
+| L4    | `biz/policy*`        | Policy Engine (ABAC)                   | Go + OPA        |
+| L3    | `biz/query_planner*` | Query Planner (Cypher generation)      | Go Internal     |
+| L3    | `biz/namespace*`     | Namespace isolation                    | Go Internal     |
+| L3    | `search/`            | Hybrid Search (vector+text+centrality) | Go + Qdrant     |
+| L3    | `analytics/`         | Coverage, traceability, clustering     | Go + Neo4j      |
+| L3    | `projection/`        | Role-based views, PII masking          | Go + GORM (PG)  |
+| L2    | `outbox/`            | Outbox Worker (PG→Neo4j+Qdrant sync)  | Go + GORM       |
+| L2    | `batch/`             | Batch Handler (bulk writes)            | Go              |
+| L2    | `overlay/`           | Overlay graphs (commit/conflict)       | Go + Redis+NATS |
+| L2    | `lock/`              | Distributed locks                      | Go + Redis      |
+| L1    | `data/`              | PG, Neo4j, Qdrant, Redis, NATS, OPA   | Go drivers      |
 
 ### Multi-tenancy: Shared Graph + Namespace Isolation
 
@@ -274,34 +296,59 @@ graph TD
     B --> D[Cognee<br/>Extraction Pipeline]
     B --> E[Zep<br/>Conversational Memory]
     B --> F[OpenViking<br/>Graph Reasoning]
+    B --> MB[Memobase<br/>Profile Memory]
+    B --> SM[Supermemory<br/>Adaptive Memory]
     
-    C --> G[KGS Platform<br/>Graph Governance]
-    D --> G
-    E --> G
-    F --> G
+    C --> L3
+    D --> L3
+    E --> L3
+    F --> L3
+    MB --> L3
+    SM --> L3
     
-    G --> H[Ontology Service<br/>Schema Validation]
-    G --> I[Policy Engine<br/>ABAC / OPA]
-    G --> J[Rule Engine<br/>Async Enrichment]
-    G --> K[Query Planner<br/>Namespace Isolation]
+    subgraph KGS["KGS Platform"]
+        subgraph L3["Layer 3 — Management"]
+            H[App Registry] 
+            I[Ontology Service]
+            J[Rule Engine]
+            K[Policy Engine / OPA]
+        end
+        subgraph L2["Layer 2 — Query Planner"]
+            P[Namespace Injector]
+            Q[Query Translator]
+            R[Storage Router]
+        end
+        subgraph L1["Layer 1 — Storage"]
+            subgraph SS["Specialized Stack"]
+                S1[(Neo4j)]
+                S2[(PostgreSQL)]
+                S3[(Qdrant)]
+                S4[(Redis)]
+            end
+            subgraph US["Unified Stack"]
+                S5[(SurrealDB)]
+            end
+        end
+    end
     
-    K --> L[(Neo4j<br/>Namespaced Graph)]
-    H --> M[(PostgreSQL<br/>Ontology + Registry)]
-    J --> N[(Redis Streams<br/>Event Queue)]
+    L3 --> L2
+    L2 --> SS
+    L2 -.->|alternative| US
     
-    L --> O[(SurrealDB<br/>Unified Storage)]
-    
-    style G fill:#f59e0b,stroke:#d97706,color:#000
-    style O fill:#06b6d4,stroke:#0891b2,color:#000
+    style KGS fill:#1e293b,stroke:#475569,color:#fff
+    style L3 fill:#f59e0b,stroke:#d97706,color:#000
+    style L2 fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    style SS fill:#0ea5e9,stroke:#0284c7,color:#000
+    style US fill:#06b6d4,stroke:#0891b2,color:#000
 ```
 
-**Flow tích hợp:**
+**Flow tích hợp (3-Layer):**
 
-1. **Memory engines** (Graphiti, Cognee, Zep, OpenViking) extract & process knowledge
-2. **KGS Platform** validate ontology, enforce namespace, check policies
-3. **Neo4j** stores structured graph data (namespaced labels)
-4. **SurrealDB** provides unified vector + document + graph storage for unstructured/semi-structured data
-5. **Rule Engine** triggers async enrichment rules (e.g., auto-link related entities, detect conflicts)
+1. **Memory engines** (Graphiti, Cognee, Zep, OpenViking, Memobase, Supermemory) extract & process knowledge
+2. **Layer 3 (Management):** Validate ontology, check ABAC policies, trigger rule engine
+3. **Layer 2 (Query Planner):** Inject namespace, translate query, route tới storage backend
+4. **Layer 1 (Storage):** Execute trên Specialized Stack (Neo4j+Postgres+Qdrant+Redis) hoặc Unified Stack (SurrealDB)
+5. **Rule Engine** (Layer 3) triggers async enrichment via Redis Streams hoặc SurrealDB realtime
 
 ---
 
@@ -416,7 +463,22 @@ Không phải DB. Không phải graph. Mà là:
 - Salience ranking
 - Adaptive retrieval
 
-### 2. Context Compiler
+### 2. User Profile Engine
+
+- Structured profile extraction (topic/sub_topic/content)
+- Buffer-based batch processing (fixed 3 LLM calls)
+- Profile merge (YOLO) — cost-efficient profile evolution
+- < 100ms context retrieval via pre-computed profiles + Redis cache
+
+### 3. Adaptive Memory Engine
+
+- Living knowledge graph with version control
+- Automatic forgetting (time-based, contradiction, noise)
+- Memory relations: updates / extends / derives
+- Static vs Dynamic memory classification
+- #1 trên LongMemEval, LoCoMo, ConvoMem benchmarks
+
+### 4. Context Compiler
 
 Đây là **cực kỳ mạnh**.
 
@@ -427,9 +489,9 @@ Output: optimized context package
 
 > Đây là thứ các agent platform đều thiếu.
 
-**KGS enhancement:** Context API (`/context`, `/impact`, `/coverage`) cung cấp nguyên liệu thô cho Context Compiler. Kết hợp với Ontology metadata để filter context theo schema-aware rules.
+**KGS enhancement:** Context API (`/context`, `/impact`, `/coverage`) cung cấp nguyên liệu thô cho Context Compiler. Kết hợp với Ontology metadata và Memobase user profiles để filter context theo schema-aware rules. Supermemory connectors (Google Drive, Notion, GitHub) mở rộng nguồn dữ liệu context.
 
-### 3. Cognitive Policies
+### 5. Cognitive Policies
 
 Enterprise sẽ thích:
 
@@ -439,9 +501,9 @@ Enterprise sẽ thích:
 - Role-scoped memory
 - Confidential memory classes
 
-**KGS enhancement:** OPA policies + Rule Engine + App lifecycle management = production-ready cognitive policies. Rego policies cho phép define fine-grained rules như "role X chỉ được read entity type Y".
+**KGS enhancement:** OPA policies + Rule Engine + App lifecycle management = production-ready cognitive policies. Rego policies cho phép define fine-grained rules như "role X chỉ được read entity type Y". Supermemory auto-forgetting bổ sung memory decay policies tự động.
 
-### 4. Knowledge Graph Governance (KGS-specific moat)
+### 6. Knowledge Graph Governance (KGS-specific moat)
 
 Đây là moat mà **chưa ai trong market có**:
 
@@ -453,24 +515,35 @@ Enterprise sẽ thích:
 
 ---
 
-## Storage Strategy: Dual-engine Approach
+## Storage Strategy: Dual-backend qua Layer 1
 
-| Layer                | Engine      | Dữ liệu                                    | Lý do                           |
-| -------------------- | ----------- | ------------------------------------------- | -------------------------------- |
-| Structured Knowledge | Neo4j       | Entities, relations, namespaced graph       | Mature graph engine, Cypher      |
-| Config & Metadata    | PostgreSQL  | App registry, ontology, rules, policies     | ACID, relational, enterprise     |
-| Event Streaming      | Redis       | Rule triggers, cache, streams               | Fast, pub/sub, TTL cache         |
-| Unified AI Storage   | SurrealDB   | Vectors, documents, semantic search         | Multi-model, reduce infra        |
+KGS Layer 1 cung cấp **hai backend ngang hàng**, được abstract bởi Layer 2 (Query Planner):
 
-> **Chiến lược:** KGS Platform quản lý structured knowledge (Neo4j + PostgreSQL), SurrealDB xử lý unstructured/semi-structured data (vectors, documents). Hai engine bổ sung cho nhau thay vì cạnh tranh.
+### Specialized Stack (Production hiện tại)
 
-**Lộ trình migration tiềm năng:**
+| Engine     | Vai trò                                     | Đặc điểm                         |
+| ---------- | ------------------------------------------- | -------------------------------- |
+| Neo4j      | Graph database (namespaced labels)          | Cypher, mature, battle-tested    |
+| PostgreSQL | Config & metadata (registry, ontology)      | ACID, relational, enterprise     |
+| Qdrant     | Vector search, semantic similarity          | High-perf ANN, filtering         |
+| Redis      | Cache, event streams, pub/sub               | Fast TTL cache, streams          |
 
-| Phase     | Storage                                | Trade-off                        |
-| --------- | -------------------------------------- | -------------------------------- |
-| v1 (Now)  | Neo4j + PostgreSQL + Redis             | Proven stack, nhưng nhiều infra  |
-| v2        | + SurrealDB cho vectors/docs           | Hybrid, giảm dependency          |
-| v3+       | Evaluate SurrealDB thay thế Neo4j      | Nếu SurrealDB đủ mature          |
+### Unified Stack (Long-term alternative)
+
+| Engine     | Thay thế                                    | Đặc điểm                         |
+| ---------- | ------------------------------------------- | -------------------------------- |
+| SurrealDB  | Neo4j + PostgreSQL + Qdrant + Redis         | Multi-model, 1 engine duy nhất  |
+
+> **Chiến lược:** Layer 2 (Query Planner + Storage Router) abstract hóa cả hai stack. Layer 3 (Management) và các memory engines không cần biết storage backend nào đang active. Có thể chạy hybrid hoặc migrate dần.
+
+**Lộ trình migration:**
+
+| Phase     | Storage                                      | Trade-off                        |
+| --------- | -------------------------------------------- | -------------------------------- |
+| v1 (Now)  | Neo4j + PostgreSQL + Redis                   | Proven, nhưng nhiều infra        |
+| v1.5      | + Qdrant cho vector search                   | Thêm semantic retrieval          |
+| v2        | + SurrealDB chạy song song (hybrid)          | Evaluate real-world perf         |
+| v3+       | SurrealDB thay thế dần Specialized Stack     | Nếu SurrealDB đủ mature          |
 
 ---
 
@@ -492,6 +565,8 @@ memory.recall()      # → KGS Context API (GET /v1/graph/nodes/{id}/context)
 memory.evolve()      # → KGS Rule Engine (triggered on write)
 memory.invalidate()  # → KGS Graph API (update node status)
 memory.timeline()    # → Graphiti temporal query
+memory.profile()     # → Memobase Context API (GET /api/v1/users/context/{id})
+memory.forget()      # → Supermemory auto-forget + cascading delete
 ```
 
 Rồi:
@@ -504,10 +579,10 @@ Rồi:
 
 | Phase   | Focus                                | KGS Role                                       |
 | ------- | ------------------------------------ | ---------------------------------------------- |
-| Phase 1 | Conversational memory                | Zep + KGS namespace isolation                  |
-| Phase 2 | Graph memory                         | Graphiti + KGS ontology + rule engine           |
-| Phase 3 | Organizational memory                | KGS multi-tenant + OPA policies                |
-| Phase 4 | Autonomous memory optimization       | KGS Rule Engine auto-enrichment + SurrealDB    |
+| Phase 1 | Conversational + profile memory      | Zep + Memobase + KGS namespace isolation       |
+| Phase 2 | Graph + adaptive memory              | Graphiti + Supermemory + KGS ontology + rules   |
+| Phase 3 | Organizational memory                | KGS multi-tenant + OPA policies + connectors   |
+| Phase 4 | Autonomous memory optimization       | KGS Rule Engine + auto-forgetting + SurrealDB  |
 
 ### Tenant Onboarding Flow (via KGS)
 
@@ -575,7 +650,9 @@ Rất cao **nếu** bạn giải quyết:
 | Rule execution          | Async (Redis Streams)             | Không block Graph API; dễ retry/scale                     | Delay giữa event và rule execution            |
 | Access Control          | OPA (Open Policy Agent)           | Mature, auditable, Rego language linh hoạt                | Cần maintain OPA bundle sync                  |
 | AI Storage              | SurrealDB (alongside Neo4j)       | Multi-model giảm infra complexity cho vectors/docs        | Ecosystem chưa mature                         |
-| Memory engines          | Graphiti + Cognee + Zep           | Mỗi engine chuyên biệt 1 memory type                     | Integration complexity cao                    |
+| Memory engines          | Graphiti + Cognee + Zep + OV + Memobase + SM | Mỗi engine chuyên biệt 1 memory type         | Integration complexity cao (6 engines)        |
+| Profile engine          | Memobase (buffer-based)           | Fixed 3 LLM calls, < 100ms, cost-efficient                | Không có graph reasoning                      |
+| Adaptive engine         | Supermemory (versioned KG)        | #1 benchmarks, auto-forgetting, connectors                 | Cloud-first architecture                      |
 | Graph governance        | KGS Platform                      | Centralized schema + policy enforcement                   | Thêm 1 hop cho mỗi write operation           |
 
 ---

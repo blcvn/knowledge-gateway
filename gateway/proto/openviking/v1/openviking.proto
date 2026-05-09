@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package vnp.gateway.openviking.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/openviking/v1;openvikingv1";
+
+import "google/protobuf/timestamp.proto";
+
+// OVFileService — agent-native context database file operations.
+service OVFileService {
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
+  rpc WriteFile(WriteFileRequest) returns (WriteFileResponse);
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+  rpc ListDir(ListDirRequest) returns (ListDirResponse);
+  rpc Tree(TreeRequest) returns (TreeResponse);
+  rpc Grep(GrepRequest) returns (GrepResponse);
+}
+
+// OVSearchService — hierarchical semantic search.
+service OVSearchService {
+  rpc Search(OVSearchRequest) returns (OVSearchResponse);
+}
+
+// OVSessionService — editing session management.
+service OVSessionService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc AddMessage(AddMessageRequest) returns (AddMessageResponse);
+  rpc CommitSession(CommitSessionRequest) returns (CommitSessionResponse);
+}
+
+// OVResourceService — resource ingestion.
+service OVResourceService {
+  rpc Ingest(IngestResourceRequest) returns (IngestResourceResponse);
+}
+
+// ─── File operations ───
+
+message ReadFileRequest {
+  string path = 1;
+  string encoding = 2; // "utf-8", "base64"
+}
+
+message ReadFileResponse {
+  string content = 1;
+  string mime_type = 2;
+  int64 size = 3;
+  google.protobuf.Timestamp modified_at = 4;
+}
+
+message WriteFileRequest {
+  string path = 1;
+  bytes content = 2;
+  string mode = 3; // "create", "overwrite", "append"
+}
+
+message WriteFileResponse {
+  string path = 1;
+  int64 bytes_written = 2;
+}
+
+message DeleteFileRequest {
+  string path = 1;
+  bool recursive = 2;
+}
+
+message DeleteFileResponse {
+  int32 files_deleted = 1;
+}
+
+message ListDirRequest {
+  string path = 1;
+  bool recursive = 2;
+}
+
+message ListDirResponse {
+  repeated FileEntry entries = 1;
+}
+
+message TreeRequest {
+  string path = 1;
+  int32 depth = 2;
+}
+
+message TreeResponse {
+  string tree = 1; // ASCII tree rendering
+}
+
+message GrepRequest {
+  string pattern = 1;
+  string path = 2;
+  bool regex = 3;
+  bool case_insensitive = 4;
+}
+
+message GrepResponse {
+  repeated GrepMatch matches = 1;
+}
+
+message GrepMatch {
+  string file = 1;
+  int32 line = 2;
+  string content = 3;
+}
+
+message FileEntry {
+  string name = 1;
+  string path = 2;
+  bool is_dir = 3;
+  int64 size = 4;
+  google.protobuf.Timestamp modified_at = 5;
+}
+
+// ─── Search ───
+
+message OVSearchRequest {
+  string query = 1;
+  int32 context_level = 2; // 0=file, 1=project, 2=workspace
+  int32 limit = 3;
+}
+
+message OVSearchResponse {
+  repeated OVSearchResult results = 1;
+}
+
+message OVSearchResult {
+  string path = 1;
+  string content = 2;
+  double score = 3;
+  int32 line_start = 4;
+  int32 line_end = 5;
+}
+
+// ─── Session ───
+
+message CreateSessionRequest {
+  string description = 1;
+  repeated string paths = 2;
+}
+
+message CreateSessionResponse {
+  string session_id = 1;
+}
+
+message AddMessageRequest {
+  string session_id = 1;
+  string role = 2; // "user", "assistant"
+  string content = 3;
+}
+
+message AddMessageResponse {
+  string message_id = 1;
+}
+
+message CommitSessionRequest {
+  string session_id = 1;
+}
+
+message CommitSessionResponse {
+  int32 files_modified = 1;
+  string status = 2;
+}
+
+// ─── Resource ───
+
+message IngestResourceRequest {
+  string path = 1;
+  string type = 2; // "file", "url", "directory"
+  map<string, string> options = 3;
+}
+
+message IngestResourceResponse {
+  string task_id = 1;
+  string status = 2;
+}

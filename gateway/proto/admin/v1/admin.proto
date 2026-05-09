@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package vnp.gateway.admin.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/admin/v1;adminv1";
+
+import "google/protobuf/timestamp.proto";
+
+// AdminService provides gateway administration.
+service AdminService {
+  rpc CreateTenant(CreateTenantRequest) returns (Tenant);
+  rpc IssueAPIKey(IssueAPIKeyRequest) returns (IssueAPIKeyResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Metrics(MetricsRequest) returns (MetricsResponse);
+}
+
+message CreateTenantRequest {
+  string name = 1;
+  string rate_tier = 2; // "free", "pro", "enterprise"
+}
+
+message Tenant {
+  string id = 1;
+  string name = 2;
+  string rate_tier = 3;
+  bool enabled = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message IssueAPIKeyRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  repeated string scopes = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message IssueAPIKeyResponse {
+  string key_prefix = 1; // "vnp_xxxx"
+  string full_key = 2;   // returned once
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1;
+  map<string, string> services = 2;
+}
+
+message MetricsRequest {}
+
+message MetricsResponse {
+  int64 total_requests = 1;
+  int64 active_connections = 2;
+  map<string, string> circuit_states = 3;
+}

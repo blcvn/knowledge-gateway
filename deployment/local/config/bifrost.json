@@ -1,0 +1,44 @@
+{
+  "providers": {
+    "openai": {
+      "keys": [
+        {
+          "name": "openai-primary",
+          "value": "env.OPENAI_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "max_retries": 3,
+        "retry_backoff_initial": 500,
+        "retry_backoff_max": 5000,
+        "default_request_timeout_in_seconds": 120
+      },
+      "concurrency_and_buffer_size": {
+        "concurrency": 50,
+        "buffer_size": 200
+      }
+    },
+    "anthropic": {
+      "keys": [
+        {
+          "name": "anthropic-primary",
+          "value": "env.ANTHROPIC_API_KEY",
+          "models": ["*"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "max_retries": 3,
+        "retry_backoff_initial": 500,
+        "retry_backoff_max": 5000,
+        "default_request_timeout_in_seconds": 120
+      },
+      "concurrency_and_buffer_size": {
+        "concurrency": 25,
+        "buffer_size": 100
+      }
+    }
+  }
+}

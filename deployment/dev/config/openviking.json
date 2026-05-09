@@ -1,0 +1,14 @@
+{
+  "embedding": {
+    "dense": {
+      "provider": "openai",
+      "model": "${EMBEDDING_MODEL}",
+      "api_key": "${EMBEDDING_API_KEY}",
+      "api_base": "${BIFROST_URL}/v1",
+      "dimension": 3072
+    }
+  },
+  "storage": {
+    "workspace": "/app/.openviking/data"
+  }
+}

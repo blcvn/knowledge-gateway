@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package vnp.gateway.cognee.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/cognee/v1;cogneev1";
+
+import "google/protobuf/struct.proto";
+
+// CogneeIngestionService handles dataset and data ingestion.
+service CogneeIngestionService {
+  rpc CreateDataset(CreateDatasetRequest) returns (CreateDatasetResponse);
+  rpc UploadData(UploadDataRequest) returns (UploadDataResponse);
+  rpc Cognify(CognifyRequest) returns (CognifyResponse);
+}
+
+// CogneeSearchService handles semantic and graph search.
+service CogneeSearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message CreateDatasetRequest {
+  string name = 1;
+  string description = 2;
+  map<string, string> metadata = 3;
+}
+
+message CreateDatasetResponse {
+  string id = 1;
+  string status = 2;
+}
+
+message UploadDataRequest {
+  string dataset_id = 1;
+  string content_type = 2; // "text", "pdf", "url"
+  bytes data = 3;
+  map<string, string> metadata = 4;
+}
+
+message UploadDataResponse {
+  string id = 1;
+  string status = 2;
+}
+
+message CognifyRequest {
+  string dataset_id = 1;
+  repeated string pipeline_steps = 2; // "chunk", "embed", "graph", "summarize"
+}
+
+message CognifyResponse {
+  string task_id = 1;
+  string status = 2; // "queued", "processing", "done"
+}
+
+message SearchRequest {
+  string query = 1;
+  string dataset_id = 2;
+  int32 limit = 3;
+  string search_type = 4; // "semantic", "graph", "hybrid"
+  map<string, string> filters = 5;
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  string id = 1;
+  string content = 2;
+  double score = 3;
+  string node_type = 4; // "chunk", "entity", "summary"
+  map<string, string> metadata = 5;
+}

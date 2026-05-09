@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package vnp.gateway.graphiti.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/graphiti/v1;graphitiv1";
+
+import "google/protobuf/timestamp.proto";
+
+// GraphitiIngestionService handles episode and entity ingestion.
+service GraphitiIngestionService {
+  rpc IngestEpisode(IngestEpisodeRequest) returns (IngestEpisodeResponse);
+}
+
+// GraphitiSearchService handles graph search queries.
+service GraphitiSearchService {
+  rpc Search(GraphSearchRequest) returns (GraphSearchResponse);
+}
+
+// GraphitiStoreService provides direct node/edge access.
+service GraphitiStoreService {
+  rpc GetNode(GetNodeRequest) returns (Node);
+  rpc GetEdge(GetEdgeRequest) returns (Edge);
+}
+
+message IngestEpisodeRequest {
+  string name = 1;
+  string content = 2;
+  string source = 3; // "message", "document", "event"
+  string source_description = 4;
+  google.protobuf.Timestamp reference_time = 5;
+  map<string, string> metadata = 6;
+}
+
+message IngestEpisodeResponse {
+  string episode_id = 1;
+  int32 entities_created = 2;
+  int32 edges_created = 3;
+  string status = 4;
+}
+
+message GraphSearchRequest {
+  string query = 1;
+  int32 limit = 2;
+  repeated string entity_types = 3;
+  google.protobuf.Timestamp center_date = 4;
+  map<string, string> filters = 5;
+}
+
+message GraphSearchResponse {
+  repeated Node nodes = 1;
+  repeated Edge edges = 2;
+  repeated Episode episodes = 3;
+}
+
+message GetNodeRequest {
+  string id = 1;
+}
+
+message GetEdgeRequest {
+  string id = 1;
+}
+
+message Node {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string summary = 4;
+  google.protobuf.Timestamp created_at = 5;
+  map<string, string> attributes = 6;
+}
+
+message Edge {
+  string id = 1;
+  string source_id = 2;
+  string target_id = 3;
+  string relation = 4;
+  string fact = 5;
+  google.protobuf.Timestamp valid_from = 6;
+  google.protobuf.Timestamp valid_to = 7;
+}
+
+message Episode {
+  string id = 1;
+  string name = 2;
+  string content = 3;
+  string source = 4;
+  google.protobuf.Timestamp reference_time = 5;
+}

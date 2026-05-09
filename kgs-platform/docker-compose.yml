@@ -1,0 +1,92 @@
+# KGS Platform — Standalone Docker Compose for Development
+# For integrated deployment with all VNP Memory services, use:
+#   cd ../../deployment/local && make up-kgs
+#
+# Standalone usage:
+#   Specialized mode:  docker compose --profile specialized up
+#   SurrealDB mode:    docker compose --profile surrealdb up
+#   Full stack:        docker compose --profile surrealdb --profile specialized up
+
+version: "3.8"
+
+services:
+  # ── Specialized Stack ──────────────────────────────────────
+
+  kgs-postgres:
+    image: postgres:16-alpine
+    profiles: [specialized]
+    environment:
+      POSTGRES_USER: ba_agent
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: ba_agent_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ba_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  kgs-neo4j:
+    image: neo4j:5.15-community
+    profiles: [specialized]
+    environment:
+      NEO4J_AUTH: neo4j/neo4jpassword
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+
+  kgs-qdrant:
+    image: qdrant/qdrant:v1.9.0
+    profiles: [specialized]
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  kgs-redis:
+    image: redis:7-alpine
+    profiles: [specialized]
+    ports:
+      - "6379:6379"
+
+  kgs-nats:
+    image: nats:2.10-alpine
+    profiles: [specialized]
+    ports:
+      - "4222:4222"
+    command: "--jetstream"
+
+  kgs-opa:
+    image: openpolicyagent/opa:0.63.0-static
+    profiles: [specialized]
+    ports:
+      - "8181:8181"
+    command: "run --server --log-level info"
+
+  # ── SurrealDB Stack ───────────────────────────────────────
+
+  kgs-surrealdb:
+    image: surrealdb/surrealdb:v2
+    profiles: [surrealdb]
+    command: start --user root --pass secret --log info file:/data/kgs.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - surrealdb_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pg_data:
+  neo4j_data:
+  qdrant_data:
+  surrealdb_data:

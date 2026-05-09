@@ -1,0 +1,31 @@
+# KGS Platform — SurrealDB Mode Config
+# Use this config when running with make up-kgs-surrealdb
+server:
+  http:
+    addr: 0.0.0.0:8000
+    timeout: 180s
+  grpc:
+    addr: 0.0.0.0:9000
+    timeout: 180s
+data:
+  # SurrealDB mode — no PG/Neo4j/Qdrant/Redis needed
+  storage_mode: surrealdb
+  surrealdb:
+    url: ws://surrealdb:8000
+    namespace: kgs
+    database: production
+    user: root
+    password: secret
+  embedding:
+    provider: deterministic
+    api_key: ""
+    model: text-embedding-3-small
+    base_url: https://api.openai.com/v1
+    vector_size: 1536
+    timeout: 15s
+  ontology:
+    validation_enabled: true
+    strict_mode: false
+    schema_validation: false
+    edge_constraint_check: true
+    sync_projection: false
