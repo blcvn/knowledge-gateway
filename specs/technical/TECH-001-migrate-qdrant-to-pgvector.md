@@ -1,55 +1,57 @@
 ---
 id: TECH-001
-title: Migrate Cognee embeddings from Qdrant to pgvector
-service: cognee-pipeline
-version: 1.0.0
-status: Ready
+title: Unified Vector Store Interface (Qdrant + pgvector)
+service: pkg/vectorstore
+version: 2.0.0
+status: In Progress
 priority: P2
 created: 2026-05-10
 updated: 2026-05-10
 linked_sol: SOL-001
 linked_adr: ADR-0001
-risk_level: Medium
-rollback_plan: Re-enable Qdrant config, revert VectorDB adapter selection to qdrant driver
+risk_level: Low
+rollback_plan: N/A — additive change, both backends remain operational
 ---
 
-## Mô Tả Thay Đổi
+## Mô Tả Thay Đổi (Revised)
 
-Migrate Cognee entity/chunk embeddings từ Qdrant sang pgvector (PostgreSQL extension). 4 engines khác (Memobase, Zep, Supermemory, OpenViking) đã dùng pgvector. Loại bỏ Qdrant giảm 1 infrastructure dependency.
+~~Migrate Cognee embeddings from Qdrant to pgvector.~~
+
+**Updated**: Maintain both Qdrant and pgvector as dual vector backends. Create a unified `VectorStore` interface in `pkg/vectorstore` that abstracts the backend choice. Each engine configures which backend to use via config.
 
 ## Lý Do
 
-- Qdrant chỉ được dùng bởi Cognee → single point of dependency
-- pgvector đã mature (HNSW indexing, IVFFlat) và được dùng bởi 4 engines khác
-- Giảm ops burden: 1 fewer StatefulSet in Kubernetes, 1 fewer container in dev
+- Qdrant provides specialized ANN performance for high-throughput workloads
+- pgvector integrates with existing PostgreSQL — zero additional infra for engines that prefer it
+- Unified interface enables per-engine backend selection without code changes
 
-## Các Bước Thực Hiện
+## Kiến Trúc
 
-1. Benchmark pgvector HNSW vs Qdrant cho Cognee entity embeddings (vector dimension, dataset size)
-2. Create pgvector migration: `CREATE TABLE cognee_embeddings (id, collection, vector, metadata, ...)`
-3. Add HNSW index: `CREATE INDEX ON cognee_embeddings USING hnsw (vector vector_cosine_ops)`
-4. Update `cognee-pipeline` VectorDB adapter config: `vectordb.driver = "pgvector"` (from "qdrant")
-5. Migrate existing embeddings from Qdrant → pgvector
-6. Remove Qdrant from Docker Compose and Kubernetes manifests
-7. Remove Qdrant client dependency from `go.mod`
+```
+pkg/vectorstore/
+├── vectorstore.go        # VectorStore interface
+├── pgvector/
+│   └── adapter.go        # pgvector implementation
+├── qdrant/
+│   └── adapter.go        # Qdrant implementation
+└── vectorstore_test.go   # Interface compliance tests
+```
 
-## Risk & Mitigation
+### Backend Assignment
 
-| Risk | Probability | Impact | Mitigation |
-|---|---|---|---|
-| pgvector search latency higher than Qdrant | Medium | Medium | Benchmark before migration; tune HNSW params (m=16, ef_construction=200) |
-| Migration data loss | Low | High | Dry-run migration on staging first; keep Qdrant running until verified |
-| pgvector memory usage spike | Low | Medium | Monitor PostgreSQL memory; consider dedicated pgvector PostgreSQL instance |
-
-## Rollback Plan
-
-1. Re-enable Qdrant in Docker Compose / Kubernetes
-2. Set `vectordb.driver = "qdrant"` in cognee-pipeline config
-3. Qdrant data is preserved (read-only during migration)
+| Engine | Vector Backend | Reason |
+|--------|---------------|--------|
+| Cognee | Qdrant | High-volume entity embeddings, ANN performance |
+| Graphiti | pgvector | Entity/edge embeddings, co-located with graph metadata |
+| Memobase | pgvector | Profile embeddings, low volume |
+| OpenViking | pgvector | Resource embeddings, co-located with FS metadata |
+| Zep | pgvector | Fact embeddings, co-located with messages |
+| Supermemory | pgvector | Memory embeddings, co-located with documents |
 
 ## Verification Checklist
 
-- [ ] Benchmark: pgvector latency ≤ 1.2× Qdrant latency for top-K search
-- [ ] All cognee-search retrieval strategies return correct results
-- [ ] Qdrant container removed from dev and production
-- [ ] `go.mod` no longer has qdrant-go dependency
+- [ ] `VectorStore` interface covers: Upsert, Search, Delete, CollectionExists
+- [ ] pgvector adapter passes interface compliance tests
+- [ ] Qdrant adapter passes interface compliance tests
+- [ ] Each engine can be configured to use either backend
+- [ ] Both backends operational in docker-compose
