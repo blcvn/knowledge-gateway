@@ -1,4 +1,12 @@
 ---
+
+## [DEPRECATED] - 2026-05-10
+
+### Deprecated
+- This service has been consolidated into `graphiti-pipeline` per SOL-001
+- All domain logic, gRPC handlers, and NATS subscribers moved to `graphiti-pipeline`
+- This service directory will be archived after Phase 4 completion
+
 id: DOC-S07
 service: graphiti-knowledge
 version: 1.1.0

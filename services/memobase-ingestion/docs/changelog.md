@@ -1,4 +1,12 @@
 ---
+
+## [DEPRECATED] - 2026-05-10
+
+### Deprecated
+- This service has been consolidated into `memobase-pipeline` per SOL-001
+- All domain logic, gRPC handlers, and NATS subscribers moved to `memobase-pipeline`
+- This service directory will be archived after Phase 4 completion
+
 id: DOC-S07
 service: memobase-ingestion
 version: 1.1.0
