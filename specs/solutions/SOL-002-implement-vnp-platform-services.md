@@ -72,8 +72,8 @@ T05: vnp-gateway   ← Already implemented, docs alignment only
 
 | ID | Task | Status | Assigned | Verify |
 |---|---|---|---|---|
-| T01 | vnp-admin implementation | ⏳ Ready | — | — |
-| T02 | vnp-event implementation | ⏳ Ready | — | — |
-| T03 | vnp-platform completion | ⏳ Ready | — | — |
-| T04 | vnp-search-hub implementation | ⏳ Ready | — | — |
-| T05 | vnp-gateway docs alignment | ⏳ Ready | — | — |
+| T01 | vnp-admin implementation | ✅ Done | AI | Domain + Usecase + Adapter + main.go |
+| T02 | vnp-event implementation | ✅ Done | AI | Domain + Usecase + NATS subscriber + main.go |
+| T03 | vnp-platform completion | ⏳ Ready | — | Needs adapter + infra wiring |
+| T04 | vnp-search-hub implementation | ✅ Done | AI | Domain + RecallService (RRF/MMR) + main.go |
+| T05 | vnp-gateway docs alignment | ⏳ Ready | — | Needs audit vs implementation |
