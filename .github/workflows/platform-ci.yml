@@ -1,0 +1,88 @@
+name: VNP Platform CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'services/**'
+      - 'gateway/**'
+      - 'proto/**'
+      - 'pkg/**'
+  pull_request:
+    branches: [main]
+
+env:
+  GO_VERSION: '1.25'
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - vnp-admin
+          - vnp-event
+          - vnp-platform
+          - vnp-search-hub
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.service }}-${{ hashFiles(format('services/{0}/go.sum', matrix.service)) }}
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: services/${{ matrix.service }}
+
+      - name: Test
+        run: |
+          cd services/${{ matrix.service }}
+          go test -v -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Coverage
+        run: |
+          cd services/${{ matrix.service }}
+          go tool cover -func=coverage.out | tail -1
+
+  gateway:
+    name: Gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Test Gateway
+        run: |
+          cd gateway
+          go test -v -race -count=1 ./...
+
+  build:
+    name: Build Docker
+    needs: [lint-and-test, gateway]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        service:
+          - vnp-admin
+          - vnp-event
+          - vnp-platform
+          - vnp-search-hub
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t vnp-memory/${{ matrix.service }}:${{ github.sha }} \
+            services/${{ matrix.service }}/

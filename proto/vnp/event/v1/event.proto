@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package vnp.event.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/services/vnp-event/proto/eventpb";
+
+import "google/protobuf/timestamp.proto";
+
+// VNPEventService provides cross-engine event timeline storage,
+// semantic + temporal search, and event gist summarization.
+service VNPEventService {
+  rpc CreateEvent(CreateEventRequest) returns (Event);
+  rpc SearchEvents(SearchEventsRequest) returns (SearchEventsResponse);
+  rpc SearchGists(SearchGistsRequest) returns (SearchGistsResponse);
+  rpc GetTimeline(GetTimelineRequest) returns (TimelineResponse);
+  rpc FilterByTags(FilterByTagsRequest) returns (FilterResponse);
+}
+
+message Event {
+  string id = 1;
+  string user_id = 2;
+  string tenant_id = 3;
+  string source = 4;  // COGNEE, GRAPHITI, MEMOBASE, OPENVIKING, ZEP, SUPERMEMORY
+  string content = 5;
+  repeated string tags = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp valid_at = 8;
+  optional google.protobuf.Timestamp invalid_at = 9;
+  double score = 10;  // Populated in search results
+}
+
+message CreateEventRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  string source = 3;
+  string content = 4;
+  repeated string tags = 5;
+  optional google.protobuf.Timestamp valid_at = 6;
+}
+
+message SearchEventsRequest {
+  string tenant_id = 1;
+  string query = 2;
+  int32  limit = 3;
+  optional google.protobuf.Timestamp start = 4;
+  optional google.protobuf.Timestamp end = 5;
+}
+
+message SearchEventsResponse {
+  repeated Event events = 1;
+  int32 total = 2;
+}
+
+message SearchGistsRequest {
+  string tenant_id = 1;
+  string query = 2;
+  int32  limit = 3;
+}
+
+message EventGist {
+  string id = 1;
+  repeated string event_ids = 2;
+  string summary = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message SearchGistsResponse {
+  repeated EventGist gists = 1;
+}
+
+message GetTimelineRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  int32  limit = 3;
+}
+
+message TimelineResponse {
+  repeated Event events = 1;
+  int32 total = 2;
+}
+
+message FilterByTagsRequest {
+  string tenant_id = 1;
+  repeated string tags = 2;
+  int32 limit = 3;
+}
+
+message FilterResponse {
+  repeated Event events = 1;
+}

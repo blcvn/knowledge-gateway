@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package vnp.searchhub.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/services/vnp-search-hub/proto/searchhubpb";
+
+// VNPSearchHubService is the memory.recall() backend —
+// fans out queries to 7 engines, merges, deduplicates, reranks, and
+// returns a token-budgeted context window.
+service VNPSearchHubService {
+  rpc Recall(RecallRequest) returns (RecallResponse);
+  rpc MultiSearch(MultiSearchRequest) returns (MultiSearchResponse);
+}
+
+message RecallRequest {
+  string query = 1;
+  string tenant_id = 2;
+  string user_id = 3;
+  string scope = 4;           // all, semantic, episodic, profile, procedural, adaptive, events
+  int32  max_results = 5;
+  string rerank_strategy = 6; // rrf (default), mmr, cross_encoder
+  int32  token_budget = 7;    // max tokens in context (default: 4096)
+}
+
+message RecallResult {
+  string content = 1;
+  double score = 2;
+  string source = 3;   // Engine name
+  string type = 4;     // fact, event, document, profile, memory
+  map<string, string> metadata = 5;
+}
+
+message RecallMetadata {
+  int64            latency_ms = 1;
+  repeated string  engines_used = 2;
+  int32            total_results = 3;
+  int32            tokens_used = 4;
+}
+
+message RecallResponse {
+  repeated RecallResult results = 1;
+  string                context = 2;   // Pre-formatted context window
+  RecallMetadata        metadata = 3;
+}
+
+message MultiSearchRequest {
+  repeated RecallRequest queries = 1;
+}
+
+message MultiSearchResponse {
+  repeated RecallResponse responses = 1;
+}

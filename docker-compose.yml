@@ -1,0 +1,111 @@
+# VNP Memory Platform — Docker Compose
+# Services: vnp-admin, vnp-event, vnp-gateway, vnp-platform, vnp-search-hub
+# Infrastructure: PostgreSQL (pgvector), Redis, NATS
+
+services:
+  # === Infrastructure ===
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: vnp
+      POSTGRES_PASSWORD: vnppassword
+      POSTGRES_DB: vnp_memory
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vnp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # monitoring
+    command: ["-js", "-m", "8222"]
+
+  # === Platform Services (Individual Deployment) ===
+
+  vnp-admin:
+    build:
+      context: ./services/vnp-admin
+      dockerfile: Dockerfile
+    environment:
+      GRPC_PORT: "9050"
+      HEALTH_PORT: "9100"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    ports:
+      - "9050:9050"
+      - "9100:9100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+
+  vnp-event:
+    build:
+      context: ./services/vnp-event
+      dockerfile: Dockerfile
+    environment:
+      GRPC_PORT: "9041"
+      HEALTH_PORT: "9101"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    ports:
+      - "9041:9041"
+      - "9101:9101"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+
+  vnp-search-hub:
+    build:
+      context: ./services/vnp-search-hub
+      dockerfile: Dockerfile
+    environment:
+      GRPC_PORT: "9042"
+      HEALTH_PORT: "9102"
+    ports:
+      - "9042:9042"
+      - "9102:9102"
+
+  vnp-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    environment:
+      REST_PORT: "8080"
+      GRPC_PORT: "8081"
+      MCP_PORT: "8082"
+      HEALTH_PORT: "11080"
+      AUTH_DEV_MODE: "true"
+      POSTGRES_DSN: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      NATS_URL: "nats://nats:4222"
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "8082:8082"
+    depends_on:
+      - vnp-admin
+      - vnp-event
+      - vnp-search-hub
+
+volumes:
+  pgdata:

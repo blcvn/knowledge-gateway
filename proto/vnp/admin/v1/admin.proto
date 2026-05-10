@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+package vnp.admin.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/services/vnp-admin/proto/adminpb";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// VNPAdminService provides tenant lifecycle, API key management,
+// user CRUD, and health aggregation for the entire VNP Memory platform.
+service VNPAdminService {
+  // Tenant lifecycle
+  rpc CreateTenant(CreateTenantRequest) returns (Tenant);
+  rpc GetTenant(GetTenantRequest) returns (Tenant);
+  rpc UpdateTenant(UpdateTenantRequest) returns (Tenant);
+  rpc DeleteTenant(DeleteTenantRequest) returns (google.protobuf.Empty);
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+
+  // API Key lifecycle
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
+  rpc ValidateAPIKey(ValidateAPIKeyRequest) returns (ValidateAPIKeyResponse);
+  rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (google.protobuf.Empty);
+  rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
+
+  // User management
+  rpc CreateUser(CreateUserRequest) returns (User);
+  rpc GetUser(GetUserRequest) returns (User);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+
+  // Health
+  rpc GetAggregatedHealth(google.protobuf.Empty) returns (AggregatedHealthResponse);
+}
+
+// --- Tenant messages ---
+
+message Tenant {
+  string id = 1;
+  string name = 2;
+  string plan = 3;
+  bytes  config = 4;  // JSON-encoded TenantConfig
+  bool   active = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message CreateTenantRequest {
+  string name = 1;
+  string plan = 2;  // free, starter, enterprise
+}
+
+message GetTenantRequest {
+  string id = 1;
+}
+
+message UpdateTenantRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string plan = 3;
+  optional bytes config = 4;
+}
+
+message DeleteTenantRequest {
+  string id = 1;
+}
+
+message ListTenantsRequest {
+  int32 offset = 1;
+  int32 limit = 2;
+}
+
+message ListTenantsResponse {
+  repeated Tenant tenants = 1;
+  int32 total = 2;
+}
+
+// --- API Key messages ---
+
+message APIKey {
+  string id = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string key_prefix = 4;
+  string scope = 5;
+  int32  rate_limit = 6;
+  bool   active = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message CreateAPIKeyRequest {
+  string tenant_id = 1;
+  string name = 2;
+  string scope = 3;  // read, read_write, admin
+}
+
+message CreateAPIKeyResponse {
+  APIKey key = 1;
+  string plaintext = 2;  // Returned ONCE at creation
+}
+
+message ValidateAPIKeyRequest {
+  string plaintext = 1;
+}
+
+message ValidateAPIKeyResponse {
+  APIKey key = 1;
+  Tenant tenant = 2;
+}
+
+message RevokeAPIKeyRequest {
+  string id = 1;
+}
+
+message ListAPIKeysRequest {
+  string tenant_id = 1;
+}
+
+message ListAPIKeysResponse {
+  repeated APIKey keys = 1;
+}
+
+// --- User messages ---
+
+message User {
+  string id = 1;
+  string tenant_id = 2;
+  string email = 3;
+  string name = 4;
+  string role = 5;  // owner, admin, member, viewer
+  bytes  metadata = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message CreateUserRequest {
+  string tenant_id = 1;
+  string email = 2;
+  string name = 3;
+  string role = 4;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message ListUsersRequest {
+  string tenant_id = 1;
+  int32 offset = 2;
+  int32 limit = 3;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  int32 total = 2;
+}
+
+// --- Health messages ---
+
+message ServiceHealth {
+  string name = 1;
+  bool   healthy = 2;
+  string message = 3;
+}
+
+message AggregatedHealthResponse {
+  bool healthy = 1;
+  repeated ServiceHealth services = 2;
+}
