@@ -1,97 +1,112 @@
 ---
 id: DOC-S05
 service: vnp-gateway
-version: 1.2.0
+version: 1.3.0
 status: Active
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-10
 ---
 
 # vnp-gateway — Configuration Reference
 
-## Environment Variables
+> **Source**: `gateway/internal/infra/config/config.go`
 
-### Core
+## Server
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `REST_PORT` | int | 8080 | Yes | REST/WebDAV HTTP port |
-| `GRPC_PORT` | int | 8081 | Yes | gRPC-Web proxy port |
-| `MCP_PORT` | int | 8082 | Yes | MCP SSE/HTTP Streamable port |
-| `HEALTH_PORT` | int | 8083 | Yes | Health/metrics HTTP port |
-| `LOG_LEVEL` | string | `info` | No | Log level (debug/info/warn/error) |
-| `LOG_FORMAT` | string | `json` | No | Log output format (json/text) |
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `REST_PORT` | int | `8080` | REST API port (external) |
+| `GRPC_PORT` | int | `8081` | gRPC-Web port |
+| `MCP_PORT` | int | `8082` | MCP (SSE/JSON-RPC) port |
+| `HEALTH_PORT` | int | `11080` | Health check port |
+| `SHUTDOWN_TIMEOUT` | duration | `30s` | Graceful shutdown timeout |
+| `LOG_LEVEL` | string | `info` | Log level (debug, info, warn, error) |
+| `LOG_FORMAT` | string | `json` | Log format (json, text) |
 
-### Authentication
+## Authentication
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `JWT_PUBLIC_KEY_PATH` | string | — | Yes | Path to RS256 public key PEM |
-| `JWT_ISSUER` | string | `vnp-memory` | No | Expected JWT issuer |
-| `VNP_ADMIN_ADDR` | string | `vnp-admin:9050` | Yes | vnp-admin gRPC address for key validation |
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `AUTH_JWT_PUBLIC_KEY` | string | — | RS256 public key (PEM) **required in prod** |
+| `AUTH_JWT_ISSUER` | string | `vnp-memory` | Expected JWT issuer |
+| `AUTH_JWT_AUDIENCE` | string | `vnp-api` | Expected JWT audience |
+| `AUTH_API_KEY_PREFIX` | string | `vnp_` | Prefix for API key recognition |
+| `AUTH_DEV_MODE` | bool | `false` | Skip auth validation (dev only!) |
 
-### Rate Limiting
+## PostgreSQL
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `REDIS_URL` | string | `redis://localhost:6379` | Yes | Redis for rate limiting + caching |
-| `RATE_LIMIT_PER_MINUTE` | int | 60 | No | Default per-tenant per-endpoint rate |
-| `RATE_LIMIT_BURST` | int | 10 | No | Burst allowance |
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `POSTGRES_DSN` | string | — | PostgreSQL connection string |
+| `POSTGRES_MAX_CONNS` | int | `20` | Max pool connections |
+| `POSTGRES_MIN_CONNS` | int | `5` | Min pool connections |
 
-### Circuit Breaker
+## Redis
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `CB_MAX_FAILURES` | int | 5 | No | Failures before circuit opens |
-| `CB_TIMEOUT` | duration | `30s` | No | Time before half-open retry |
-| `CB_MAX_REQUESTS` | int | 1 | No | Requests in half-open state |
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `REDIS_ADDR` | string | `redis:6379` | Redis address |
+| `REDIS_PASSWORD` | string | — | Redis password |
+| `REDIS_DB` | int | `0` | Redis database number |
 
-### Downstream Services
+## Rate Limiting
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `MEMOBASE_INGESTION_ADDR` | string | `memobase-ingestion:9031` | Yes | Memobase ingestion gRPC address |
-| `MEMOBASE_CONTEXT_ADDR` | string | `memobase-context:9033` | Yes | Memobase context gRPC address |
-| `VNP_EVENT_ADDR` | string | `vnp-event:9041` | Yes | Event timeline gRPC address |
-| `VNP_SEARCH_HUB_ADDR` | string | `vnp-search-hub:9042` | Yes | Search hub gRPC address |
-| `NATS_URL` | string | `nats://localhost:4222` | Yes | NATS JetStream server URL |
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `RATELIMIT_ENABLED` | bool | `true` | Enable rate limiting |
+| `RATELIMIT_FREE_RPM` | int | `60` | Free tier requests/minute |
+| `RATELIMIT_PRO_RPM` | int | `600` | Pro tier requests/minute |
+| `RATELIMIT_ENTERPRISE_RPM` | int | `6000` | Enterprise requests/minute |
 
-### Timeouts
+## Circuit Breaker
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `DEFAULT_TIMEOUT` | duration | `30s` | No | Default request timeout |
-| `INGESTION_TIMEOUT` | duration | `120s` | No | Timeout for ingestion routes |
-| `SEARCH_TIMEOUT` | duration | `10s` | No | Timeout for search routes |
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `CB_MAX_FAILURES` | int | `5` | Failures before opening circuit |
+| `CB_TIMEOUT` | duration | `60s` | Time before half-open |
+| `CB_MAX_REQUESTS` | int | `3` | Half-open test requests |
 
-### Observability
+## Timeouts
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `OTEL_EXPORTER_ENDPOINT` | string | `localhost:4317` | No | OTel collector gRPC endpoint |
-| `OTEL_SERVICE_NAME` | string | `vnp-gateway` | No | OTel service name |
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `TIMEOUT_DEFAULT` | duration | `30s` | Default request timeout |
+| `TIMEOUT_INGESTION` | duration | `120s` | Ingestion endpoints |
+| `TIMEOUT_SEARCH` | duration | `10s` | Search endpoints |
+| `TIMEOUT_MCP` | duration | `300s` | MCP tool calls |
 
-### CORS
+## CORS
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `CORS_ORIGINS` | string | `*` | No | Comma-separated allowed origins |
-| `CORS_MAX_AGE` | int | 86400 | No | Preflight cache duration (seconds) |
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `CORS_ALLOWED_ORIGINS` | string | `*` | Allowed origins |
+| `CORS_ALLOW_CREDENTIALS` | bool | `true` | Allow credentials |
+| `CORS_MAX_AGE` | int | `86400` | Preflight cache (seconds) |
 
-## Example `.env`
+## OpenTelemetry
+
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `OTEL_ENDPOINT` | string | `otel-collector:4317` | OTLP endpoint |
+| `OTEL_SERVICE_NAME` | string | `vnp-gateway` | Service name in traces |
+| `METRICS_ENABLED` | bool | `true` | Enable Prometheus metrics |
+
+## NATS
+
+| Env Variable | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `NATS_URL` | string | `nats://nats:4222` | NATS server URL |
+| `NATS_CREDS_FILE` | string | — | NATS credentials file path |
+
+## Downstream Services
+
+The gateway routes to 35 downstream services via gRPC. Default addresses are configured in `config.go:defaultServiceAddresses()`. Each service can be overridden via environment variables:
 
 ```env
-REST_PORT=8080
-GRPC_PORT=8081
-MCP_PORT=8082
-HEALTH_PORT=8083
-JWT_PUBLIC_KEY_PATH=/etc/vnp/jwt-pub.pem
-REDIS_URL=redis://redis:6379
-VNP_ADMIN_ADDR=vnp-admin:9050
-MEMOBASE_INGESTION_ADDR=memobase-ingestion:9031
-MEMOBASE_CONTEXT_ADDR=memobase-context:9033
-VNP_EVENT_ADDR=vnp-event:9041
-VNP_SEARCH_HUB_ADDR=vnp-search-hub:9042
-NATS_URL=nats://nats:4222
-OTEL_EXPORTER_ENDPOINT=otel-collector:4317
+# Override individual service addresses
+SERVICE_COGNEE_INGESTION=cognee-ingestion:9011
+SERVICE_VNP_ADMIN=vnp-admin:9050
+# ... etc
 ```
+
+See `gateway/internal/infra/config/config.go` for the full 35-service address map.

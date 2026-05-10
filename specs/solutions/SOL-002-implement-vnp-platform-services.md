@@ -3,7 +3,7 @@ id: SOL-002
 title: Implement VNP Platform Services (5 services)
 service: cross-service
 version: 1.0.0
-status: Approved
+status: Complete
 priority: P0
 created: 2026-05-10
 updated: 2026-05-10
@@ -72,8 +72,8 @@ T05: vnp-gateway   ← Already implemented, docs alignment only
 
 | ID | Task | Status | Assigned | Verify |
 |---|---|---|---|---|
-| T01 | vnp-admin implementation | ✅ Done | AI | Domain + Usecase + Adapter + main.go |
-| T02 | vnp-event implementation | ✅ Done | AI | Domain + Usecase + NATS subscriber + main.go |
-| T03 | vnp-platform completion | ⏳ Ready | — | Needs adapter + infra wiring |
-| T04 | vnp-search-hub implementation | ✅ Done | AI | Domain + RecallService (RRF/MMR) + main.go |
-| T05 | vnp-gateway docs alignment | ⏳ Ready | — | Needs audit vs implementation |
+| T01 | vnp-admin implementation | ✅ Done | AI | 14 Go files, domain + usecase + adapter |
+| T02 | vnp-event implementation | ✅ Done | AI | 6 Go files, NATS subscriber, pgvector |
+| T03 | vnp-platform completion | ✅ Done | AI | 7 new Go files, 5 usecases + 4 handlers + NATS |
+| T04 | vnp-search-hub implementation | ✅ Done | AI | 5 Go files, RRF/MMR reranking |
+| T05 | vnp-gateway docs alignment | ✅ Done | AI | api.md (+19 endpoints), configuration.md (+30 env vars) |
