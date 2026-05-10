@@ -1,0 +1,100 @@
+# VNP Memory — NATS JetStream Configuration
+# Post-consolidation: 17 subjects (down from 29)
+# See: specs/solutions/SOL-001, specs/tasks/TASK-002
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STREAM DEFINITIONS
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Initialize streams via nats CLI or application startup:
+#   nats stream add VNP_PLATFORM --subjects "vnp.platform.>" --storage file --retention limits --max-msgs 1000000 --max-age 7d --replicas 1
+#
+# Production: --replicas 3 --storage file --discard old
+
+streams:
+  # ─── Platform Events ────────────────────────────────────────
+  - name: VNP_PLATFORM
+    subjects:
+      - vnp.platform.tenant.created    # → All engines: create tenant context
+      - vnp.platform.tenant.deleted    # → All engines: cascade delete
+      - vnp.platform.apikey.revoked    # → Gateway: invalidate cache
+    retention: limits
+    max_msgs: 1000000
+    max_age: 7d
+    storage: file
+
+  # ─── Cognee Pipeline ────────────────────────────────────────
+  - name: COGNEE_PIPELINE
+    subjects:
+      - cognee.pipeline.ingest         # → cognee-pipeline: start ingestion
+      - cognee.pipeline.cognify        # → cognee-pipeline: start cognification (local)
+      - cognee.pipeline.completed      # → vnp-search-hub: index ready
+    retention: work_queue
+    max_msgs: 500000
+    max_age: 24h
+    storage: file
+
+  # ─── Graphiti Pipeline ──────────────────────────────────────
+  - name: GRAPHITI_PIPELINE
+    subjects:
+      - graphiti.pipeline.episode      # → graphiti-pipeline: ingest episode
+      - graphiti.pipeline.extract      # → graphiti-pipeline: LLM extraction (local)
+      - graphiti.pipeline.completed    # → vnp-search-hub: graph ready
+    retention: work_queue
+    max_msgs: 500000
+    max_age: 24h
+    storage: file
+
+  # ─── Memobase Pipeline ──────────────────────────────────────
+  - name: MEMOBASE_PIPELINE
+    subjects:
+      - memobase.pipeline.blob         # → memobase-pipeline: buffer blob
+      - memobase.pipeline.flush        # → memobase-pipeline: trigger YOLO merge (local)
+    retention: work_queue
+    max_msgs: 500000
+    max_age: 24h
+    storage: file
+
+  # ─── Zep Core ───────────────────────────────────────────────
+  - name: ZEP_CORE
+    subjects:
+      - zep.core.memory.put            # → zep-core: put memory (thread upsert is local)
+      - zep.core.memory.enriched       # → zep-graph: extract facts
+    retention: work_queue
+    max_msgs: 1000000
+    max_age: 48h
+    storage: file
+
+  # ─── OpenViking Storage ─────────────────────────────────────
+  - name: OV_STORAGE
+    subjects:
+      - ov.storage.file.written        # → ov-storage: encrypt + index (local)
+      - ov.storage.resource.parsed     # → ov-search: update search index
+    retention: work_queue
+    max_msgs: 500000
+    max_age: 24h
+    storage: file
+
+  # ─── Supermemory Engine ─────────────────────────────────────
+  - name: SM_ENGINE
+    subjects:
+      - sm.engine.document.saved       # → sm-engine: create memory + profile (local)
+      - sm.engine.memory.decayed       # → sm-engine: reinforce or archive
+    retention: work_queue
+    max_msgs: 500000
+    max_age: 48h
+    storage: file
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SUBJECT SUMMARY
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Total: 17 subjects across 7 streams
+#
+# Key consolidation wins:
+# - cognee: cognify is now LOCAL call (was separate stream)
+# - graphiti: extract is now LOCAL call (was separate stream)
+# - memobase: flush triggers YOLO merge LOCAL (was separate stream)
+# - zep: thread.upsert is now LOCAL call (was separate stream)
+# - ov: encrypt is now LOCAL call (was separate stream)
+# - sm: memory+profile creation is now LOCAL chain (was 2 separate streams)

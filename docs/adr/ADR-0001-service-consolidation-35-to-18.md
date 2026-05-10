@@ -19,9 +19,9 @@ VNP Memory monorepo hiện có 35 domain services + 1 gateway, hợp nhất từ
 - **Pro**: No migration effort, maximum isolation
 - **Con**: Operational overhead, tight coupling hidden behind gRPC, 6 separate admin services doing same thing
 
-### Option B: Consolidate to 18 services (selected)
-- **Pro**: 48.6% reduction, eliminates tight gRPC coupling, unifies admin/auth, drops Qdrant
-- **Con**: Larger binaries, more complex internal structure, migration effort ~8 weeks
+### Option B: Dual-deployment with 18 consolidated services (selected)
+- **Pro**: Flexible deployment (compact for dev, scale for prod), shared domain code, unified vector interface
+- **Con**: 2 deployment configs to maintain, migration effort ~8 weeks
 
 ### Option C: Consolidate to 6 "mega-services" (one per engine)
 - **Pro**: Maximum simplification
@@ -29,32 +29,34 @@ VNP Memory monorepo hiện có 35 domain services + 1 gateway, hợp nhất từ
 
 ## Decision
 
-**Option B — Consolidate to 18 services** using 4 merge patterns:
+**Option B — Build 18 consolidated services alongside 35 individual services** using 4 merge patterns:
 
-| Pattern | Description | Services Eliminated |
+| Pattern | Description | New Services |
 |---------|-------------|-------------------|
-| Pipeline Merge | Ingestion + Processing → single binary | 3 (cognee, graphiti, memobase) |
-| Functional Merge | Tightly coupled CRUD → single binary | 6 (zep, ov, sm) |
-| Platform Unification | Admin/Auth/Event → single platform service | 6 (ov-admin, zep-admin, sm-auth, sm-analytics, sm-project, vnp-event) |
-| Gateway Absorption | sm-mcp → vnp-gateway | 1 |
+| Pipeline Merge | Ingestion + Processing → single binary | cognee-pipeline, graphiti-pipeline, memobase-pipeline |
+| Functional Merge | Tightly coupled CRUD → single binary | zep-core, ov-storage, sm-engine |
+| Platform Unification | Admin/Auth/Event → single platform service | vnp-platform |
+| Gateway Absorption | sm-mcp tools → vnp-gateway | (integrated) |
 
-**Infrastructure**: Drop Qdrant, migrate Cognee embeddings to pgvector (already used by 4 other engines).
+**Deployment**: Two modes — `compact` (18 consolidated) for dev/staging, `scale` (35 individual) for production.
+
+**Vector Storage**: Dual backends — Qdrant (Cognee high-throughput ANN) + pgvector (all other engines, co-located with metadata).
 
 ## Consequences
 
 ### Positive
-- 48.6% fewer services to deploy, monitor, maintain
-- 41% fewer NATS subjects — simpler event topology
-- Eliminated network hops within pipelines
-- Single admin/auth service for all engines
+- Flexible deployment: compact mode for dev/staging, scale mode for production
+- Shared domain code between consolidated and individual services
+- Eliminated network hops within pipelines (compact mode)
+- Single admin/auth service for all engines (vnp-platform)
 - Proto backward compatibility maintained (multiple gRPC services per binary)
+- Unified VectorStore interface (Qdrant + pgvector)
 
 ### Negative
-- 8-week migration effort across 4 phases
-- Qdrant → pgvector migration needs benchmarking
-- Merged services require bulkhead pattern for LLM isolation
-- Temporary dual-routing during transition
+- 2 deployment configurations to maintain (docker-compose.consolidated + docker-compose)
+- Merged services require bulkhead pattern for LLM isolation in compact mode
+- Slightly more complex CI/CD (build both modes)
 
 ### Risks
 - Performance regression in merged services → mitigate with bulkhead + benchmarking
-- Memory footprint increase → mitigate with shared connection pools (net reduction expected)
+- Configuration drift between modes → mitigate with shared env config and E2E tests for both modes

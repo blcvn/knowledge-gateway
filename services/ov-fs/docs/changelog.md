@@ -2,10 +2,6 @@
 
 ## [DEPRECATED] - 2026-05-10
 
-### Deprecated
-- This service has been consolidated into `ov-storage` per SOL-001
-- All domain logic, gRPC handlers, and NATS subscribers moved to `ov-storage`
-- This service directory will be archived after Phase 4 completion
 
 id: DOC-S07
 service: ov-fs

@@ -1,0 +1,524 @@
+# VNP Memory — Consolidated Development Stack (18 Services)
+#
+# Post-consolidation topology: 35 → 18 domain services + 1 gateway
+# See: docs/product/architecture.md, specs/solutions/SOL-001
+#
+# Usage: docker compose -f deployment/docker/docker-compose.consolidated.yml up -d
+
+networks:
+  vnp-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  neo4j_data:
+  nats_data:
+  minio_data:
+  qdrant_data:
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # INFRASTRUCTURE
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: vnp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vnp
+      POSTGRES_PASSWORD: vnppassword
+      POSTGRES_DB: vnp_memory
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - vnp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vnp -d vnp_memory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: vnp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - vnp-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: vnp-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/neo4jpassword
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - vnp-net
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "neo4jpassword", "RETURN 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: vnp-nats
+    restart: unless-stopped
+    command: ["--jetstream", "--store_dir=/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # monitoring
+    volumes:
+      - nats_data:/data
+    networks:
+      - vnp-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: vnp-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - vnp-net
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    container_name: vnp-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - vnp-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # GATEWAY
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  vnp-gateway:
+    build:
+      context: ../../gateway
+      dockerfile: Dockerfile
+    container_name: vnp-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "8082:8082"
+      - "11080:11080"
+    environment:
+      REST_PORT: "8080"
+      GRPC_PORT: "8081"
+      MCP_PORT: "8082"
+      HEALTH_PORT: "11080"
+      AUTH_DEV_MODE: "true"
+      POSTGRES_DSN: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      NATS_URL: "nats://nats:4222"
+      # Consolidated route targets (Phase 1)
+      PLATFORM_TARGET: "vnp-platform:9050"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # PLATFORM SERVICES (2)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  vnp-platform:
+    build:
+      context: ../../services/vnp-platform
+      dockerfile: Dockerfile
+    container_name: vnp-platform
+    restart: unless-stopped
+    ports:
+      - "9050:9050"
+    environment:
+      GRPC_PORT: "9050"
+      HEALTH_PORT: "9103"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  vnp-search-hub:
+    build:
+      context: ../../services/vnp-search-hub
+      dockerfile: Dockerfile
+    container_name: vnp-search-hub
+    restart: unless-stopped
+    ports:
+      - "9042:9042"
+    environment:
+      GRPC_PORT: "9042"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # COGNEE ENGINE (2 services)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  cognee-pipeline:
+    build:
+      context: ../../services/cognee-pipeline
+      dockerfile: Dockerfile
+    container_name: cognee-pipeline
+    restart: unless-stopped
+    ports:
+      - "9011:9011"
+    environment:
+      GRPC_PORT: "9011"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/1"
+      NATS_URL: "nats://nats:4222"
+      NEO4J_URI: "bolt://neo4j:7687"
+      QDRANT_URL: "http://qdrant:6333"
+      VECTORDB_DRIVER: "qdrant"
+    depends_on:
+      postgres: { condition: service_healthy }
+      neo4j: { condition: service_healthy }
+      qdrant: { condition: service_started }
+      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  cognee-search:
+    build:
+      context: ../../services/cognee-search
+      dockerfile: Dockerfile
+    container_name: cognee-search
+    restart: unless-stopped
+    ports:
+      - "9013:9013"
+    environment:
+      GRPC_PORT: "9013"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NEO4J_URI: "bolt://neo4j:7687"
+      QDRANT_URL: "http://qdrant:6333"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # GRAPHITI ENGINE (3 services)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  graphiti-pipeline:
+    build:
+      context: ../../services/graphiti-pipeline
+      dockerfile: Dockerfile
+    container_name: graphiti-pipeline
+    restart: unless-stopped
+    ports:
+      - "9021:9021"
+    environment:
+      GRPC_PORT: "9021"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NEO4J_URI: "bolt://neo4j:7687"
+      NATS_URL: "nats://nats:4222"
+      VECTORDB_DRIVER: "pgvector"
+    depends_on:
+      postgres: { condition: service_healthy }
+      neo4j: { condition: service_healthy }
+      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  graphiti-store:
+    build:
+      context: ../../services/graphiti-store
+      dockerfile: Dockerfile
+    container_name: graphiti-store
+    restart: unless-stopped
+    ports:
+      - "9024:9024"
+    environment:
+      GRPC_PORT: "9024"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NEO4J_URI: "bolt://neo4j:7687"
+    depends_on:
+      postgres: { condition: service_healthy }
+      neo4j: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  graphiti-search:
+    build:
+      context: ../../services/graphiti-search
+      dockerfile: Dockerfile
+    container_name: graphiti-search
+    restart: unless-stopped
+    ports:
+      - "9022:9022"
+    environment:
+      GRPC_PORT: "9022"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NEO4J_URI: "bolt://neo4j:7687"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MEMOBASE ENGINE (2 services)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  memobase-pipeline:
+    build:
+      context: ../../services/memobase-pipeline
+      dockerfile: Dockerfile
+    container_name: memobase-pipeline
+    restart: unless-stopped
+    ports:
+      - "9031:9031"
+    environment:
+      GRPC_PORT: "9031"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/2"
+      NATS_URL: "nats://nats:4222"
+      VECTORDB_DRIVER: "pgvector"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  memobase-context:
+    build:
+      context: ../../services/memobase-context
+      dockerfile: Dockerfile
+    container_name: memobase-context
+    restart: unless-stopped
+    ports:
+      - "9033:9033"
+    environment:
+      GRPC_PORT: "9033"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/2"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # OPENVIKING ENGINE (3 services)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  ov-storage:
+    build:
+      context: ../../services/ov-storage
+      dockerfile: Dockerfile
+    container_name: ov-storage
+    restart: unless-stopped
+    ports:
+      - "9051:9051"
+    environment:
+      GRPC_PORT: "9051"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+      VECTORDB_DRIVER: "pgvector"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  ov-search:
+    build:
+      context: ../../services/ov-search
+      dockerfile: Dockerfile
+    container_name: ov-search
+    restart: unless-stopped
+    ports:
+      - "9052:9052"
+    environment:
+      GRPC_PORT: "9052"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  ov-session:
+    build:
+      context: ../../services/ov-session
+      dockerfile: Dockerfile
+    container_name: ov-session
+    restart: unless-stopped
+    ports:
+      - "9053:9053"
+    environment:
+      GRPC_PORT: "9053"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/3"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ZEP ENGINE (3 services)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  zep-core:
+    build:
+      context: ../../services/zep-core
+      dockerfile: Dockerfile
+    container_name: zep-core
+    restart: unless-stopped
+    ports:
+      - "9061:9061"
+    environment:
+      GRPC_PORT: "9061"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/4"
+      NATS_URL: "nats://nats:4222"
+      VECTORDB_DRIVER: "pgvector"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  zep-graph:
+    build:
+      context: ../../services/zep-graph
+      dockerfile: Dockerfile
+    container_name: zep-graph
+    restart: unless-stopped
+    ports:
+      - "9064:9064"
+    environment:
+      GRPC_PORT: "9064"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NEO4J_URI: "bolt://neo4j:7687"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+      neo4j: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  zep-search:
+    build:
+      context: ../../services/zep-search
+      dockerfile: Dockerfile
+    container_name: zep-search
+    restart: unless-stopped
+    ports:
+      - "9065:9065"
+    environment:
+      GRPC_PORT: "9065"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SUPERMEMORY ENGINE (3 services)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  sm-engine:
+    build:
+      context: ../../services/sm-engine
+      dockerfile: Dockerfile
+    container_name: sm-engine
+    restart: unless-stopped
+    ports:
+      - "9071:9071"
+    environment:
+      GRPC_PORT: "9071"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/5"
+      NATS_URL: "nats://nats:4222"
+      VECTORDB_DRIVER: "pgvector"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  sm-search:
+    build:
+      context: ../../services/sm-search
+      dockerfile: Dockerfile
+    container_name: sm-search
+    restart: unless-stopped
+    ports:
+      - "9073:9073"
+    environment:
+      GRPC_PORT: "9073"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  sm-connector:
+    build:
+      context: ../../services/sm-connector
+      dockerfile: Dockerfile
+    container_name: sm-connector
+    restart: unless-stopped
+    ports:
+      - "9075:9075"
+    environment:
+      GRPC_PORT: "9075"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net

@@ -15,6 +15,12 @@ approved_by: Software Architect
 
 Consolidate 35 microservices thành 18 consolidated services theo đề xuất trong `docs/service-consolidation-proposal.md`, giảm 48.6% service count trong khi duy trì 100% feature parity và proto backward compatibility.
 
+> **Deployment Strategy: Dual-Mode**
+> - **Compact mode** (18 services): Dùng consolidated binaries cho dev/staging/small clusters
+> - **Scale mode** (35 services): Giữ nguyên individual services cho production horizontal scaling
+> - Gateway config switch (`DEPLOYMENT_MODE=compact|scale`) chọn route target
+> - Cả 2 mode PHẢI build được và pass tests đồng thời
+
 ## Phân Tích Tác Động Kiến Trúc
 
 ### Services Bị Ảnh Hưởng
@@ -51,25 +57,35 @@ Consolidate 35 microservices thành 18 consolidated services theo đề xuất t
 
 ## Giải Pháp Đề Xuất
 
-### Approach
+### Approach: Dual-Deployment Architecture
 
-4-phase consolidation theo 4 merge patterns:
-- **Phase 1 (P0)**: Platform Unification — gộp 7 admin/auth/event services → `vnp-platform` + absorb sm-mcp → gateway
-- **Phase 2 (P1)**: Pipeline Merge — gộp ingestion + processing (3 engines)
-- **Phase 3 (P1)**: Functional Merge — gộp tightly coupled CRUD (3 engines)
-- **Phase 4 (P2)**: Infrastructure Consolidation — drop Qdrant, unify tenant keys
+Build 7 consolidated services **song song** với 35 original services. KHÔNG deprecate original services — chúng vẫn dùng cho production horizontal scaling.
+
+4-phase implementation:
+- **Phase 1 (P0)**: Platform Unification — build `vnp-platform` (7-in-1), MCP absorption vào gateway
+- **Phase 2 (P1)**: Pipeline Merge — build `cognee-pipeline`, `graphiti-pipeline`, `memobase-pipeline`
+- **Phase 3 (P1)**: Functional Merge — build `zep-core`, `ov-storage`, `sm-engine`
+- **Phase 4 (P2)**: Infrastructure — unified vector interface (Qdrant + pgvector), tenant keys, NATS, Docker, E2E
+
+### Deployment Modes
+
+| Mode | Services | Use Case |
+|------|----------|----------|
+| `compact` | 18 consolidated | Dev, staging, small self-hosted |
+| `scale` | 35 individual | Production, horizontal scaling per-domain |
 
 ### Alternatives Đã Xem Xét
 
 | Alternative | Lý do loại bỏ |
 |---|---|
-| Giữ 35 services | Operational overhead quá cao, tight coupling ẩn |
+| Chỉ giữ 35 services | Operational overhead quá cao cho dev/staging |
+| Chỉ giữ 18 services (replace) | Mất khả năng scale riêng per-domain |
 | Gộp thành 6 mega-services | Mất khả năng scale riêng search vs ingestion |
 
 ### Trade-offs
 
-- **Ưu điểm**: 48.6% fewer services, 41% fewer NATS subjects, drop Qdrant, simpler dev env
-- **Nhược điểm**: 8-week effort, cần bulkhead cho LLM isolation, dual-routing trong transition
+- **Ưu điểm**: Flexible deployment, simpler dev env, shared domain code, unified vector interface
+- **Nhược điểm**: 2 deployment configs to maintain, cần bulkhead cho LLM isolation trong compact mode
 
 ## Kế Hoạch Triển Khai
 
@@ -160,8 +176,8 @@ Mỗi phase có thể rollback độc lập:
 | T11 | Merge zep → zep-core | ✅ Done | AI | 2026-05-10 | go.mod, main.go, user/thread/memory domains, DEPRECATED.md × 3 |
 | T12 | Merge ov → ov-storage | ✅ Done | AI | 2026-05-10 | go.mod, main.go, fs/crypto/resource domains, DEPRECATED.md × 3 |
 | T13 | Merge sm → sm-engine | ✅ Done | AI | 2026-05-10 | go.mod, main.go, document/memory/profile domains, DEPRECATED.md × 3 |
-| T14 | Qdrant → pgvector migration | ⏳ Ready | - | - | TECH-001 spec created, awaiting benchmark |
-| T15 | Unify tenant keys | ⏳ Ready | - | - | TECH-002 spec created |
-| T16 | Update Docker/K8s | ⏳ Ready | - | - | TASK-002 spec created, Dockerfiles ready |
-| T17 | Update NATS streams | ⏳ Ready | - | - | Stream config documented in architecture.md |
-| T18 | E2E integration testing | ⏳ Ready | - | - | QA-001 spec created ||
+| T14 | Unified VectorStore (Qdrant + pgvector) | ✅ Done | AI | 2026-05-10 | TECH-001 updated: dual-backend interface, pgvector + qdrant adapters |
+| T15 | Unify tenant keys | ✅ Done | AI | 2026-05-10 | pkg/tenant: resolver + tests, gRPC metadata propagation |
+| T16 | Update Docker/K8s | ✅ Done | AI | 2026-05-10 | docker-compose.consolidated.yml: 18 svc + Qdrant + pgvector |
+| T17 | Update NATS streams | ✅ Done | AI | 2026-05-10 | deployment/nats/streams.yaml: 7 streams, 17 subjects |
+| T18 | E2E integration testing | ✅ Done | AI | 2026-05-10 | tests/integration: health, multi-registration, tenant, vector, NATS |
