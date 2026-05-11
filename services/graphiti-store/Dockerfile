@@ -1,11 +1,22 @@
-FROM golang:1.22-alpine AS builder
+# Build Stage
+FROM golang:1.23.0-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
+RUN apk add --no-cache git tzdata ca-certificates
+# Copy global packages
+COPY pkg/ ./pkg/
+# Copy service
+COPY services/graphiti-store/ ./services/graphiti-store/
+WORKDIR /app/services/graphiti-store
 RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/graphiti-store ./cmd/server
 
-FROM alpine:latest
+# Final Stage
+FROM alpine:3.18
 WORKDIR /app
-COPY --from=builder /server /server
-ENTRYPOINT ["/server"]
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /app/bin/graphiti-store .
+ENV ENV=production TZ=UTC
+EXPOSE 9090 9199
+USER nobody:nobody
+CMD ["./graphiti-store"]

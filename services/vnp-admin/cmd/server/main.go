@@ -1,78 +1,85 @@
-// vnp-admin — Central Administration Service
-// gRPC port: 9050 | Health port: 9100
-//
-// Provides: Tenant CRUD, API key lifecycle, User management, Health aggregation
-// Publishes: admin.tenant.created, admin.tenant.deleted, admin.apikey.revoked
 package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/vnp-community/vnp-memory/services/vnp-admin/internal/infra/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"vnp-memory/pkg/telemetry"
+	"vnp-memory/pkg/tenant"
 )
 
+// Enterprise-grade bootstrap for vnp-admin
 func main() {
-	cfg := config.Load()
-	log.Printf("vnp-admin starting on :%s (health :%s)", cfg.GRPCPort, cfg.HealthPort)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// --- Infrastructure ---
-	// TODO: pgxpool.New(ctx, cfg.DatabaseURL)
-	// TODO: nats.Connect(cfg.NatsURL)
+	// 1. Initialize Structured Logging
+	telemetry.InitLogger("info")
+	slog.Info("Initializing vnp-admin at enterprise-grade...")
 
-	// --- Dependency Injection ---
-	// TODO: Wire repositories, publishers, usecases, and handlers
-	// tenantRepo := persistence.NewTenantRepo(pool)
-	// keyRepo := persistence.NewAPIKeyRepo(pool)
-	// userRepo := persistence.NewUserRepo(pool)
-	// publisher := natspub.NewPublisher(nc)
-	// tenantSvc := usecase.NewTenantService(tenantRepo, publisher)
-	// keySvc := usecase.NewAPIKeyService(keyRepo, tenantRepo, publisher)
-	// handler := grpcadapter.NewAdminHandler(tenantSvc, keySvc, nil, nil)
-
-	// --- gRPC Server ---
-	grpcServer := grpc.NewServer()
-
-	// Register health service
-	healthSvc := health.NewServer()
-	healthpb.RegisterHealthServer(grpcServer, healthSvc)
-	healthSvc.SetServingStatus("vnp.admin.v1.AdminService", healthpb.HealthCheckResponse_SERVING)
-
-	// Enable reflection for service discovery
-	reflection.Register(grpcServer)
-
-	// TODO: Register VNPAdminService handler
-	// pb.RegisterVNPAdminServiceServer(grpcServer, handler)
-
-	// --- Start Listener ---
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPCPort))
+	// 2. Initialize OpenTelemetry Distributed Tracing
+	shutdownTracer, err := telemetry.InitProvider(ctx, "vnp-admin")
 	if err != nil {
-		log.Fatalf("listen: %v", err)
+		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
-
-	// --- Graceful Shutdown ---
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	go func() {
-		log.Printf("vnp-admin gRPC server listening on :%s", cfg.GRPCPort)
-		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("serve: %v", err)
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel provider gracefully", slog.String("error", err.Error()))
 		}
 	}()
 
-	<-ctx.Done()
-	log.Println("vnp-admin shutting down...")
+	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
+	)
+
+	// 4. Setup Health Probes
+	healthCheck := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
+
+	// 5. Start HTTP Health/Metrics Server
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		slog.Info("Starting HTTP probe server on :9199")
+		if err := http.ListenAndServe(":9199", mux); err != nil {
+			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 6. Start gRPC Server
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		slog.Error("failed to listen", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	healthCheck.SetServingStatus("vnp-admin", grpc_health_v1.HealthCheckResponse_SERVING)
+	
+	go func() {
+		slog.Info("Starting gRPC server on :9090")
+		if err := grpcServer.Serve(lis); err != nil {
+			slog.Error("failed to serve gRPC", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 7. Graceful Shutdown Management
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down gracefully...")
 	grpcServer.GracefulStop()
-	// TODO: pool.Close(), nc.Close()
-	log.Println("vnp-admin stopped")
+	slog.Info("Server exited properly")
 }

@@ -2,149 +2,84 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 	"net"
+	"net/http"
 	"os"
-	"time"
+	"os/signal"
+	"syscall"
 
-	"github.com/blcvn/backend/services/ba-knowledge-service/internal/editor"
-	"github.com/blcvn/backend/services/ba-knowledge-service/internal/editor/validator"
-	"github.com/blcvn/backend/services/ba-knowledge-service/internal/event"
-	"github.com/blcvn/backend/services/ba-knowledge-service/internal/server"
-	"github.com/blcvn/backend/services/ba-knowledge-service/internal/usecases"
-	knowledgepb "github.com/blcvn/ba-shared-libs/proto/knowledge"
-	persistencepb "github.com/blcvn/ba-shared-libs/proto/persistence"
-	aiproxy "github.com/blcvn/kratos-proto/go/ai-proxy"
-	promptpb "github.com/blcvn/kratos-proto/go/prompt"
-	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"vnp-memory/pkg/telemetry"
+	"vnp-memory/pkg/tenant"
 )
 
+// Enterprise-grade bootstrap for ba-knowledge-service
 func main() {
-	log.Println("[KNOWLEDGE] Starting Knowledge Service...")
-
-	// 1. Initialize Redis Client
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
-
-	// Test Redis connection
-	if _, err := redisClient.Ping(context.Background()).Result(); err != nil {
-		log.Printf("[KNOWLEDGE] Warning: Failed to connect to Redis: %v", err)
-	}
-
-	// 2. Initialize gRPC Clients
-
-	// Persistence Service
-	persistenceAddr := os.Getenv("PERSISTENCE_ADDR")
-	if persistenceAddr == "" {
-		persistenceAddr = "localhost:50052"
-	}
-	persistenceConn, err := grpc.Dial(persistenceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalf("[KNOWLEDGE] Failed to connect to Persistence Service: %v", err)
-	}
-	defer persistenceConn.Close()
-	persistenceClient := persistencepb.NewPersistenceServiceClient(persistenceConn)
-
-	// AI Proxy Service
-	aiProxyAddr := os.Getenv("AI_PROXY_ADDR")
-	if aiProxyAddr == "" {
-		aiProxyAddr = "localhost:8087"
-	}
-	aiProxyConn, err := grpc.Dial(aiProxyAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalf("[KNOWLEDGE] Failed to connect to AI Proxy Service: %v", err)
-	}
-	defer aiProxyConn.Close()
-	aiProxyClient := aiproxy.NewAIProxyServiceClient(aiProxyConn)
-
-	// Prompt Service
-	promptAddr := os.Getenv("PROMPT_ADDR")
-	if promptAddr == "" {
-		promptAddr = "localhost:8086"
-	}
-	promptConn, err := grpc.Dial(promptAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalf("[KNOWLEDGE] Failed to connect to Prompt Service: %v", err)
-	}
-	defer promptConn.Close()
-	promptClient := promptpb.NewPromptServiceClient(promptConn)
-
-	// 3. Initialize Event System
-	eventEmitter := event.NewSimpleEventEmitter()
-
-	// 4. Initialize UseCases (partially, reviewUseCase first)
-	reviewUseCase := usecases.NewReviewUseCase(
-		persistenceClient,
-		eventEmitter,
-	)
-
-	// Validator / Editor
-	schemaPath := "templates/schema"
-	templateLoader := validator.NewTemplateLoader(schemaPath)
-	// Try to load templates, log warning if fails
-	if err := templateLoader.LoadAllTemplates(); err != nil {
-		log.Printf("Warning: Failed to load validation templates from %s: %v", schemaPath, err)
-	}
-
-	validatorConfig := &editor.AgentConfig{
-		EnableKGUpdate:    false,
-		EnableAutoFix:     false,
-		ValidationTimeout: 30 * time.Second,
-	}
-
-	// Pass nil for LLM client as AutoFix is disabled
-	validatorAgent := editor.NewValidatorAgent(templateLoader, nil, validatorConfig)
-
-	// UseCases (DocumentUseCase now, with validatorAgent)
-	docUseCase := usecases.NewDocumentUseCase(
-		persistenceClient,
-		aiProxyClient,
-		promptClient,
-		redisClient,
-		eventEmitter,
-		validatorAgent,
-	)
-
-	// 5. Initialize and Register Event Handlers
-	workflowHandler := event.NewWorkflowEventHandler(docUseCase)
-	eventEmitter.RegisterHandler(workflowHandler)
-
-	// 6. Start Event Processor
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	eventEmitter.Start(ctx)
 
-	// 7. Start gRPC Server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "50053"
-	}
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	// 1. Initialize Structured Logging
+	telemetry.InitLogger("info")
+	slog.Info("Initializing ba-knowledge-service at enterprise-grade...")
+
+	// 2. Initialize OpenTelemetry Distributed Tracing
+	shutdownTracer, err := telemetry.InitProvider(ctx, "ba-knowledge-service")
 	if err != nil {
-		log.Fatalf("[KNOWLEDGE] Failed to listen: %v", err)
+		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel provider gracefully", slog.String("error", err.Error()))
+		}
+	}()
 
-	s := grpc.NewServer()
-	knowledgeServer := server.NewKnowledgeServer(docUseCase, reviewUseCase)
-	knowledgepb.RegisterKnowledgeServiceServer(s, knowledgeServer)
+	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
+	)
 
-	// Enable reflection
-	reflection.Register(s)
+	// 4. Setup Health Probes
+	healthCheck := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 
-	log.Printf("[KNOWLEDGE] Knowledge Service listening at %v", lis.Addr())
+	// 5. Start HTTP Health/Metrics Server
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		slog.Info("Starting HTTP probe server on :9199")
+		if err := http.ListenAndServe(":9199", mux); err != nil {
+			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
+		}
+	}()
 
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("[KNOWLEDGE] Failed to serve: %v", err)
+	// 6. Start gRPC Server
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		slog.Error("failed to listen", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+	healthCheck.SetServingStatus("ba-knowledge-service", grpc_health_v1.HealthCheckResponse_SERVING)
+	
+	go func() {
+		slog.Info("Starting gRPC server on :9090")
+		if err := grpcServer.Serve(lis); err != nil {
+			slog.Error("failed to serve gRPC", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 7. Graceful Shutdown Management
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down gracefully...")
+	grpcServer.GracefulStop()
+	slog.Info("Server exited properly")
 }

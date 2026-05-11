@@ -1,10 +1,14 @@
-module github.com/vnp-memory/services/ov-session
+module vnp-memory/services/ov-session
 
 go 1.23.0
 
 require (
-	github.com/google/uuid v1.6.0
-	github.com/google/wire v0.7.0
+	google.golang.org/grpc v1.65.0
+	google.golang.org/protobuf v1.34.2
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.53.0
+	vnp-memory/pkg/telemetry v0.0.0
+	vnp-memory/pkg/tenant v0.0.0
 )
 
-require go.uber.org/mock v0.6.0 // indirect
+replace vnp-memory/pkg/telemetry => ../../pkg/telemetry
+replace vnp-memory/pkg/tenant => ../../pkg/tenant

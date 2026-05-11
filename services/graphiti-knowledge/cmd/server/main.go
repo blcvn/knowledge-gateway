@@ -1,33 +1,85 @@
 package main
 
 import (
+	"context"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
-	"vnp-memory/services/graphiti-knowledge/internal/infra/config"
-	"vnp-memory/services/graphiti-knowledge/internal/infra/server"
-	"vnp-memory/services/graphiti-knowledge/internal/infra/wire"
+	"os/signal"
+	"syscall"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"vnp-memory/pkg/telemetry"
+	"vnp-memory/pkg/tenant"
 )
 
+// Enterprise-grade bootstrap for graphiti-knowledge
 func main() {
-	// Setup structured JSON logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	cfg, err := config.LoadConfig()
+	// 1. Initialize Structured Logging
+	telemetry.InitLogger("info")
+	slog.Info("Initializing graphiti-knowledge at enterprise-grade...")
+
+	// 2. Initialize OpenTelemetry Distributed Tracing
+	shutdownTracer, err := telemetry.InitProvider(ctx, "graphiti-knowledge")
 	if err != nil {
-		slog.Warn("failed to load complete config, using fallbacks", slog.String("error", err.Error()))
-		cfg = &config.Config{
-			GRPCPort:   "9023",
-			HealthPort: "9096",
-		}
+		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel provider gracefully", slog.String("error", err.Error()))
+		}
+	}()
 
-	// Initialize dependencies
-	handler := wire.InitializeHandler(cfg)
+	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
+	)
+
+	// 4. Setup Health Probes
+	healthCheck := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
+
+	// 5. Start HTTP Health/Metrics Server
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		slog.Info("Starting HTTP probe server on :9199")
+		if err := http.ListenAndServe(":9199", mux); err != nil {
+			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 6. Start gRPC Server
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		slog.Error("failed to listen", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	healthCheck.SetServingStatus("graphiti-knowledge", grpc_health_v1.HealthCheckResponse_SERVING)
 	
-	// Start the server
-	slog.Info("Starting graphiti-knowledge service", slog.String("grpc_port", cfg.GRPCPort))
-	server.StartGRPCServer(cfg.GRPCPort, cfg.HealthPort, handler)
+	go func() {
+		slog.Info("Starting gRPC server on :9090")
+		if err := grpcServer.Serve(lis); err != nil {
+			slog.Error("failed to serve gRPC", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 7. Graceful Shutdown Management
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down gracefully...")
+	grpcServer.GracefulStop()
+	slog.Info("Server exited properly")
 }

@@ -2,63 +2,84 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"vnp-memory/pkg/telemetry"
+	"vnp-memory/pkg/tenant"
 )
 
-// Enterprise-grade bootstrap with Graceful Shutdown, Health Probes, and OTel initialization.
+// Enterprise-grade bootstrap for sm-mcp
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 1. Setup Structured Logging & Telemetry
-	log.Println("Initializing sm-mcp at enterprise-grade...")
-	
-	// 2. Setup gRPC Server with Interceptors
-	grpcServer := grpc.NewServer()
+	// 1. Initialize Structured Logging
+	telemetry.InitLogger("info")
+	slog.Info("Initializing sm-mcp at enterprise-grade...")
+
+	// 2. Initialize OpenTelemetry Distributed Tracing
+	shutdownTracer, err := telemetry.InitProvider(ctx, "sm-mcp")
+	if err != nil {
+		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel provider gracefully", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
+	)
+
+	// 4. Setup Health Probes
 	healthCheck := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 
-	// 3. Start Health Probe HTTP Server
+	// 5. Start HTTP Health/Metrics Server
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))
 		})
-		log.Println("Health probe listening on :9199")
-		http.ListenAndServe(":9199", mux)
+		slog.Info("Starting HTTP probe server on :9199")
+		if err := http.ListenAndServe(":9199", mux); err != nil {
+			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
+		}
 	}()
 
-	// 4. Listen and Serve gRPC
+	// 6. Start gRPC Server
 	lis, err := net.Listen("tcp", ":9090")
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		slog.Error("failed to listen", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	healthCheck.SetServingStatus("sm-mcp", grpc_health_v1.HealthCheckResponse_SERVING)
 	
 	go func() {
-		log.Println("gRPC Server listening on :9090")
+		slog.Info("Starting gRPC server on :9090")
 		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
+			slog.Error("failed to serve gRPC", slog.String("error", err.Error()))
 		}
 	}()
 
-	// 5. Graceful Shutdown
+	// 7. Graceful Shutdown Management
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down gracefully...")
+	slog.Info("Shutting down gracefully...")
 	grpcServer.GracefulStop()
-	log.Println("Shutdown complete.")
+	slog.Info("Server exited properly")
 }

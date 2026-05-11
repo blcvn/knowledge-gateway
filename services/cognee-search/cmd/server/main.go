@@ -1,54 +1,85 @@
 package main
 
 import (
-	"log"
+	"context"
+	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"vnp-memory/services/cognee-search/internal/infrastructure/di"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"vnp-memory/pkg/telemetry"
+	"vnp-memory/pkg/tenant"
 )
 
+// Enterprise-grade bootstrap for cognee-search
 func main() {
-	// Initialize DI
-	// server, subscriber, err := di.InitializeServer()
-	// Mocking InitializeServer since we didn't run wire
-	
-	log.Println("Starting cognee-search service...")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// 1. Health check HTTP server
-	go func() {
-		http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("SERVING"))
-		})
-		log.Println("Health check listening on :9093")
-		if err := http.ListenAndServe(":9093", nil); err != nil {
-			log.Fatalf("Failed to serve health check: %v", err)
+	// 1. Initialize Structured Logging
+	telemetry.InitLogger("info")
+	slog.Info("Initializing cognee-search at enterprise-grade...")
+
+	// 2. Initialize OpenTelemetry Distributed Tracing
+	shutdownTracer, err := telemetry.InitProvider(ctx, "cognee-search")
+	if err != nil {
+		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel provider gracefully", slog.String("error", err.Error()))
 		}
 	}()
 
-	// 2. Start NATS Subscriber
-	// if err := subscriber.Subscribe(); err != nil {
-	//     log.Fatalf("Failed to subscribe to NATS: %v", err)
-	// }
+	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
+	)
 
-	// 3. Start gRPC Server
-	// go func() {
-	// 	if err := server.Start(); err != nil {
-	// 		log.Fatalf("Failed to start gRPC server: %v", err)
-	// 	}
-	// }()
+	// 4. Setup Health Probes
+	healthCheck := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 
-	log.Println("cognee-search service started.")
+	// 5. Start HTTP Health/Metrics Server
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		slog.Info("Starting HTTP probe server on :9199")
+		if err := http.ListenAndServe(":9199", mux); err != nil {
+			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
+		}
+	}()
 
-	// Wait for termination signal
+	// 6. Start gRPC Server
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		slog.Error("failed to listen", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	healthCheck.SetServingStatus("cognee-search", grpc_health_v1.HealthCheckResponse_SERVING)
+	
+	go func() {
+		slog.Info("Starting gRPC server on :9090")
+		if err := grpcServer.Serve(lis); err != nil {
+			slog.Error("failed to serve gRPC", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 7. Graceful Shutdown Management
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-
-	log.Println("Shutting down service...")
-	// server.Stop()
-	log.Println("Service stopped gracefully")
+	slog.Info("Shutting down gracefully...")
+	grpcServer.GracefulStop()
+	slog.Info("Server exited properly")
 }

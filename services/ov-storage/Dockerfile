@@ -1,21 +1,22 @@
-FROM golang:1.23-alpine AS builder
-
+# Build Stage
+FROM golang:1.23.0-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache git tzdata ca-certificates
+# Copy global packages
+COPY pkg/ ./pkg/
+# Copy service
+COPY services/ov-storage/ ./services/ov-storage/
+WORKDIR /app/services/ov-storage
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/ov-storage ./cmd/server
 
-RUN apk add --no-cache gcc musl-dev make
-
-# If go.mod doesn't exist yet in real build, we init it
-COPY . .
-RUN if [ ! -f go.mod ]; then go mod init github.com/vnp-community/vnp-memory/services/ov-storage; go mod tidy; fi
-
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o /go/bin/ov-storage ./cmd/server/main.go
-
-FROM gcr.io/distroless/static-debian12:latest
-
-COPY --from=builder /go/bin/ov-storage /bin/ov-storage
-
-USER nonroot:nonroot
-
-EXPOSE 9051 9104
-
-ENTRYPOINT ["/bin/ov-storage"]
+# Final Stage
+FROM alpine:3.18
+WORKDIR /app
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /app/bin/ov-storage .
+ENV ENV=production TZ=UTC
+EXPOSE 9090 9199
+USER nobody:nobody
+CMD ["./ov-storage"]

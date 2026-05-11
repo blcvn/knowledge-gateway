@@ -2,9 +2,12 @@
 FROM golang:1.23.0-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache git tzdata ca-certificates
-COPY go.mod ./
+# Copy global packages
+COPY pkg/ ./pkg/
+# Copy service
+COPY services/vnp-gateway/ ./services/vnp-gateway/
+WORKDIR /app/services/vnp-gateway
 RUN go mod download
-COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/vnp-gateway ./cmd/server
 
 # Final Stage

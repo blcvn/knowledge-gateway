@@ -2,88 +2,84 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"vnp-memory/ov-search/internal/infra/config"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"vnp-memory/pkg/telemetry"
+	"vnp-memory/pkg/tenant"
 )
 
+// Enterprise-grade bootstrap for ov-search
 func main() {
-	// 1. Initialize Logger
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	slog.Info("Starting ov-search service...")
+	// 1. Initialize Structured Logging
+	telemetry.InitLogger("info")
+	slog.Info("Initializing ov-search at enterprise-grade...")
 
-	// 2. Load Configuration
-	cfg, err := config.LoadConfig()
+	// 2. Initialize OpenTelemetry Distributed Tracing
+	shutdownTracer, err := telemetry.InitProvider(ctx, "ov-search")
 	if err != nil {
-		slog.Error("Failed to load configuration", "error", err)
+		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-
-	// 3. Setup Observability (OTel & Prometheus) - Pseudo implementation
-	slog.Info("Configuring OpenTelemetry", "endpoint", cfg.OtelEndpoint)
-	// mock initProvider()
-
-	// 4. Initialize Dependencies via Wire (pseudo)
-	// handler, subscriber, hotnessUC, err := wire.InitializeApp(cfg)
-	
-	// 5. Start Hotness Background Worker
-	// ctx, cancel := context.WithCancel(context.Background())
-	// go hotnessUC.StartWorker(ctx)
-
-	// 6. Start Health & Metrics Server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "serving"}`))
-	})
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		// Mock dependency checks (db, qdrant, nats, bifrost)
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "ready", "checks": {"db": "ok", "qdrant": "ok", "nats": "ok", "bifrost": "ok"}}`))
-	})
-	
-	healthServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.HealthPort),
-		Handler: mux,
-	}
-	
-	go func() {
-		slog.Info("Health server listening", "port", cfg.HealthPort)
-		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Health server failed", "error", err)
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel provider gracefully", slog.String("error", err.Error()))
 		}
 	}()
 
-	// 7. Start gRPC Server
-	// grpcServer := grpc.NewServer(...)
-	// proto.RegisterOvSearchServiceServer(grpcServer, handler)
-	slog.Info("gRPC server listening", "port", cfg.GRPCPort)
+	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
+	)
 
-	// 8. Graceful Shutdown
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	// 4. Setup Health Probes
+	healthCheck := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 
-	<-stop
-	slog.Info("Shutting down ov-search service...")
+	// 5. Start HTTP Health/Metrics Server
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		slog.Info("Starting HTTP probe server on :9199")
+		if err := http.ListenAndServe(":9199", mux); err != nil {
+			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
+		}
+	}()
 
-	// Create a context with 30-second timeout for graceful shutdown
-	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancelShutdown()
-
-	if err := healthServer.Shutdown(ctxShutdown); err != nil {
-		slog.Error("Health server shutdown error", "error", err)
+	// 6. Start gRPC Server
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		slog.Error("failed to listen", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+	healthCheck.SetServingStatus("ov-search", grpc_health_v1.HealthCheckResponse_SERVING)
+	
+	go func() {
+		slog.Info("Starting gRPC server on :9090")
+		if err := grpcServer.Serve(lis); err != nil {
+			slog.Error("failed to serve gRPC", slog.String("error", err.Error()))
+		}
+	}()
 
-	// grpcServer.GracefulStop()
-	// cancel() // stop background workers
-
-	slog.Info("ov-search service stopped gracefully")
+	// 7. Graceful Shutdown Management
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down gracefully...")
+	grpcServer.GracefulStop()
+	slog.Info("Server exited properly")
 }

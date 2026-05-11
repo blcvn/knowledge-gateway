@@ -1,13 +1,22 @@
-FROM golang:1.22-alpine AS builder
-
+# Build Stage
+FROM golang:1.23.0-alpine AS builder
 WORKDIR /app
-COPY go.mod ./
-# COPY go.sum ./
-# RUN go mod download
+RUN apk add --no-cache git tzdata ca-certificates
+# Copy global packages
+COPY pkg/ ./pkg/
+# Copy service
+COPY services/cognee-search/ ./services/cognee-search/
+WORKDIR /app/services/cognee-search
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/cognee-search ./cmd/server
 
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /go/bin/server cmd/server/main.go
-
-FROM scratch
-COPY --from=builder /go/bin/server /server
-ENTRYPOINT ["/server"]
+# Final Stage
+FROM alpine:3.18
+WORKDIR /app
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /app/bin/cognee-search .
+ENV ENV=production TZ=UTC
+EXPOSE 9090 9199
+USER nobody:nobody
+CMD ["./cognee-search"]

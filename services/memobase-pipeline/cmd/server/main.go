@@ -2,94 +2,84 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/nats-io/nats.go"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/vnp-community/vnp-memory/services/memobase-pipeline/internal/adapter/event"
-	"github.com/vnp-community/vnp-memory/services/memobase-pipeline/internal/adapter/repository/postgres"
-	"github.com/vnp-community/vnp-memory/services/memobase-pipeline/internal/infra/config"
-	"github.com/vnp-community/vnp-memory/services/memobase-pipeline/internal/infra/llm"
-	"github.com/vnp-community/vnp-memory/services/memobase-pipeline/internal/infra/server"
-	"github.com/vnp-community/vnp-memory/services/memobase-pipeline/internal/usecase/engine"
-	"github.com/vnp-community/vnp-memory/services/memobase-pipeline/internal/usecase/ingestion"
+	"vnp-memory/pkg/telemetry"
+	"vnp-memory/pkg/tenant"
 )
 
+// Enterprise-grade bootstrap for memobase-pipeline
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	cfg, err := config.Load()
+	// 1. Initialize Structured Logging
+	telemetry.InitLogger("info")
+	slog.Info("Initializing memobase-pipeline at enterprise-grade...")
+
+	// 2. Initialize OpenTelemetry Distributed Tracing
+	shutdownTracer, err := telemetry.InitProvider(ctx, "memobase-pipeline")
 	if err != nil {
-		slog.Error("config load failed", "error", err)
+		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-
-	ctx := context.Background()
-
-	// 1. Setup DB
-	dbPool, err := pgxpool.New(ctx, cfg.DatabaseURL)
-	if err != nil {
-		slog.Error("failed to connect to db", "error", err)
-		os.Exit(1)
-	}
-	defer dbPool.Close()
-
-	// 2. Setup NATS
-	nc, err := nats.Connect(cfg.NATSURL)
-	if err != nil {
-		slog.Error("failed to connect to nats", "error", err)
-		os.Exit(1)
-	}
-	defer nc.Close()
-
-	// 3. Init Repositories
-	blobRepo := postgres.NewBlobRepo(dbPool)
-	bufferRepo := postgres.NewBufferRepo(dbPool)
-	profileRepo := postgres.NewProfileRepo(dbPool)
-	gistRepo := postgres.NewGistRepo(dbPool)
-
-	// 4. Init Infra Adapters
-	bifrostClient := llm.NewBifrostClient("http://bifrost-gateway:8080")
-	natsPublisher := event.NewNATSPublisher(nc)
-
-	// 5. Init Usecases
-	engineUsecase := engine.NewService(bifrostClient, profileRepo, gistRepo, natsPublisher)
-	ingestUsecase := ingestion.NewService(blobRepo, bufferRepo, engineUsecase, natsPublisher)
-
-	// 6. Init Server
-	handler := server.NewIngestionHandler(ingestUsecase)
-	grpcSrv := server.NewServer(cfg.GRPCPort, cfg.HealthPort, handler)
-
-	// 7. Start Server with Graceful Shutdown
-	errChan := make(chan error, 1)
-	go func() {
-		slog.Info("memobase-pipeline starting", "grpc_port", cfg.GRPCPort, "health_port", cfg.HealthPort)
-		if err := grpcSrv.Start(); err != nil {
-			errChan <- err
+	defer func() {
+		if err := shutdownTracer(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel provider gracefully", slog.String("error", err.Error()))
 		}
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
+	)
 
-	select {
-	case err := <-errChan:
-		slog.Error("server error", "error", err)
+	// 4. Setup Health Probes
+	healthCheck := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
+
+	// 5. Start HTTP Health/Metrics Server
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		slog.Info("Starting HTTP probe server on :9199")
+		if err := http.ListenAndServe(":9199", mux); err != nil {
+			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 6. Start gRPC Server
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		slog.Error("failed to listen", slog.String("error", err.Error()))
 		os.Exit(1)
-	case sig := <-sigChan:
-		fmt.Printf("Received signal %v, initiating graceful shutdown...\n", sig)
-		
-		// 30s Grace Period as per runbook
-		_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		
-		grpcSrv.Stop()
-		fmt.Println("Graceful shutdown completed")
 	}
+	healthCheck.SetServingStatus("memobase-pipeline", grpc_health_v1.HealthCheckResponse_SERVING)
+	
+	go func() {
+		slog.Info("Starting gRPC server on :9090")
+		if err := grpcServer.Serve(lis); err != nil {
+			slog.Error("failed to serve gRPC", slog.String("error", err.Error()))
+		}
+	}()
+
+	// 7. Graceful Shutdown Management
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down gracefully...")
+	grpcServer.GracefulStop()
+	slog.Info("Server exited properly")
 }

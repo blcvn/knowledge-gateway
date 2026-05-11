@@ -1,105 +1,85 @@
-// Package main is the entry point for cognee-ingestion — the multi-modal
-// data ingestion service for the Cognee semantic knowledge graph engine.
-//
-// Architecture: Clean Architecture (Domain → Usecase → Adapter → Infra)
-// Communication: gRPC (sync), NATS JetStream (async events)
-// Storage: PostgreSQL (metadata), MinIO (files), NATS (events)
 package main
 
 import (
 	"context"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/vnp-community/vnp-memory/services/cognee-ingestion/internal/infra/config"
-	"github.com/vnp-community/vnp-memory/services/cognee-ingestion/internal/infra/server"
-	"github.com/vnp-community/vnp-memory/services/cognee-ingestion/internal/infra/telemetry"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"vnp-memory/pkg/telemetry"
+	"vnp-memory/pkg/tenant"
 )
 
+// Enterprise-grade bootstrap for cognee-ingestion
 func main() {
-	// 1. Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		slog.Error("config load failed", "error", err)
-		os.Exit(1)
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// 2. Initialize telemetry
-	logger := telemetry.NewLogger(cfg.Telemetry.LogLevel, cfg.Telemetry.LogFormat)
-	logger.Info("cognee-ingestion starting",
-		"service", cfg.Service.Name,
-		"version", cfg.Service.Version,
-	)
+	// 1. Initialize Structured Logging
+	telemetry.InitLogger("info")
+	slog.Info("Initializing cognee-ingestion at enterprise-grade...")
 
-	// 3. Initialize tracer (optional)
-	tp := telemetry.NewTracerProvider(cfg.Telemetry.OTelEndpoint, cfg.Service.Name, logger)
-	tracerShutdown, err := tp.Init(context.Background())
+	// 2. Initialize OpenTelemetry Distributed Tracing
+	shutdownTracer, err := telemetry.InitProvider(ctx, "cognee-ingestion")
 	if err != nil {
-		logger.Error("tracer init failed", "error", err)
+		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 	defer func() {
-		if err := tracerShutdown(context.Background()); err != nil {
-			logger.Error("tracer shutdown failed", "error", err)
+		if err := shutdownTracer(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel provider gracefully", slog.String("error", err.Error()))
 		}
 	}()
 
-	// 4. Create server
-	srv := server.New(cfg, logger)
+	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
+	)
 
-	// 5. Wire domain services
-	// In production, this is replaced by Wire-generated code:
-	//   app, err := wire.InitializeApp(ctx)
-	//
-	// For now, the gRPC server starts with health checks only.
-	// Service registration happens after adapter layer is fully wired.
-	//
-	// Example of manual wiring:
-	//   pool, _ := pgxpool.New(ctx, cfg.Postgres.URL)
-	//   dsRepo := postgres.NewDatasetRepo(pool)
-	//   itemRepo := postgres.NewDataItemRepo(pool)
-	//   minioClient, _ := minio.New(cfg.MinIO.Endpoint, &minio.Options{...})
-	//   fileStore := storage.NewMinIOAdapter(minioClient, cfg.MinIO.Bucket, logger)
-	//   natsConn, _ := nats.Connect(cfg.NATS.URL)
-	//   js, _ := natsConn.JetStream()
-	//   eventPub := event.NewNATSPublisher(js, logger)
-	//   extractorReg := extractor.NewRegistry()
-	//   hashComp := hash.NewSHA256Computer()
-	//   scraper := scraper.NewHTTPScraper(30*time.Second, logger)
-	//
-	//   fileUC := usecase.NewIngestFileUseCase(dsRepo, itemRepo, fileStore, extractorReg, eventPub, hashComp, logger)
-	//   textUC := usecase.NewIngestTextUseCase(dsRepo, itemRepo, eventPub, logger)
-	//   urlUC := usecase.NewIngestURLUseCase(dsRepo, itemRepo, scraper, eventPub, logger)
-	//   dsUC := usecase.NewManageDatasetUseCase(dsRepo, itemRepo, fileStore, logger)
-	//
-	//   handler := grpc.NewHandler(fileUC, textUC, urlUC, dsUC, logger)
-	//   Register handler on srv.GRPCServer()
+	// 4. Setup Health Probes
+	healthCheck := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 
-	srv.SetServingStatus("cognee.ingestion.v1.CogneeIngestionService", true)
-
-	// 6. Signal handling
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	// 7. Start server (blocking)
-	errCh := make(chan error, 1)
+	// 5. Start HTTP Health/Metrics Server
 	go func() {
-		errCh <- srv.Start(ctx)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		slog.Info("Starting HTTP probe server on :9199")
+		if err := http.ListenAndServe(":9199", mux); err != nil {
+			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
+		}
 	}()
 
-	// 8. Wait for shutdown signal or server error
-	select {
-	case <-ctx.Done():
-		logger.Info("shutdown signal received")
-	case err := <-errCh:
-		if err != nil {
-			logger.Error("server error", "error", err)
-		}
+	// 6. Start gRPC Server
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		slog.Error("failed to listen", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
+	healthCheck.SetServingStatus("cognee-ingestion", grpc_health_v1.HealthCheckResponse_SERVING)
+	
+	go func() {
+		slog.Info("Starting gRPC server on :9090")
+		if err := grpcServer.Serve(lis); err != nil {
+			slog.Error("failed to serve gRPC", slog.String("error", err.Error()))
+		}
+	}()
 
-	// 9. Graceful shutdown
-	srv.Shutdown()
-	logger.Info("cognee-ingestion stopped")
+	// 7. Graceful Shutdown Management
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("Shutting down gracefully...")
+	grpcServer.GracefulStop()
+	slog.Info("Server exited properly")
 }

@@ -2,9 +2,12 @@
 FROM golang:1.23.0-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache git tzdata ca-certificates
-COPY go.mod ./
+# Copy global packages
+COPY pkg/ ./pkg/
+# Copy service
+COPY services/memobase-engine/ ./services/memobase-engine/
+WORKDIR /app/services/memobase-engine
 RUN go mod download
-COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/memobase-engine ./cmd/server
 
 # Final Stage
