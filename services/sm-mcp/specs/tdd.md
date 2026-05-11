@@ -13,6 +13,9 @@ group: Supermemory
 
 > **Group**: Supermemory | **gRPC Port**: 9076 | **Health Port**: 9121
 
+> **🚨 DEPRECATION NOTICE**: This specification is obsolete. The service has been merged into `vnp-gateway` (Ref: [ARCH-008-absorb-sm-mcp-to-gateway]).
+
+
 ## 1. Service Overview
 
 MCP (Model Context Protocol) server for AI agent integration. SSE/JSON-RPC transport, 5 registered tools delegating to peer Supermemory services.

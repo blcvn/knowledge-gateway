@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.cogneepipeline.v1;
+option go_package = "vnp-memory/services/cognee-pipeline/api/proto/v1;cogneepipelinev1";
+
+service CogneePipelineService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

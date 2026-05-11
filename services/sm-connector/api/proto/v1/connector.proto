@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package vnp.memory.smconnector.v1;
+option go_package = "vnp-memory/services/sm-connector/api/proto/v1;smconnectorv1";
+
+service SmConnectorService {
+  rpc CreateConnection(CreateConnectionRequest) returns (CreateConnectionResponse);
+  rpc SyncConnection(SyncConnectionRequest) returns (SyncConnectionResponse);
+}
+
+message CreateConnectionRequest {
+  string provider = 1;
+  string redirect_url = 2;
+}
+
+message CreateConnectionResponse {
+  string auth_link = 1;
+  string state_token = 2;
+}
+
+message SyncConnectionRequest {
+  string connection_id = 1;
+}
+
+message SyncConnectionResponse {
+  string sync_job_id = 1;
+  string status = 2;
+}

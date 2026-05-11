@@ -2,13 +2,15 @@
 id: DOC-S01
 service: memobase-engine
 version: 1.1.0
-status: Active
+status: Deprecated
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-11
 owner: VNP Memory — Memobase Team
 ---
 
-# memobase-engine
+# memobase-engine (DEPRECATED)
+
+> **⚠️ DEPRECATION NOTICE**: This service has been merged into `memobase-pipeline` per `ARCH-004`. The code and documentation here are kept for historical reference only. Please refer to `memobase-pipeline` for the active implementation.
 
 > **Group**: Memobase | **gRPC Port**: 9032 | **Health Port**: 9099 | **Origin**: Memobase
 

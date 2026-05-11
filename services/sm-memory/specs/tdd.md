@@ -13,6 +13,9 @@ group: Supermemory
 
 > **Group**: Supermemory | **gRPC Port**: 9072 | **Health Port**: 9117
 
+> **🚨 DEPRECATION NOTICE**: This specification is obsolete. The service has been merged into `sm-engine` (Ref: [ARCH-007-merge-sm-engine]).
+
+
 ## 1. Service Overview
 
 Memory engine: LLM-powered fact extraction from documents, knowledge graph construction with versioned memory chains, Ebbinghaus forgetting curve decay, and memory relation management (updates/extends/derives).

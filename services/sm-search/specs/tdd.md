@@ -111,3 +111,14 @@ Uses `documents`, `chunks`, `memory_entries` tables from sm-document and sm-memo
 ---
 
 > **Next Steps**: FEAT-001 (Hybrid Search Pipeline), FEAT-002 (Memory Search v4), FEAT-003 (Query Rewriting), FEAT-004 (RAG Completion)
+
+## Task Specs Registry
+
+_To be populated during implementation._
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| TASK-SEA-001 | Implement Domain Models | Pending | P0 |
+| TASK-SEA-002 | Implement Usecases | Pending | P0 |
+| TASK-SEA-003 | Implement Adapters and Repositories | Pending | P0 |
+| TASK-SEA-004 | Infrastructure and Telemetry setup | Pending | P1 |

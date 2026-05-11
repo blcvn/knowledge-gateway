@@ -2,7 +2,7 @@
 id: DOC-S01
 service: sm-document
 version: 1.1.0
-status: Active
+status: Deprecated
 created: 2026-05-09
 updated: 2026-05-10
 owner: VNP Memory — Supermemory Team
@@ -13,6 +13,9 @@ owner: VNP Memory — Supermemory Team
 > **Group**: Supermemory (Adaptive KG Memory) | **gRPC Port**: 9071 | **Health Port**: 12071 | **Origin**: Supermemory
 
 ## Purpose
+
+> **🚨 DEPRECATION NOTICE**: This service has been merged into `sm-engine`. See [ARCH-007-merge-sm-engine](../../../specs/architecture/ARCH-007-merge-sm-engine.md) for details.
+
 
 Document CRUD, chunking, and ingestion pipeline. Supports PDF, HTML, text, and image content extraction with format-aware chunking strategies.
 

@@ -1,12 +1,9 @@
-# syntax=docker/dockerfile:1
-FROM golang:1.25-alpine AS builder
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/server ./cmd/server
+FROM golang:1.22-alpine AS builder
 
-FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/server ./cmd/server/main.go
+
+FROM gcr.io/distroless/static:nonroot
 COPY --from=builder /bin/server /server
-EXPOSE 9050
 ENTRYPOINT ["/server"]

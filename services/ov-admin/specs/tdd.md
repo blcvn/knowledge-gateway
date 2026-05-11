@@ -15,7 +15,7 @@ group: OpenViking
 
 ## 1. Service Overview
 
-Account/User/Agent CRUD with RBAC (4 roles: ROOT > ADMIN > USER > AGENT), API key lifecycle (Argon2id hashing), namespace isolation (`viking://{account}/{user}/{agent}/`), 3 auth modes (dev/trusted/api_key), and health aggregation across 5 OV services.
+Account/User/Agent CRUD with RBAC (4 roles: ROOT > ADMIN > USER > AGENT), API key lifecycle (Argon2id hashing), namespace isolation (`viking://{account}/{user}/{agent}/`), 3 auth modes (dev/trusted/api_key), and health aggregation across active OV services (`ov-storage`, `ov-search`, `ov-session`).
 
 **Origin mapping**: `openviking/server/auth.py` (433 lines) + `openviking/server/api_keys/api_key_manager.py` + `openviking/server/identity.py`.
 
@@ -46,7 +46,7 @@ internal/usecase/
 ├── account_ops.go              # Account CRUD
 ├── user_ops.go                 # User CRUD within accounts
 ├── api_key_ops.go             # Create (hash) → Validate (Argon2id) → Revoke
-├── health_ops.go              # Fan-out health checks to 5 OV services
+├── health_ops.go              # Fan-out health checks to active OV services
 ├── port/
 │   ├── input.go               # AccountUseCase, UserUseCase, APIKeyUseCase, HealthUseCase
 │   └── output.go             # HashPort, HealthCheckerPort
@@ -112,17 +112,49 @@ None published directly. ov-admin is a query-only service for auth. Account/user
 | Service | Direction | Protocol | Purpose |
 |---------|-----------|----------|---------|
 | PostgreSQL | Outbound | SQL | Account, user, agent persistence |
-| ov-crypto | Outbound | gRPC | API key hashing (or direct Argon2id) |
-| All 5 OV services | Outbound | gRPC Health | Health aggregation |
+| ov-storage | Outbound | gRPC | API key hashing (or direct Argon2id) |
+| Active OV services | Outbound | gRPC Health | Health aggregation |
 | vnp-admin | Peer | gRPC | Tenant-level coordination |
 
-## 7. Observability
+## 7. Core Algorithms
+
+### 7.1. Auth Mode Resolution
+
+The service resolves identity using one of three configured modes:
+- **`dev`**: Skips validation. Implicitly assigns the request to a default `ROOT` identity.
+- **`trusted`**: Validates an optional root API key. Trusts headers (`X-OpenViking-Account`, `X-OpenViking-User`) to resolve identity directly without database lookups.
+- **`api_key`**: Requires a Bearer token. Validates the token against stored Argon2id hashes. Identifies the namespace (`account/user/agent`) and the assigned role.
+
+### 7.2. RBAC Enforcement Algorithm
+
+Hierarchical permission checks are performed on every authorized request:
+1. Extract identity (Role, AccountID, UserID, AgentID) from the resolved context.
+2. If `Role == ROOT`: Allow all actions across any namespace.
+3. If `Role == ADMIN`: Allow if `target.AccountID == context.AccountID`.
+4. If `Role == USER`: Allow if `target.UserID == context.UserID` and `target.AccountID == context.AccountID`.
+5. If `Role == AGENT`: Allow only if exact namespace match `target == context.AgentID`.
+
+### 7.3. API Key Lifecycle (Argon2id)
+
+1. **Generation**: Create a cryptographically secure random secret (32 bytes). Return raw token to the user exactly once.
+2. **Hashing**: Compute `Argon2id(secret, random_salt)`.
+3. **Storage**: Store the prefix (for UI identification) and the Argon2id hash.
+4. **Validation**: Hash the incoming token with the stored salt. Compare with constant-time equality.
+
+### 7.4. Health Fan-Out
+
+When `GetHealth` is called:
+1. Use an `errgroup` to make parallel gRPC Health Check (`grpc.health.v1`) calls to `ov-storage`, `ov-search`, and `ov-session`.
+2. Aggregate responses into a single JSON status report.
+3. If any critical service is `SERVING_STATUS_UNKNOWN` or `SERVING_STATUS_NOT_SERVING`, mark the aggregate health as degraded.
+
+## 8. Observability
 
 - **Metrics**: Account/user CRUD counts, API key validations, health check duration
 - **Traces**: OTel spans for CRUD + health aggregation
 - **Health**: gRPC Health v1 + HTTP `/healthz` on port 9109
 
-## 8. Multi-Tenancy
+## 9. Multi-Tenancy
 
 - **Isolation**: `account_id` → all queries scoped
 - **RBAC**: Enforced at usecase layer per operation

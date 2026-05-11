@@ -2,13 +2,15 @@
 id: DOC-S01
 service: ov-crypto
 version: 1.1.0
-status: Active
+status: Deprecated
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-11
 owner: VNP Memory — OpenViking Team
 ---
 
-# ov-crypto
+# ov-crypto (DEPRECATED)
+
+> **⚠️ DEPRECATION NOTICE**: This service has been merged into `ov-storage` per `ARCH-006`. The code and documentation here are kept for historical reference only. Please refer to `ov-storage` for the active implementation.
 
 > **Group**: OpenViking | **gRPC Port**: 9055 | **Health Port**: 9108 | **Origin**: OpenViking
 

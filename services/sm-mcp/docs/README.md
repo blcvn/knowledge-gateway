@@ -2,7 +2,7 @@
 id: DOC-S01
 service: sm-mcp
 version: 1.1.0
-status: Active
+status: Deprecated
 created: 2026-05-09
 updated: 2026-05-10
 owner: VNP Memory — Supermemory Team
@@ -13,6 +13,9 @@ owner: VNP Memory — Supermemory Team
 > **Group**: Supermemory | **gRPC Port**: 9076 | **Health Port**: 9121 | **Origin**: Supermemory
 
 ## Purpose
+
+> **🚨 DEPRECATION NOTICE**: This service has been merged into `vnp-gateway`. See [ARCH-008-absorb-sm-mcp-to-gateway](../../../specs/architecture/ARCH-008-absorb-sm-mcp-to-gateway.md) for details.
+
 
 Model Context Protocol (MCP) server for AI agent integration. Provides a standardized **SSE/JSON-RPC** transport layer that exposes Supermemory capabilities as MCP tools, enabling any MCP-compatible AI agent (Claude, GPT, etc.) to store/search/manage memories.
 

@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.graphitisearch.v1;
+option go_package = "vnp-memory/services/graphiti-search/api/proto/v1;graphitisearchv1";
+
+service GraphitiSearchService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

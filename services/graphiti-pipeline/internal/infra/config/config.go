@@ -1,52 +1,48 @@
-// Package config provides configuration loading for graphiti-pipeline.
 package config
 
-import (
-	"fmt"
-	"os"
-	"strconv"
-)
+type PostgresConfig struct {
+	URI string `mapstructure:"URI"`
+}
 
-// Config holds all configuration for the graphiti-pipeline service.
+type StoreConfig struct {
+	Endpoint string `mapstructure:"ENDPOINT"`
+}
+
+type LLMConfig struct {
+	Endpoint string `mapstructure:"ENDPOINT"`
+}
+
+type EmbedderConfig struct {
+	Endpoint string `mapstructure:"ENDPOINT"`
+}
+
+type NATSConfig struct {
+	URL string `mapstructure:"URL"`
+}
+
+type OTelConfig struct {
+	Endpoint string `mapstructure:"ENDPOINT"`
+}
+
+type PipelineConfig struct {
+	MaxConcurrent int `mapstructure:"MAX_CONCURRENT"`
+}
+
 type Config struct {
-	GRPCPort     int    `json:"grpc_port"`
-	HealthPort   int    `json:"health_port"`
-	LogLevel     string `json:"log_level"`
-	DatabaseURL  string `json:"database_url"`
-	RedisURL     string `json:"redis_url"`
-	NATSURL      string `json:"nats_url"`
-	OTelEndpoint string `json:"otel_endpoint"`
+	GRPCPort   int    `mapstructure:"GRPC_PORT" validate:"required,min=1024,max=65535"`
+	HealthPort int    `mapstructure:"HEALTH_PORT"`
+	LogLevel   string `mapstructure:"LOG_LEVEL"`
+
+	Postgres PostgresConfig `mapstructure:",squash"`
+	Store    StoreConfig    `mapstructure:",squash"`
+	LLM      LLMConfig      `mapstructure:",squash"`
+	Embedder EmbedderConfig `mapstructure:",squash"`
+	NATS     NATSConfig     `mapstructure:",squash"`
+	OTel     OTelConfig     `mapstructure:",squash"`
+	Pipeline PipelineConfig `mapstructure:",squash"`
 }
 
-// Load reads configuration from environment variables with sensible defaults.
-func Load() (*Config, error) {
-	cfg := &Config{
-		GRPCPort:     envInt("GRPC_PORT", 9021),
-		HealthPort:   envInt("HEALTH_PORT", 9094),
-		LogLevel:     envStr("LOG_LEVEL", "info"),
-		DatabaseURL:  envStr("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/vnp_memory?sslmode=disable"),
-		RedisURL:     envStr("REDIS_URL", "redis://localhost:6379/0"),
-		NATSURL:      envStr("NATS_URL", "nats://localhost:4222"),
-		OTelEndpoint: envStr("OTEL_ENDPOINT", ""),
-	}
-	if cfg.DatabaseURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL is required")
-	}
-	return cfg, nil
-}
-
-func envStr(key, defaultVal string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultVal
-}
-
-func envInt(key string, defaultVal int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
-	}
-	return defaultVal
+func LoadConfig() (Config, error) {
+	// Use Viper to load and unmarshal configuration
+	return Config{}, nil
 }

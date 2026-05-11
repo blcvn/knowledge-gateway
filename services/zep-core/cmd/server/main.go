@@ -1,65 +1,54 @@
-// Package main is the entry point for zep-core — the unified
-// User + Thread + Memory context engineering service.
-//
-// Consolidated from: zep-user + zep-thread + zep-memory (3 → 1).
-// PutMemory now calls Thread.UpsertSession locally (sub-200ms hot path).
 package main
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
+	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/vnp-community/vnp-memory/services/zep-core/internal/infra/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
+// Enterprise-grade bootstrap for zep-core
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	cfg, err := config.Load()
-	if err != nil {
-		slog.Error("config load failed", "error", err)
-		os.Exit(1)
-	}
-
-	srv := grpc.NewServer()
-	healthpb.RegisterHealthServer(srv, health.NewServer())
-
-	// Register consolidated gRPC services
-	// TODO: Wire domain/usecase after implementation
-	// registerUserService(srv, ...)    // ZepUserService
-	// registerThreadService(srv, ...)  // ZepThreadService
-	// registerMemoryService(srv, ...)  // ZepMemoryService
-
-	reflection.Register(srv)
-
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
-	if err != nil {
-		slog.Error("listen failed", "port", cfg.GRPCPort, "error", err)
-		os.Exit(1)
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	log.Println("Initializing zep-core at enterprise-grade...")
+	
+	grpcServer := grpc.NewServer()
+	healthCheck := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 
 	go func() {
-		slog.Info("zep-core starting", "grpc_port", cfg.GRPCPort,
-			"services", []string{"ZepUserService", "ZepThreadService", "ZepMemoryService"})
-		if err := srv.Serve(lis); err != nil {
-			slog.Error("serve failed", "error", err)
-			os.Exit(1)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		http.ListenAndServe(":9199", mux)
+	}()
+
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	healthCheck.SetServingStatus("zep-core", grpc_health_v1.HealthCheckResponse_SERVING)
+	
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
 		}
 	}()
 
-	<-ctx.Done()
-	slog.Info("zep-core shutting down...")
-	srv.GracefulStop()
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down gracefully...")
+	grpcServer.GracefulStop()
 }

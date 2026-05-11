@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package openviking.crypto.v1;
+
+option go_package = "vnp-memory/services/ov-crypto/api/proto/openviking/crypto/v1;cryptov1";
+
+service OvCryptoService {
+  rpc Encrypt(EncryptRequest) returns (EncryptResponse);
+  rpc Decrypt(DecryptRequest) returns (DecryptResponse);
+  rpc RotateKey(RotateKeyRequest) returns (RotateKeyResponse);
+  rpc GetKeyStatus(KeyStatusRequest) returns (KeyStatus);
+}
+
+message EncryptRequest {
+  string account_id = 1;
+  bytes plaintext = 2;
+}
+
+message EncryptResponse {
+  bytes ciphertext = 1;
+  int32 key_version = 2;
+}
+
+message DecryptRequest {
+  string account_id = 1;
+  bytes ciphertext = 2;
+}
+
+message DecryptResponse {
+  bytes plaintext = 1;
+}
+
+message RotateKeyRequest {
+  string account_id = 1;
+  string reason = 2;
+}
+
+message RotateKeyResponse {
+  int32 new_version = 1;
+  int32 affected_accounts = 2;
+}
+
+message KeyStatusRequest {
+  string account_id = 1;
+}
+
+message KeyStatus {
+  int32 version = 1;
+  string provider = 2;
+  string created_at = 3;
+  string last_rotated = 4;
+  string status = 5;
+}

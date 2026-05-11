@@ -2,25 +2,44 @@
 id: DOC-S04
 service: cognee-search
 version: 1.0.0
-status: Draft
+status: Active
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-11
 ---
 
 # cognee-search — Data Model
 
-> **Database**: Qdrant (vectors), Neo4j (graph traversal), Redis (cache)
+> **Database**: PostgreSQL (queries, results), Qdrant (vectors), Redis (cache)
+
+## PostgreSQL Tables
+
+### `queries`
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `id` | UUID | PK | Query unique identifier |
+| `text` | VARCHAR | | Search query text |
+| `query_type` | VARCHAR | | Type of search (similarity, graph, etc.) |
+| `user_id` | UUID | INDEX | User who performed the query |
+| `created_at` | TIMESTAMPTZ | INDEX, DEFAULT NOW()| Query execution time |
+| `updated_at` | TIMESTAMPTZ | | Query update time |
+
+### `results`
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `id` | UUID | PK | Result unique identifier |
+| `value` | TEXT | | Result payload or value |
+| `query_id` | UUID | FK → queries.id | Associated query |
+| `user_id` | UUID | INDEX | User who owns the result |
+| `created_at` | TIMESTAMPTZ | INDEX, DEFAULT NOW()| Result creation time |
+| `updated_at` | TIMESTAMPTZ | | Result update time |
 
 ## Qdrant Collections (Read-Only)
 
-cognee-search reads from collections created by cognee-cognify:
+cognee-search reads from vector collections populated by the cognify/pipeline processes:
 
-- `cognee_chunks` — Text chunk embeddings (1536-dim)
-- `cognee_entities` — Entity description embeddings (1536-dim)
-
-## Neo4j Queries (Read-Only)
-
-Traversal queries on Entity, Chunk, Community nodes. Uses Cypher for graph completion.
+- `DocumentChunk` / `Chunk` / `Entity` embeddings (1536-dim)
 
 ## Redis Cache
 
@@ -29,8 +48,23 @@ Traversal queries on Entity, Chunk, Community nodes. Uses Cypher for graph compl
 | `search:{tenant_id}:{query_hash}:{type}` | 5min | Cached search results |
 | `rag:{tenant_id}:{query_hash}` | 10min | Cached RAG completions |
 
-## Migration History
+## Entity-Relationship Diagram
 
-| Version | Date | Description |
-|---------|------|-------------|
-| 1.0.0 | 2026-05-09 | Initial: read-only access to cognify collections |
+```mermaid
+erDiagram
+    QUERY ||--o{ RESULT : generates
+    QUERY {
+        uuid id PK
+        string text
+        string query_type
+        uuid user_id
+        timestamp created_at
+    }
+    RESULT {
+        uuid id PK
+        text value
+        uuid query_id
+        uuid user_id
+        timestamp created_at
+    }
+```

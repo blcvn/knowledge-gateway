@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.vnpevent.v1;
+option go_package = "vnp-memory/services/vnp-event/api/proto/v1;vnpeventv1";
+
+service VnpEventService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

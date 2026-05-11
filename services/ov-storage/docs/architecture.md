@@ -44,6 +44,13 @@ services/ov-storage/
 3. **`ov.crypto.key.rotated` becomes internal**: No longer emitted as NATS event since rotation is handled within same binary.
 4. **External events preserved**: `ov.content.written`, `ov.content.deleted` → ov-search for index updates. `ov.resource.ingested` → ov-search for new content indexing.
 
+## Core Algorithms
+
+1. **VikingFS PathLock Algorithm**: Concurrency control using Point Lock (file), Subtree Lock (directory recursive), and Move Lock (atomic source+dest lock) to prevent race conditions during hierarchical file system modifications.
+2. **Transparent Envelope Encryption (OVE1)**: Generates a 32-byte DEK and 12-byte IV for every file. Encrypts with AES-256-GCM. The DEK is wrapped using a KMS backend (Vault/AWS/Local) and prepended as an `OVE1` header.
+3. **Key Rotation Algorithm**: Re-wraps the DEK when the Root Key rotates. Avoids full file decryption by only modifying the `OVE1` envelope, while the AES-256-GCM ciphertext remains untouched.
+4. **Resource Ingestion & Parsing**: Format-aware pipeline (e.g. `tree-sitter` for code, heading-chunker for markdown, page-chunker for PDF) that automatically chunks and ingests external documents into VikingFS, triggering `ov.resource.ingested`.
+
 ## External Dependencies
 
 | Dependency | Purpose |

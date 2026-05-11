@@ -1,12 +1,19 @@
-# syntax=docker/dockerfile:1
-FROM golang:1.25-alpine AS builder
+# Build Stage
+FROM golang:1.23.0-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
+RUN apk add --no-cache git tzdata ca-certificates
+COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/zep-core ./cmd/server
 
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=builder /bin/server /server
-EXPOSE 9050
-ENTRYPOINT ["/server"]
+# Final Stage
+FROM alpine:3.18
+WORKDIR /app
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /app/bin/zep-core .
+ENV ENV=production TZ=UTC
+EXPOSE 9090 9199
+USER nobody:nobody
+CMD ["./zep-core"]

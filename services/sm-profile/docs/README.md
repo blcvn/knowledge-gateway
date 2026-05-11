@@ -2,7 +2,7 @@
 id: DOC-S01
 service: sm-profile
 version: 1.1.0
-status: Active
+status: Deprecated
 created: 2026-05-09
 updated: 2026-05-10
 owner: VNP Memory — Supermemory Team
@@ -13,6 +13,9 @@ owner: VNP Memory — Supermemory Team
 > **Group**: Supermemory | **gRPC Port**: 9074 | **Health Port**: 9119 | **Origin**: Supermemory
 
 ## Purpose
+
+> **🚨 DEPRECATION NOTICE**: This service has been merged into `sm-engine`. See [ARCH-007-merge-sm-engine](../../../specs/architecture/ARCH-007-merge-sm-engine.md) for details.
+
 
 User profile management with **static preferences** (explicitly set by users) and **dynamic learned traits** (inferred from memory events). Updated automatically when new memories are created, providing personalization context for search and AI interactions.
 

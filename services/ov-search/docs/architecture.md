@@ -52,23 +52,27 @@ services/ov-search/
 │       └── wire/wire.go
 ```
 
-## Key Design Decisions
+## Core Algorithms & Design Decisions
 
 ### Hierarchical Search Pipeline (from `hierarchical_retriever.py`)
 
 ```
-1. Query → embedding (Bifrost)
-2. Vector search (dense + sparse hybrid)
-3. Score propagation (child → parent — directory-level relevance)
-4. Hotness boost (recently accessed/modified files)
-5. Reranking (cross-encoder or RRF/MMR)
-6. Convergence detection (stop when marginal quality < threshold)
-7. Tiered loading (L0 → L1 → L2 on demand)
+1. Query Intent Analysis (IntentAnalyzer)
+2. Dense + Sparse Hybrid Vector Search (Qdrant)
+3. Hierarchical Score Propagation (Child → Parent)
+4. Hotness Score Integration (Recency/Frequency boost)
+5. Convergence Detection (Stop radius expansion when delta < epsilon)
+6. Cross-Encoder Reranking
+7. Tiered Context Loading (L0 → L1 → L2)
 ```
 
-### Score Propagation
+### Hierarchical Score Propagation Algorithm
 
 Child file scores bubble up to parent directories. A directory's score = max(child scores) × propagation_factor (default: 0.7). This allows searching at directory level.
+
+### Hotness Scoring & Decay Algorithm
+
+Hotness favors recently accessed/modified files. Uses exponential decay: `H(t) = H_0 * exp(-λ * Δt)`. Boosted by `ov.session.committed` events.
 
 ### Intent Analyzer (from `intent_analyzer.py`)
 

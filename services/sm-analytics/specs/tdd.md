@@ -55,7 +55,14 @@ AnalyticsRequest: `{period?: "24h"|"7d"|"30d"|"all", from?: datetime, to?: datet
 - `idx_req_org_type` (org_id, type, created_at) — per-type aggregation
 - `idx_req_org_key` (org_id, key_id) — per-key analytics
 
-## 6. Observability
+## 6. Token Economics Algorithms
+
+### Token Calculation
+Calculates the savings when context is pruned or rewritten via MCP or frontend:
+- `tokens_saved = original_tokens - final_tokens` (can be negative if query expansion is larger)
+- `cost_saved_usd = (tokens_saved / 1000) * model_cost_per_1k`
+
+## 7. Observability
 
 - **Metrics**: analytics_query_total, analytics_query_latency, events_processed_total
 - **Health**: gRPC + HTTP /healthz on port 9123
@@ -63,3 +70,14 @@ AnalyticsRequest: `{period?: "24h"|"7d"|"30d"|"all", from?: datetime, to?: datet
 ---
 
 > **Next Steps**: FEAT-001 (Usage Analytics API), FEAT-002 (Token Economics Dashboard), FEAT-003 (Daily Aggregation Materialized View)
+
+## Task Specs Registry
+
+_To be populated during implementation._
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| TASK-ANA-001 | Implement Domain Models | Pending | P0 |
+| TASK-ANA-002 | Implement Usecases | Pending | P0 |
+| TASK-ANA-003 | Implement Adapters and Repositories | Pending | P0 |
+| TASK-ANA-004 | Infrastructure and Telemetry setup | Pending | P1 |

@@ -2,103 +2,86 @@
 id: DOC-S04
 service: cognee-ingestion
 version: 1.0.0
-status: Draft
+status: Active
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-11
 ---
 
 # cognee-ingestion — Data Model
 
 > **Database**: PostgreSQL (metadata), MinIO/S3 (file storage), Redis (cache)
 
-## Tables
+## PostgreSQL Tables
 
 ### `datasets`
 
 | Column | Type | Constraints | Description |
 |--------|------|------------|-------------|
 | `id` | UUID | PK, DEFAULT gen_random_uuid() | Dataset unique identifier |
-| `tenant_id` | VARCHAR(64) | NOT NULL, INDEX | Tenant isolation key |
-| `name` | VARCHAR(255) | NOT NULL | Dataset display name |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'PENDING' | PENDING / READY / COGNIFYING / ERROR |
-| `file_count` | INT | NOT NULL, DEFAULT 0 | Number of data items |
-| `total_size_bytes` | BIGINT | NOT NULL, DEFAULT 0 | Total size of all items |
-| `metadata` | JSONB | DEFAULT '{}' | Custom metadata key-value pairs |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Creation timestamp |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Last update timestamp |
+| `name` | VARCHAR(255) | | Dataset display name |
+| `tenant_id` | UUID | INDEX | Tenant isolation key |
+| `owner_id` | UUID | INDEX | Owner of the dataset |
+| `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | DEFAULT NOW() | Last update timestamp |
 
-### `data_items`
+### `data`
 
 | Column | Type | Constraints | Description |
 |--------|------|------------|-------------|
 | `id` | UUID | PK, DEFAULT gen_random_uuid() | Item unique identifier |
-| `dataset_id` | UUID | NOT NULL, FK → datasets.id | Parent dataset |
-| `tenant_id` | VARCHAR(64) | NOT NULL, INDEX | Tenant isolation key |
-| `source` | VARCHAR(20) | NOT NULL | FILE / TEXT / URL |
-| `filename` | VARCHAR(512) | | Original filename (for FILE source) |
-| `mime_type` | VARCHAR(128) | | MIME type (application/pdf, text/plain, etc.) |
-| `raw_text` | TEXT | | Extracted text content |
-| `storage_path` | VARCHAR(1024) | | MinIO/S3 object key for raw file |
-| `size_bytes` | BIGINT | NOT NULL, DEFAULT 0 | File/content size |
-| `metadata` | JSONB | DEFAULT '{}' | Item-level metadata |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() | Creation timestamp |
+| `name` | VARCHAR(255) | | Item name |
+| `label` | VARCHAR(255) | | Item label |
+| `extension` | VARCHAR(50) | | File extension |
+| `mime_type` | VARCHAR(128) | | MIME type |
+| `original_extension` | VARCHAR(50) | | Original extension |
+| `original_mime_type` | VARCHAR(128) | | Original MIME type |
+| `loader_engine` | VARCHAR(50) | | Loader engine |
+| `raw_data_location` | VARCHAR(1024) | | Raw data location |
+| `original_data_location` | VARCHAR(1024) | | Original data location |
+| `tenant_id` | UUID | INDEX | Tenant isolation key |
+| `owner_id` | UUID | INDEX | Owner of the data item |
+| `content_hash` | VARCHAR(255) | | Content hash |
+| `raw_content_hash` | VARCHAR(255) | | Raw content hash |
+| `external_metadata` | JSONB | | External metadata |
+| `node_set` | JSONB | | Node set |
+| `pipeline_status` | JSONB | | Pipeline status |
+| `token_count` | INT | | Token count |
+| `data_size` | INT | | File size in bytes |
+| `importance_weight` | FLOAT | | Importance weight |
+| `last_accessed` | TIMESTAMPTZ | | Last accessed timestamp |
+| `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | DEFAULT NOW() | Last update timestamp |
+
+### `dataset_data` (Association)
+
+| Column | Type | Constraints | Description |
+|--------|------|------------|-------------|
+| `dataset_id` | UUID | FK → datasets.id | Dataset identifier |
+| `data_id` | UUID | FK → data.id | Data item identifier |
 
 ## Entity-Relationship Diagram
 
 ```mermaid
 erDiagram
-    DATASET ||--o{ DATA_ITEM : contains
+    DATASET ||--o{ DATASET_DATA : contains
+    DATA ||--o{ DATASET_DATA : included_in
     DATASET {
         uuid id PK
-        string tenant_id
+        uuid tenant_id
+        uuid owner_id
         string name
-        string status
-        int file_count
-        bigint total_size_bytes
-        jsonb metadata
         timestamp created_at
         timestamp updated_at
     }
-    DATA_ITEM {
+    DATA {
         uuid id PK
-        uuid dataset_id FK
-        string tenant_id
-        string source
-        string filename
+        uuid tenant_id
+        uuid owner_id
+        string name
         string mime_type
-        text raw_text
-        string storage_path
-        bigint size_bytes
-        jsonb metadata
+        string raw_data_location
+        jsonb pipeline_status
+        int data_size
         timestamp created_at
     }
 ```
-
-## Index Strategy
-
-| Table | Index | Columns | Type | Purpose |
-|-------|-------|---------|------|---------|
-| `datasets` | `idx_datasets_tenant` | `tenant_id` | B-tree | Tenant isolation queries |
-| `datasets` | `idx_datasets_tenant_name` | `tenant_id, name` | B-tree, UNIQUE | Unique name per tenant |
-| `datasets` | `idx_datasets_status` | `status` | B-tree | Filter by status |
-| `data_items` | `idx_items_dataset` | `dataset_id` | B-tree | List items per dataset |
-| `data_items` | `idx_items_tenant` | `tenant_id` | B-tree | Tenant isolation queries |
-| `data_items` | `idx_items_source` | `source` | B-tree | Filter by source type |
-
-## Row-Level Security
-
-```sql
-ALTER TABLE datasets ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON datasets
-  USING (tenant_id = current_setting('app.tenant_id'));
-
-ALTER TABLE data_items ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON data_items
-  USING (tenant_id = current_setting('app.tenant_id'));
-```
-
-## Migration History
-
-| Version | Date | Description |
-|---------|------|-------------|
-| 1.0.0 | 2026-05-09 | Initial schema: datasets + data_items tables |

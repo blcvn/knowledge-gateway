@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package vnp.memory.smanalytics.v1;
+option go_package = "vnp-memory/services/sm-analytics/api/proto/v1;smanalyticsv1";
+
+service SmAnalyticsService {
+  rpc GetUsageAnalytics(GetUsageRequest) returns (GetUsageResponse);
+  rpc GetMemoryAnalytics(GetMemoryRequest) returns (GetMemoryResponse);
+}
+
+message GetUsageRequest {
+  string org_id = 1;
+  string time_range = 2;
+}
+
+message GetUsageResponse {
+  int32 total_tokens_saved = 1;
+  float cost_saved_usd = 2;
+  int32 total_requests = 3;
+}
+
+message GetMemoryRequest {
+  string org_id = 1;
+}
+
+message GetMemoryResponse {
+  int32 active_memories = 1;
+}

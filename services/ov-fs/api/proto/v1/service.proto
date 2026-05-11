@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.ovfs.v1;
+option go_package = "vnp-memory/services/ov-fs/api/proto/v1;ovfsv1";
+
+service OvFsService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

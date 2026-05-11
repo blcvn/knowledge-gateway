@@ -2,16 +2,17 @@
 id: TDD-cognee-cognify
 title: Technical Design — cognee-cognify
 service: cognee-cognify
-version: 1.0.0
-status: Draft
+version: 2.0.0
+status: Ready
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-10
 group: Cognee
+linked_sol: SOL-001
 ---
 
 # Technical Design — cognee-cognify
 
-> **Group**: Cognee (Semantic KG) | **gRPC Port**: 9012 | **Origin**: Cognee L3-L5
+> **Group**: Cognee (Semantic KG) | **gRPC Port**: 9012 | **Health Port**: 9092 | **Origin**: Cognee L3-L5
 
 ## 1. Service Overview
 
@@ -19,19 +20,14 @@ Knowledge graph construction pipeline: classify → chunk → extract entities �
 
 ## 2. Clean Architecture Layers
 
-### 2.1 Domain Layer
+| Layer | Path | Responsibility |
+|-------|------|---------------|
+| Domain | `internal/domain/` | CognifyJob, Entity, Relationship, Community, events |
+| Usecase | `internal/usecase/` | 8-stage pipeline orchestrator + individual stages |
+| Adapter | `internal/adapter/` | gRPC handler, NATS sub/pub, Neo4j, Qdrant, Bifrost |
+| Infra | `internal/infra/` | Config, server, Wire, telemetry, bulkhead |
 
-```go
-type CognifyJob struct {
-    ID, DatasetID, TenantID  string
-    Status                    JobStatus  // PENDING/RUNNING/COMPLETED/FAILED/CANCELLED
-    CurrentStage              string
-    ProgressPercent           float64
-    Metrics                   PipelineMetrics
-}
-```
-
-### 2.2 Usecase Layer — Pipeline Stages
+## 3. Pipeline Stages
 
 | Stage | Function | LLM | Output |
 |-------|----------|-----|--------|
@@ -44,48 +40,29 @@ type CognifyJob struct {
 | embed | Vector generation | Embedding model | Qdrant vectors |
 | summarize | Community summaries | GPT-4o-mini | Community nodes |
 
-### 2.3 Adapter Layer
-
-- gRPC handler: TriggerCognify, GetJobStatus, CancelJob
-- NATS subscriber: cognee.data.ingested
-- NATS publisher: cognee.pipeline.completed
-
-### 2.4 Infrastructure Layer
-
-- PostgreSQL: job state persistence
-- Neo4j: graph operations
-- Qdrant: vector storage
-- Bifrost: LLM + embedding calls
-
-## 3. gRPC API
+## 4. gRPC API
 
 ```protobuf
 service CogneeCognifyService {
   rpc TriggerCognify(TriggerCognifyRequest) returns (CognifyJob);
   rpc GetJobStatus(GetJobStatusRequest) returns (CognifyJob);
-  rpc CancelJob(CancelJobRequest) returns (Empty);
+  rpc CancelJob(CancelJobRequest) returns (google.protobuf.Empty);
 }
 ```
 
-## 4. NATS Events
+## 5. NATS Events
 
 | Direction | Subject | Peer |
 |-----------|---------|------|
 | Subscribe | `cognee.data.ingested` | cognee-ingestion |
 | Publish | `cognee.pipeline.completed` | cognee-search |
 
-## 5. Cross-Service Dependencies
+## 6. Cross-Service Dependencies
 
 | Target | Protocol | Purpose |
 |--------|----------|---------|
-| cognee-ingestion | gRPC | Fetch raw data items for processing |
+| cognee-ingestion | gRPC | Fetch raw data items |
 | cognee-search | NATS (async) | Notify search index update |
-
-## 6. Observability
-
-- Metrics: Pipeline duration, stage duration, LLM call counts
-- Traces: OTel spans per pipeline stage
-- Logs: slog JSON with job_id, dataset_id, stage
 
 ## 7. Multi-Tenancy
 
@@ -93,4 +70,32 @@ Tenant isolation via Neo4j namespace labels + Qdrant tenant_id filter.
 
 ---
 
-> **Next Steps**: Decompose into FEAT specs in `specs/features/`.
+## Feature Specs Registry
+
+| ID | Title | Status | Priority | Phase |
+|----|-------|--------|----------|-------|
+| [FEAT-COG-001](./features/FEAT-COG-001-domain-usecase-layer.md) | Domain + Usecase (8-Stage Pipeline) | Ready | P0 | Phase 1 |
+| [FEAT-COG-002](./features/FEAT-COG-002-adapter-layer.md) | Adapter Layer (gRPC + NATS + Neo4j + Qdrant) | Ready | P0 | Phase 2 |
+| [FEAT-COG-003](./features/FEAT-COG-003-infra-wire.md) | Infrastructure + Wire DI | Ready | P0 | Phase 3 |
+
+## Architecture Specs Registry
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| — | _To be populated_ | — | — |
+
+## Technical Specs Registry
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| — | _To be populated_ | — | — |
+
+## Quality Specs Registry
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| — | _To be populated_ | — | — |
+
+---
+
+> **Linked**: [SOL-001](../../cognee-pipeline/specs/solutions/SOL-001-implement-cognee-pipeline-service.md) | [Architecture Spec](../../../services/cognee/specs/services/03-cognee-cognify.md)

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package vnp.memory.smproject.v1;
+option go_package = "vnp-memory/services/sm-project/api/proto/v1;smprojectv1";
+
+service SmProjectService {
+  rpc CreateSpace(CreateSpaceRequest) returns (CreateSpaceResponse);
+  rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
+}
+
+message CreateSpaceRequest {
+  string name = 1;
+  string org_id = 2;
+}
+
+message CreateSpaceResponse {
+  string space_id = 1;
+}
+
+message AddMemberRequest {
+  string space_id = 1;
+  string user_id = 2;
+  string role = 3;
+}
+
+message AddMemberResponse {
+  bool success = 1;
+}

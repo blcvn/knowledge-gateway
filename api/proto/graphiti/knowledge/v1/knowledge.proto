@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package graphiti.knowledge.v1;
+
+option go_package = "vnp-memory/services/graphiti-knowledge/internal/adapter/grpc/pb";
+
+service GraphitiKnowledgeService {
+  rpc ExtractEntities(ExtractEntitiesRequest) returns (ExtractEntitiesResponse);
+  rpc ResolveEntities(ResolveEntitiesRequest) returns (ResolveEntitiesResponse);
+  rpc ExtractEdges(ExtractEdgesRequest) returns (ExtractEdgesResponse);
+  rpc ResolveEdges(ResolveEdgesRequest) returns (ResolveEdgesResponse);
+  rpc GenerateEmbedding(GenerateEmbeddingRequest) returns (GenerateEmbeddingResponse);
+  rpc GenerateEmbeddingBulk(GenerateEmbeddingBulkRequest) returns (GenerateEmbeddingBulkResponse);
+  rpc Rerank(RerankRequest) returns (RerankResponse);
+  rpc UpdateCommunity(UpdateCommunityRequest) returns (UpdateCommunityResponse);
+  rpc GetTokenUsage(GetTokenUsageRequest) returns (GetTokenUsageResponse);
+}
+
+// Data Models
+message ExtractedEntity {
+  string name = 1;
+  string label = 2;
+  string summary = 3;
+}
+
+message ExtractedEdge {
+  string source = 1;
+  string target = 2;
+  string relation = 3;
+  string fact = 4;
+  repeated string temporal = 5;
+}
+
+// Requests & Responses
+message ExtractEntitiesRequest {
+  string content = 1;
+  repeated string previous_episodes = 2;
+  repeated string entity_types = 3;
+}
+
+message ExtractEntitiesResponse {
+  repeated ExtractedEntity entities = 1;
+}
+
+message ResolveEntitiesRequest {
+  repeated ExtractedEntity extracted_entities = 1;
+  string group_id = 2;
+}
+
+message ResolveEntitiesResponse {
+  repeated Resolution resolutions = 1;
+}
+
+message Resolution {
+  string existing_entity_id = 1;
+  ExtractedEntity extracted_entity = 2;
+  string decision = 3;
+  double confidence = 4;
+}
+
+message ExtractEdgesRequest {}
+message ExtractEdgesResponse {}
+
+message ResolveEdgesRequest {}
+message ResolveEdgesResponse {}
+
+message GenerateEmbeddingRequest {}
+message GenerateEmbeddingResponse {}
+
+message GenerateEmbeddingBulkRequest {}
+message GenerateEmbeddingBulkResponse {}
+
+message RerankRequest {}
+message RerankResponse {}
+
+message UpdateCommunityRequest {}
+message UpdateCommunityResponse {}
+
+message GetTokenUsageRequest {}
+message GetTokenUsageResponse {}

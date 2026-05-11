@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.vnpsearchhub.v1;
+option go_package = "vnp-memory/services/vnp-search-hub/api/proto/v1;vnpsearchhubv1";
+
+service VnpSearchHubService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

@@ -1,45 +1,83 @@
-# cognee-pipeline — Semantic KG Ingestion + Cognify Service
+---
+id: DOC-S01
+service: cognee-pipeline
+version: 1.0.0
+status: Active
+created: 2026-05-10
+updated: 2026-05-10
+owner: VNP Memory — Cognee Team
+---
 
-> **Service**: `cognee-pipeline` | **gRPC Port**: 9011 | **Health**: 9091  
-> **Origin**: Consolidated from cognee-ingestion + cognee-cognify  
-> **Status**: Proposed | **Version**: 0.1.0
+# cognee-pipeline
+
+> **Group**: Cognee (Semantic KG) | **Ports**: 9011(gRPC) 9091(Health) | **Origin**: Consolidated
 
 ## Purpose
 
-Unified ingestion and knowledge graph construction service for the Cognee semantic KG engine. Handles document/text/URL ingestion, dataset management, and multi-stage cognify pipeline (entity extraction, relationship extraction, deduplication, community detection, embedding generation).
+Unified ingestion and knowledge graph construction service combining `cognee-ingestion` and `cognee-cognify` into a single binary. Handles document/text/URL ingestion, dataset management, and multi-stage cognify pipeline (classify → chunk → extract → deduplicate → build graph → embed → summarize communities).
 
-## Business Capability
+### Business Capability
 
-- **Data Ingestion**: File, text, URL ingestion with automatic format detection
-- **Dataset Management**: Create, list, delete datasets with data items
-- **Cognify Pipeline**: 7-stage pipeline for KG construction (extract entities → resolve → extract edges → resolve → generate embeddings → update communities → post-process)
-- **15 Retrieval Strategies**: Base support for cognee-search retrieval
+- **Data Ingestion**: File (PDF/DOCX/PPTX/CSV), text, URL ingestion with auto format detection
+- **Dataset Management**: CRUD lifecycle with tenant isolation
+- **7-Stage Cognify Pipeline**: Entity extraction, relationship extraction, deduplication, community detection, embedding generation
+- **Local Pipeline Trigger**: Ingestion → cognify via local function call (no inter-service NATS hop)
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
 | Language | Go 1.23+ |
-| RPC | gRPC (2 service definitions: CogneeIngestionService + CogneeCognifyService) |
+| Framework | gRPC (dual service: CogneeIngestionService + CogneeCognifyService) |
 | Database | PostgreSQL 17 + pgvector |
 | Graph DB | Neo4j 5+ |
 | Object Storage | MinIO/S3 |
-| Async | NATS JetStream |
-| LLM | Bifrost multi-provider |
+| Async Events | NATS JetStream |
+| LLM | Bifrost multi-provider gateway |
+| Architecture | 4-layer Clean Architecture |
+| DI | Google Wire |
 
 ## Quick Start
 
 ```bash
+# From monorepo root
+make build-cognee-pipeline
+make run-cognee-pipeline
+
+# Or with Docker
+docker compose up cognee-pipeline
+
+# Verify health
+curl http://localhost:9091/healthz
+
+# Or directly
 cd services/cognee-pipeline
 go run cmd/server/main.go
-# gRPC: :9011 | Health: :9091
 ```
+
+## Key Features
+
+- **Dual gRPC Services**: Single binary exposes both CogneeIngestionService and CogneeCognifyService
+- **Streaming Upload**: gRPC streaming for large file uploads
+- **Text Extraction**: PDF, DOCX, PPTX, CSV, HTML auto-detection
+- **URL Scraping**: Web content extraction with sanitization
+- **LLM Entity Extraction**: GPT-4o based NER + relationship extraction
+- **Entity Deduplication**: Semantic entity resolution to prevent graph bloat
+- **Community Detection**: Louvain algorithm via Neo4j GDS
+- **Pipeline State Machine**: Job progress tracking with resume on failure
+- **Tenant Isolation**: PostgreSQL RLS + Neo4j namespace + MinIO path
 
 ## Links
 
+- [API Reference](./api.md)
 - [Architecture](./architecture.md)
+- [Data Model](./data-model.md)
+- [Configuration](./configuration.md)
+- [Runbook](./runbook.md)
 - [Changelog](./changelog.md)
+- [Specs](../specs/)
 
 ## Owner
 
-Cognee Engine Team
+- **Team**: VNP Memory — Cognee Engine
+- **Contact**: TBD

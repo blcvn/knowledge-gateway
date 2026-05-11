@@ -2,7 +2,7 @@
 id: DOC-S03
 service: sm-mcp
 version: 1.1.0
-status: Active
+status: Deprecated
 created: 2026-05-09
 updated: 2026-05-10
 ---
@@ -10,6 +10,9 @@ updated: 2026-05-10
 # sm-mcp — Service Architecture
 
 > **Group**: Supermemory | **Pattern**: 4-layer Clean Architecture
+
+> **🚨 DEPRECATION NOTICE**: This architecture is obsolete. The service has been merged into `vnp-gateway` (Ref: [ARCH-008-absorb-sm-mcp-to-gateway]).
+
 
 ## Layer Structure
 

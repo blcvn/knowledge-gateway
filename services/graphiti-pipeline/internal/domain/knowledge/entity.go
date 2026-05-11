@@ -1,42 +1,44 @@
-// Package knowledge defines domain entities for the Graphiti knowledge extraction.
 package knowledge
 
-import (
-	"time"
+import "time"
 
-	"github.com/google/uuid"
+type ExtractedEntity struct {
+	Name    string `json:"name"`
+	Label   string `json:"label"`
+	Summary string `json:"summary"`
+}
+
+type ExtractedEdge struct {
+	Source    string     `json:"source"`
+	Target    string     `json:"target"`
+	Relation  string     `json:"relation"`
+	ValidAt   time.Time  `json:"valid_at"`
+	InvalidAt *time.Time `json:"invalid_at,omitempty"`
+	ExpiredAt *time.Time `json:"expired_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+func (e *ExtractedEdge) Validate() error {
+	if e.ValidAt.IsZero() {
+		return ErrInvalidEdgeValidAt
+	}
+	if e.InvalidAt != nil && e.ValidAt.After(*e.InvalidAt) {
+		return ErrInvalidEdgeTimeWindow
+	}
+	return nil
+}
+
+type DuplicateDecision string
+
+const (
+	DecisionMerge  DuplicateDecision = "merge"
+	DecisionCreate DuplicateDecision = "create"
+	DecisionSkip   DuplicateDecision = "skip"
 )
 
-// Entity represents a node in the temporal knowledge graph.
-type Entity struct {
-	ID          uuid.UUID `json:"id"`
-	TenantID    uuid.UUID `json:"tenant_id"`
-	Name        string    `json:"name"`
-	Type        string    `json:"type"`
-	Description string    `json:"description,omitempty"`
-	ValidAt     time.Time `json:"valid_at"`
-	InvalidAt   *time.Time `json:"invalid_at,omitempty"` // Bi-temporal
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-// Edge represents a relationship in the temporal knowledge graph.
-type Edge struct {
-	ID          uuid.UUID `json:"id"`
-	TenantID    uuid.UUID `json:"tenant_id"`
-	SourceID    uuid.UUID `json:"source_id"`
-	TargetID    uuid.UUID `json:"target_id"`
-	Relation    string    `json:"relation"`
-	Weight      float64   `json:"weight"`
-	ValidAt     time.Time `json:"valid_at"`
-	InvalidAt   *time.Time `json:"invalid_at,omitempty"` // Bi-temporal
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-// Community represents a detected graph community.
-type Community struct {
-	ID       uuid.UUID   `json:"id"`
-	TenantID uuid.UUID   `json:"tenant_id"`
-	Name     string      `json:"name"`
-	Summary  string      `json:"summary"`
-	Members  []uuid.UUID `json:"members"` // Entity IDs
+type Resolution struct {
+	ExistingEntityID string            `json:"existing_entity_id,omitempty"`
+	ExtractedEntity  ExtractedEntity   `json:"extracted_entity"`
+	Decision         DuplicateDecision `json:"decision"`
+	Confidence       float64           `json:"confidence"`
 }

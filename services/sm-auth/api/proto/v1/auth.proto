@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package vnp.memory.smauth.v1;
+option go_package = "vnp-memory/services/sm-auth/api/proto/v1;smauthv1";
+
+service SmAuthService {
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
+  rpc ValidateAPIKey(ValidateAPIKeyRequest) returns (ValidateAPIKeyResponse);
+}
+
+message CreateAPIKeyRequest {
+  string org_id = 1;
+  string name = 2;
+}
+
+message CreateAPIKeyResponse {
+  string raw_key = 1;
+  string key_id = 2;
+}
+
+message ValidateAPIKeyRequest {
+  string api_key = 1;
+}
+
+message ValidateAPIKeyResponse {
+  bool is_valid = 1;
+  string org_id = 2;
+  string role = 3;
+}

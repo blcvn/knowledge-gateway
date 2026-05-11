@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: graphiti_test
+    ports:
+      - "5432:5432"
+
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/test1234
+    ports:
+      - "7687:7687"
+
+  nats:
+    image: nats:2.9-alpine
+    command: ["-js"]
+    ports:
+      - "4222:4222"

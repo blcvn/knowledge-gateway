@@ -1,21 +1,48 @@
-# zep-core — API Reference
+# Zep Core API
 
-> **Service**: `zep-core`  
-> **Status**: Draft — Proto definitions inherited from pre-consolidation services
+## Overview
+The Zep Core Service consolidates User, Thread, and Memory management into a single high-performance binary, achieving sub-200ms latency for synchronous context operations.
 
----
+## gRPC Services (Port 9061)
 
-## gRPC Service Definitions
+### ZepUserService
+Manages user profiles and metadata.
+```protobuf
+rpc CreateUser(CreateUserRequest) returns (User);
+rpc GetUser(GetUserRequest) returns (User);
+rpc UpdateUser(UpdateUserRequest) returns (User);
+rpc DeleteUser(DeleteUserRequest) returns (Empty);
+rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+```
 
-_This service exposes multiple gRPC service definitions on a single port.
-Proto definitions are unchanged from the pre-consolidation services.
-See `api/proto/` for canonical proto files._
+### ZepThreadService
+Manages conversation sessions.
+```protobuf
+rpc CreateThread(CreateThreadRequest) returns (Thread);
+rpc GetThread(GetThreadRequest) returns (Thread);
+rpc UpdateThread(UpdateThreadRequest) returns (Thread);
+rpc EndThread(EndThreadRequest) returns (Thread);
+rpc ListThreads(ListThreadsRequest) returns (ListThreadsResponse);
+```
 
-## Endpoints
+### ZepMemoryService
+Ingests messages and retrieves augmented context.
+```protobuf
+rpc PutMemory(PutMemoryRequest) returns (PutMemoryResponse);
+rpc GetMemory(GetMemoryRequest) returns (GetMemoryResponse);
+rpc DeleteMemory(DeleteMemoryRequest) returns (Empty);
+```
 
-_To be documented from proto definitions during implementation._
+## Workflow
 
-## Authentication
+### PutMemory (Ingestion)
+1. Internally routes to `ThreadService.UpsertSession`.
+2. Inserts message into PostgreSQL.
+3. Publishes `zep.memory.messages.ingested` to NATS (Async to `zep-graph`).
+4. Returns instantly (≤200ms target).
 
-All endpoints require valid JWT or API key via Gateway.
-Tenant isolation enforced via `x-tenant-id` gRPC metadata.
+### GetMemory (Retrieval)
+1. Retrieves raw session messages from DB.
+2. Calls `zep-search` via gRPC for relevant facts/graph nodes.
+3. Overlays external facts onto the raw message context.
+4. Returns the enriched memory context payload.

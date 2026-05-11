@@ -37,21 +37,18 @@ service SmConnectorService {
 }
 ```
 
-## 4. OAuth2 Flow
+## 4. Auth & Sync Algorithms
 
-```
-[Client] → POST /connections/:provider {redirect_url, container_tags, document_limit}
-    ↓
-[sm-connector] → Generate state_token → Persist ConnectionState → Return auth_link
-    ↓
-[User] → Redirects to provider OAuth consent screen
-    ↓
-[Provider] → Callback with code + state → sm-connector validates state
-    ↓
-[sm-connector] → Exchange code for tokens → Persist Connection → Start initial sync
-    ↓
-[NATS] → sm.connection.synced → sm-document batch ingest
-```
+### OAuth2 State Management
+- `state_token` is generated as a secure random hex and stored in Redis/Postgres with a short TTL (10m).
+- Protects against CSRF during the OAuth callback phase.
+- Contains the `redirect_url` and `document_limit` requested by the client.
+
+### Incremental Sync Strategy (Cursor-based)
+- Maintains a `last_sync_cursor` or `last_sync_timestamp` for each connection.
+- During periodic syncs, only queries documents modified after the cursor.
+- Handles provider pagination explicitly (e.g. `next_cursor` in Notion, `nextPageToken` in Google Drive).
+- Batches ingestion by publishing `sm.connection.synced` to NATS (e.g. 100 docs per event) to prevent overwhelming `sm-engine`.
 
 ## 5. NATS Events
 
@@ -79,3 +76,14 @@ service SmConnectorService {
 ---
 
 > **Next Steps**: FEAT-001 (Google Drive OAuth + Sync), FEAT-002 (Notion OAuth + Sync), FEAT-003 (OneDrive OAuth + Sync), SEC-001 (Token Encryption)
+
+## Task Specs Registry
+
+_To be populated during implementation._
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| TASK-CON-001 | Implement Domain Models | Pending | P0 |
+| TASK-CON-002 | Implement Usecases | Pending | P0 |
+| TASK-CON-003 | Implement Adapters and Repositories | Pending | P0 |
+| TASK-CON-004 | Infrastructure and Telemetry setup | Pending | P1 |

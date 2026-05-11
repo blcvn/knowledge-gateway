@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.ovstorage.v1;
+option go_package = "vnp-memory/services/ov-storage/api/proto/v1;ovstoragev1";
+
+service OvStorageService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

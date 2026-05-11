@@ -114,13 +114,54 @@ service OvSessionService {
 | ov-search | Outbound (NATS) | Async | Hotness boost via `ov.session.committed` |
 | ov-fs | Outbound (NATS) | Async | Write memories via `ov.session.memory.extracted` |
 
-## 7. Observability
+## 7. Core Algorithms
+
+### 7.1. Two-Phase Commit Pipeline
+
+When a session reaches a logical conclusion, it undergoes a two-phase commit:
+- **Phase 1 (Archive)**:
+  1. Load all uncommitted messages from `ov_messages`.
+  2. Compress the chat history using the Bifrost LLM `SessionCompressor`.
+  3. Write the compressed archive to `ov-fs` (e.g., `viking://{account}/{user}/sessions/archives/`).
+  4. Publish `ov.session.committed` to NATS to boost the hotness of referenced files.
+- **Phase 2 (Extract & Deduplicate)**:
+  1. Trigger the `MemoryExtractor` against the compressed session archive.
+  2. Run the semantic `MemoryDeduplicator` against existing memories.
+  3. Write final memories to `ov-fs`.
+  4. Publish `ov.session.memory.extracted`.
+
+### 7.2. Working Memory v2 Lifecycle
+
+A JSONB state machine representing active cognitive context:
+- **State Fields**: Track `User Context`, `Goals`, `Known Facts`, and `Errors/Obstacles`.
+- **Update Logic**: With each `AddMessage`, an LLM evaluator determines if the working memory needs updating. If goals are met, facts are crystallized, or errors occur, the state is patched.
+
+### 7.3. LLM Memory Extraction (5 Categories)
+
+The extractor scans the session and classifies raw candidate memories into 5 domains:
+1. **User Persona**: Traits, preferences, writing style.
+2. **Project Context**: Active codebases, tech stack, architectures.
+3. **Decisions**: Architectural or business decisions agreed upon.
+4. **Action Items**: Pending tasks or next steps.
+5. **Errors/Blockers**: Persistent bugs or constraints.
+
+### 7.4. Semantic Deduplication Algorithm
+
+For each extracted candidate memory, the system uses semantic similarity to determine the storage action:
+1. Calculate similarity with existing memories in the same category.
+2. If `sim == 1.0` (exact duplicate): Action = **SKIP**.
+3. If `sim > 0.85` (high overlap): Action = **MERGE** (ask LLM to fuse them).
+4. If `sim > 0.60` (related): Action = **CREATE** (store as distinct but related).
+5. If `sim < 0.60` (new topic): Action = **CREATE**.
+6. If a memory is invalidated by a new fact: Action = **ARCHIVE** (soft delete).
+
+## 8. Observability
 
 - **Metrics**: Session created/committed, commit duration, extraction by category, dedup actions
 - **Traces**: OTel spans: `ov-session.CommitSession` (Phase1 + Phase2 sub-spans)
 - **Health**: gRPC Health v1 + HTTP `/healthz` on port 9106
 
-## 8. Multi-Tenancy
+## 9. Multi-Tenancy
 
 - `account_id` in all queries, session namespace: `viking://{account}/{user}/sessions/`
 

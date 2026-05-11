@@ -1,53 +1,66 @@
----
-id: TDD-zep-admin
-title: Technical Design — zep-admin
-service: zep-admin
-version: 1.1.0
-status: Ready
-created: 2026-05-09
-updated: 2026-05-10
-group: Zep
----
+# Technical Design Document: Zep Admin Service
 
-# Technical Design — zep-admin
+## 1. System Architecture
 
-> **Group**: Zep | **gRPC Port**: 9066 | **Health Port**: 12066
+The `zep-admin` service follows the 4-layer Clean Architecture, focusing on tenant isolation, project metadata, API keys, and health aggregation.
 
-## 1. Service Overview
+```text
+zep-admin/
+├── internal/
+│   ├── domain/
+│   │   ├── project/     # Project entities, Tenant ID
+│   │   └── auth/        # API keys, Argon2id hashing
+│   ├── usecase/
+│   │   ├── project/     # Project lifecycle management
+│   │   ├── auth/        # Key generation and validation
+│   │   └── health/      # Cross-service health aggregation
+│   ├── adapter/
+│   │   ├── grpc/        # gRPC Handlers (ZepAdminService)
+│   │   └── broker/      # NATS Publisher
+│   └── infra/
+│       ├── postgres/    # PostgreSQL for projects and keys
+│       ├── config/      # Viper configuration
+│       └── metrics/     # Prometheus/OTel
+```
 
-Cross-cutting admin service. Health aggregation, project/tenant management, API key lifecycle, schema migration. Orchestrates health checks across all 5 Zep domain services.
+## 2. Component Design
 
-## 2. Domain Model
+### 2.1 Domain Layer
+- **Project Entity**: Contains `uuid`, `name`, `config`, timestamps.
+- **ApiKey Entity**: Contains `key_hash` (Argon2id), `project_uuid`, `role`.
+- **Interfaces**: `ProjectRepository`, `ApiKeyRepository`, `EventPublisher`.
 
-- **Project**: UUID, Name, Description, OrganizationID, Settings{MaxRequestSize, RequestTimeout, RateLimitRPS, TelemetryEnabled, GraphitiEnabled}
-- **APIKey**: UUID, KeyHash (SHA-256), KeyPrefix (8 chars), ProjectUUID, Name, Scopes[], ExpiresAt, LastUsedAt, RevokedAt
-- **AggregatedHealth**: Status (SERVING|NOT_SERVING|DEGRADED), Services map, Timestamp
-- **HealthStatus**: SERVING | NOT_SERVING | DEGRADED
+### 2.2 Usecase Layer
+- **CreateProject**: Creates a project in DB, publishes `zep.admin.project.created` to NATS.
+- **DeleteProject**: Deletes project, publishes `zep.admin.project.deleted` for cascade removal.
+- **GenerateApiKey**: Generates raw token, hashes with Argon2id, stores hash, returns raw token.
 
-## 3. gRPC API (11 RPCs)
+### 2.3 Adapter Layer
+- **gRPC Handlers**: Implements `ZepAdminService`.
+- **NATS Publisher**: Emits system lifecycle events.
 
-- **Health**: AggregatedHealth (parallel check)
-- **Projects**: Create, Get, List, Update, Delete
-- **API Keys**: Create (raw key, shown once), Validate, List, Revoke
-- **Schema**: MigrateSchema
+### 2.4 Infrastructure Layer
+- **Database**: PostgreSQL with `admin` schema.
+- **Observability**: OpenTelemetry tracing, Prometheus metrics (`zep_admin_projects_total`, `zep_admin_api_calls_total`).
 
-## 4. NATS Events
+## 3. Data Models
 
-| Subject | Subscribers |
-|---------|-------------|
-| `zep.admin.project.created` | All Zep services |
-| `zep.admin.project.deleted` | All Zep services (cascade) |
+```sql
+CREATE TABLE projects (
+    uuid UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    deleted_at BIGINT
+);
 
-## 5. Storage
-
-PostgreSQL: projects table (settings JSONB) + api_keys table (SHA-256 hash, scopes array).
-
-## 6. Security
-
-- API keys: SHA-256 hashed, raw key shown once at creation
-- Scopes: read, write, admin
-- Revocation: immediate via revoked_at timestamp
-
----
-
-> **Next Steps**: Decompose into FEAT specs in `specs/features/`.
+CREATE TABLE api_keys (
+    id UUID PRIMARY KEY,
+    project_uuid UUID REFERENCES projects(uuid) ON DELETE CASCADE,
+    key_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL,
+    created_at BIGINT NOT NULL,
+    expires_at BIGINT
+);
+```

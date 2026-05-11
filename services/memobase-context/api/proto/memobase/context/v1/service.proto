@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package memobase.context.v1;
+option go_package = "github.com/vnp-community/vnp-memory/services/memobase-context/api/proto/memobase/context/v1;contextv1";
+
+import "google/protobuf/timestamp.proto";
+
+service MemobaseContextService {
+  rpc GetContext(GetContextRequest) returns (ContextResponse);
+  rpc GetProfiles(GetProfilesRequest) returns (ProfilesResponse);
+  rpc SearchProfiles(SearchProfilesRequest) returns (SearchProfilesResponse);
+}
+
+message GetContextRequest {
+  string user_id = 1;
+  string project_id = 2;
+  int32 max_token_size = 3;
+  repeated string prefer_topics = 4;
+  repeated string only_topics = 5;
+  float profile_event_ratio = 6;
+  string chats_context = 7;
+}
+
+message ContextResponse {
+  string context = 1;
+  int32 profile_count = 2;
+  int32 event_count = 3;
+  int32 total_tokens = 4;
+}
+
+message GetProfilesRequest {
+  string user_id = 1;
+  string project_id = 2;
+  repeated string topics = 3;
+  int32 max_subtopic_size = 4;
+  int32 max_token_size = 5;
+}
+
+message ProfilesResponse {
+  repeated UserProfile profiles = 1;
+}
+
+message SearchProfilesRequest {
+  string user_id = 1;
+  string project_id = 2;
+  string query = 3;
+  int32 limit = 4;
+}
+
+message SearchProfilesResponse {
+  repeated UserProfile profiles = 1;
+}
+
+message UserProfile {
+  string id = 1;
+  string topic = 2;
+  string sub_topic = 3;
+  string content = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}

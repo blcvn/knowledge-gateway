@@ -2,7 +2,7 @@
 id: DOC-S01
 service: sm-memory
 version: 1.1.0
-status: Active
+status: Deprecated
 created: 2026-05-09
 updated: 2026-05-10
 owner: VNP Memory — Supermemory Team
@@ -13,6 +13,9 @@ owner: VNP Memory — Supermemory Team
 > **Group**: Supermemory (Adaptive KG Memory) | **gRPC Port**: 9072 | **Health Port**: 12072 | **Origin**: Supermemory
 
 ## Purpose
+
+> **🚨 DEPRECATION NOTICE**: This service has been merged into `sm-engine`. See [ARCH-007-merge-sm-engine](../../../specs/architecture/ARCH-007-merge-sm-engine.md) for details.
+
 
 Memory engine with **Ebbinghaus forgetting curve** decay. Fact extraction from documents, knowledge graph construction, and adaptive memory retention based on access patterns.
 

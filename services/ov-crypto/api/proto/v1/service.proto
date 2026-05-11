@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.ovcrypto.v1;
+option go_package = "vnp-memory/services/ov-crypto/api/proto/v1;ovcryptov1";
+
+service OvCryptoService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

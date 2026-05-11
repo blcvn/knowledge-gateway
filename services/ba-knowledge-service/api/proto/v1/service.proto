@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.baknowledgeservice.v1;
+option go_package = "vnp-memory/services/ba-knowledge-service/api/proto/v1;baknowledgeservicev1";
+
+service BaKnowledgeServiceService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

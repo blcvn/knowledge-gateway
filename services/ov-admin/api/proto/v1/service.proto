@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.ovadmin.v1;
+option go_package = "vnp-memory/services/ov-admin/api/proto/v1;ovadminv1";
+
+service OvAdminService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

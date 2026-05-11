@@ -13,6 +13,9 @@ group: Supermemory
 
 > **Group**: Supermemory | **gRPC Port**: 9074 | **Health Port**: 9119
 
+> **🚨 DEPRECATION NOTICE**: This specification is obsolete. The service has been merged into `sm-engine` (Ref: [ARCH-007-merge-sm-engine]).
+
+
 ## 1. Service Overview
 
 User profiles (static preferences + dynamic learned traits) and organization settings. Auto-updated from memory events to build personalization context.

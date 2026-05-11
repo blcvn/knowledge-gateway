@@ -1,67 +1,53 @@
----
-id: TDD-zep-graph
-title: Technical Design — zep-graph
-service: zep-graph
-version: 1.1.0
-status: Ready
-created: 2026-05-09
-updated: 2026-05-10
-group: Zep
----
+# Technical Design Document: Zep Graph Service
 
-# Technical Design — zep-graph
+## 1. System Architecture
 
-> **Group**: Zep | **gRPC Port**: 9064 | **Health Port**: 12064
+`zep-graph` operates mostly asynchronously from the critical user path. It uses LLMs to extract a temporal knowledge graph from ingested messages.
 
-## 1. Service Overview
+```text
+zep-graph/
+├── internal/
+│   ├── domain/
+│   │   ├── fact/        # Nodes, Edges, Episodes
+│   │   └── ontology/    # Schema definitions for extraction
+│   ├── usecase/
+│   │   ├── extractor/   # LLM interaction, Prompt building
+│   │   ├── graph/       # Graphiti pipeline logic
+│   │   └── ontology/    # Ontology management
+│   ├── adapter/
+│   │   ├── grpc/        # gRPC Handlers for manual fact overrides
+│   │   ├── broker/      # NATS Subscriber & Publisher
+│   │   └── llm/         # LLM Client integration
+│   └── infra/
+│       ├── neo4j/       # Core Graph Database (Nodes/Edges)
+│       └── postgres/    # Fact Metadata fallback
+```
 
-Temporal Knowledge Graph management. Async entity extraction via Graphiti LLM pipeline. Neo4j storage for nodes, edges (facts), episodes. 9-type node ontology with temporal annotations.
+## 2. Component Design
 
-## 2. Domain Model
+### 2.1 Domain Layer
+- **Node**: Represents entities. Extracted based on strict **Node Priority Hierarchy**:
+  1. `User` (singleton)
+  2. `Assistant` (singleton)
+  3. `Preference` (low threshold for classification)
+  4. `Organization`
+  5. `Event`
+  6. `Location`
+  7. `Document`
+  8. `Topic`
+  9. `Object` (last resort)
+- **Edge**: Represents relationships, annotated with temporal bounds (`valid_at`, `invalid_at`). Standard types include `LOCATED_AT` (Entity→Location) and `OCCURRED_AT` (Event→Entity/Location).
+- **Episode**: Represents a distinct chunk of grouped interactions temporally.
 
-- **EntityNode**: UUID, Name, NodeType (9 types), GroupID, Summary, Labels[], Properties{}, CreatedAt
-- **EntityEdge**: UUID, Name, Fact, SourceID, TargetID, EdgeType, GroupID, Temporal{ValidAt, InvalidAt, ExpiredAt}
-- **Episode**: UUID, Name, Content, GroupID, SourceID (prefixed UUID)
-- **NodeOntology**: Priority 1-6 hierarchy (User → Object)
-- **EdgeOntology**: LOCATED_AT, OCCURRED_AT relationship types
+### 2.2 Usecase Layer
+- **Graphiti Extractor**: Receives new messages, clusters them, prompts the LLM to identify updates, additions, or invalidations to existing facts.
+- **Group ID Strategy**: Messages are grouped by session ID. When `addGroupIDPrefix=true`, episode UUIDs are prefixed with `{groupID}-{messageUUID}` to namespace episodes across groups.
+- **Temporal Resolver**: Ensures facts that contradict each other are correctly timestamped using `invalid_at` instead of hard deletion.
 
-## 3. Critical Data Flows
+### 2.3 Adapter Layer
+- **NATS Subscriber**: Binds to `zep.memory.messages.ingested` queue group.
+- **LLM Client**: Standard interface to generic LLM APIs (OpenAI, Anthropic, or Local).
 
-### Async Entity Extraction (NATS Consumer)
-1. Consume `zep.memory.messages.ingested` from NATS
-2. Forward to Graphiti: PutMemory(sessionID, messages, addPrefix=true)
-3. If user linked: also PutMemory(userID, messages, addPrefix=true)
-4. Publish `zep.graph.extraction.completed`
-
-### Graphiti HTTP Integration
-- PutMemory → POST /messages
-- GetMemory → POST /get-memory
-- Search → POST /search
-- CRUD → GET/DELETE /entity-edge/{uuid}
-
-## 4. NATS Events
-
-### Consumed
-| Subject | Action |
-|---------|--------|
-| `zep.memory.messages.ingested` | Extract entities via Graphiti |
-| `zep.user.deleted` | Delete user graph data |
-
-### Published
-| Subject | Subscribers |
-|---------|-------------|
-| `zep.graph.extraction.completed` | zep-search |
-| `zep.graph.fact.created` | zep-search |
-| `zep.graph.fact.invalidated` | zep-search |
-
-## 5. Storage
-
-Neo4j: EntityNodes, EntityEdges (with temporal annotations), Episodes. Graph queries via Cypher. Max pool: 50 connections.
-
-## 6. Multi-Tenancy
-
-GroupID-based isolation. GroupID = user_id | session_id.
-
----
-
-> **Next Steps**: Decompose into FEAT specs in `specs/features/`.
+### 2.4 Infrastructure Layer
+- **Neo4j 5.x**: Chosen for native temporal and vector search capabilities in graph traversals.
+- **Resilience**: Redis rate-limiting/backoff for LLM API limits.

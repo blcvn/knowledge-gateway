@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package vnp.memory.smengine.v1;
+option go_package = "vnp-memory/services/sm-engine/api/proto/v1;smenginev1";
+
+service SmEngineService {
+  rpc ProcessDocument(ProcessDocumentRequest) returns (ProcessDocumentResponse);
+  rpc SearchMemories(SearchMemoriesRequest) returns (SearchMemoriesResponse);
+}
+
+message ProcessDocumentRequest {
+  string content = 1;
+  string space_id = 2;
+}
+
+message ProcessDocumentResponse {
+  string document_id = 1;
+  int32 chunks_created = 2;
+  int32 memories_extracted = 3;
+}
+
+message SearchMemoriesRequest {
+  string query = 1;
+  string space_id = 2;
+}
+
+message SearchMemoriesResponse {
+  repeated string memory_snippets = 1;
+}

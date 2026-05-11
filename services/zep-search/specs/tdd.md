@@ -1,58 +1,47 @@
----
-id: TDD-zep-search
-title: Technical Design — zep-search
-service: zep-search
-version: 1.1.0
-status: Ready
-created: 2026-05-09
-updated: 2026-05-10
-group: Zep
----
+# Technical Design Document: Zep Search Service
 
-# Technical Design — zep-search
+## 1. System Architecture
 
-> **Group**: Zep | **gRPC Port**: 9065 | **Health Port**: 12065
+`zep-search` is an independently scalable search head that implements complex reranking and multi-modal retrieval.
 
-## 1. Service Overview
-
-Semantic search across Temporal KG. Multi-scope search (edges/nodes/episodes) with 5 reranking strategies. Redis caching with 30s TTL. Called by zep-memory for context assembly.
-
-## 2. Domain Model
-
-- **GraphSearchQuery**: query, user_id, group_ids, scope, reranker, filters, limit
-- **SessionSearchQuery**: query, user_id, session_ids, limit, max_facts
-- **SearchScope**: edges | nodes | episodes | all
-- **RerankerType**: rrf | mmr | cross_encoder | node_distance | episode_mentions
-- **SearchResult**: Items[], Total, Query, Scope, Reranker, LatencyMs
-
-## 3. Port Interfaces
-
-```go
-type SearchService interface {
-  GraphSearch, SearchSessions, GetRelevantFacts
-}
-type GraphitiSearchClient interface { Search, GetMemory }
-type SearchCacheStore interface { Get, Set, Invalidate }
+```text
+zep-search/
+├── internal/
+│   ├── domain/
+│   │   └── search/      # Query intent, Search Result models
+│   ├── usecase/
+│   │   ├── retriever/   # Session & Graph retrievers
+│   │   └── ranker/      # RRF, MMR, Temporal Decay logic
+│   ├── adapter/
+│   │   └── grpc/        # ZepSearchService endpoints
+│   └── infra/
+│       ├── postgres/    # pgvector queries
+│       └── neo4j/       # Cypher traversals
 ```
 
-## 4. NATS Events (Consumed)
+## 2. Component Design
 
-| Subject | Action |
-|---------|--------|
-| `zep.graph.extraction.completed` | Invalidate cache for group |
-| `zep.graph.fact.created` | Update cache |
-| `zep.graph.fact.invalidated` | Remove from cache |
+### 2.1 Domain Layer
+- **Query**: Structured representation of search intent including context filters (`project_uuid`, `user_uuid`).
+- **ScoredResult**: Agnostic result container with a normalized `float32` score.
 
-## 5. Reranker Strategies
+### 2.2 Usecase Layer
+- **VectorRetriever**: Executes `pgvector` similarity searches.
+- **GraphRetriever**: Executes Cypher queries against Neo4j to find linked entities.
+- **Search Query Builder**: Parses `GraphSearchQuery` which supports:
+  - `scope`: `edges`, `nodes`, or `episodes`.
+  - `filters`: `node_labels`, `edge_types` to improve precision and reduce latency.
+  - `thresholds`: `min_fact_rating`, `limit`, `mmr_lambda`.
+- **Reranker Pipeline**:
+  - Implements Reciprocal Rank Fusion (`rrf`) to merge Graph and Vector results.
+  - Implements Maximal Marginal Relevance (`mmr`) for diversity.
+  - Implements `node_distance`, `episode_mentions`, and `cross_encoder` rerankers.
+  - Applies Temporal Decay to downweight older facts.
 
-| Strategy | Config | Best For |
-|----------|--------|----------|
-| RRF | K=60 | General-purpose |
-| MMR | Lambda=0.5 | Diversity |
-| CrossEncoder | ms-marco model | Accuracy |
-| NodeDistance | MaxDepth=3 | Graph-aware |
-| EpisodeMentions | Decay=0.95 | Recency |
+### 2.3 Adapter Layer
+- **gRPC Server**: Exposes synchronous search endpoints. Highly concurrent.
 
----
-
-> **Next Steps**: Decompose into FEAT specs in `specs/features/`.
+### 2.4 Infrastructure Layer
+- **PostgreSQL**: Read-replicas optimized for vector search operations.
+- **Neo4j**: Graph queries via Bolt protocol.
+- **Observability**: Traces latency of each retrieval branch to isolate bottlenecks.

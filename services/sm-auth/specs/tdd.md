@@ -40,17 +40,19 @@ service SmAuthService {
 }
 ```
 
-## 4. API Key Lifecycle
+## 4. Auth & Cryptographic Algorithms
 
-```
-[Create] → Generate random key → Prefix "sm_" → SHA-256 hash → Store hash
-  ↓
-[Return raw key ONCE] → Client stores securely
-  ↓
-[Validate] → SHA-256(input) → Compare with stored hash → Return AuthContext
-  ↓
-[Revoke] → Set revoked_at → Reject future validations
-```
+### API Key Hashing (Argon2id / SHA-256)
+- **Generation**: Generate 32 bytes of secure random entropy (`crypto/rand`).
+- **Encoding**: Base58 encode to generate a clean string, append `sm_` prefix.
+- **Hashing**: Use SHA-256 (or Argon2id) before storing in PostgreSQL. The raw key is never stored.
+- **Verification**: `hash(input_key)` matched against `stored_hash` using constant-time comparison to prevent timing attacks.
+
+### JWT RS256 Verification
+- Service downloads public JWKS from the IdP.
+- Token signature is verified using `RS256` (RSA Signature with SHA-256).
+- Validates `exp` (expiration), `iss` (issuer), and `aud` (audience).
+- Decodes `org_id` and RBAC roles directly from the JWT claims to construct `AuthContext`.
 
 ## 5. NATS Events
 
@@ -74,3 +76,14 @@ service SmAuthService {
 ---
 
 > **Next Steps**: FEAT-001 (JWT Validation), FEAT-002 (API Key CRUD), FEAT-003 (RBAC), SEC-001 (Key Rotation)
+
+## Task Specs Registry
+
+_To be populated during implementation._
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| TASK-AUT-001 | Implement Domain Models | Pending | P0 |
+| TASK-AUT-002 | Implement Usecases | Pending | P0 |
+| TASK-AUT-003 | Implement Adapters and Repositories | Pending | P0 |
+| TASK-AUT-004 | Infrastructure and Telemetry setup | Pending | P1 |

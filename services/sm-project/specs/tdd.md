@@ -52,7 +52,7 @@ service SmProjectService {
 - `idx_space_container_tag` UNIQUE (org_id, container_tag) — tag lookup
 - `idx_member_user` (user_id) — user's spaces
 
-## 5. Permissions Matrix
+## 5. Permissions Matrix & RBAC Algorithms
 
 | Action | Owner | Admin | Editor | Viewer |
 |--------|-------|-------|--------|--------|
@@ -63,6 +63,14 @@ service SmProjectService {
 | Delete space | ✅ | ❌ | ❌ | ❌ |
 | Change settings | ✅ | ✅ | ❌ | ❌ |
 
+### RBAC Resolution Algorithm
+For any action `A` by user `U` on space `S`:
+1. If `S.visibility == public`, grant `Read` to any authenticated user.
+2. Lookup `Role = spaces_to_members(S.id, U.id)`.
+3. If `Role` is undefined, lookup `OrgRole` from JWT context. If `OrgRole == Owner`, grant `Admin` equivalent permissions.
+4. Verify `Role` satisfies the minimum required level for `A` from the Permissions Matrix.
+5. If modifying members, ensure a user cannot escalate a target beyond their own role level.
+
 ## 6. Observability
 
 - **Metrics**: space_created_total, space_deleted_total, member_added_total
@@ -71,3 +79,14 @@ service SmProjectService {
 ---
 
 > **Next Steps**: FEAT-001 (Space CRUD), FEAT-002 (Membership RBAC), FEAT-003 (Container Tag Management)
+
+## Task Specs Registry
+
+_To be populated during implementation._
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| TASK-PRO-001 | Implement Domain Models | Pending | P0 |
+| TASK-PRO-002 | Implement Usecases | Pending | P0 |
+| TASK-PRO-003 | Implement Adapters and Repositories | Pending | P0 |
+| TASK-PRO-004 | Infrastructure and Telemetry setup | Pending | P1 |

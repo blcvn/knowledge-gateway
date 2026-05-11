@@ -13,6 +13,9 @@ group: Supermemory
 
 > **Group**: Supermemory | **gRPC Port**: 9071 | **Health Port**: 12071
 
+> **🚨 DEPRECATION NOTICE**: This specification is obsolete. The service has been merged into `sm-engine` (Ref: [ARCH-007-merge-sm-engine]).
+
+
 ## 1. Service Overview
 
 Document CRUD, chunking, and ingestion pipeline. Supports PDF, HTML, text, and image content extraction with format-aware chunking strategies.

@@ -114,14 +114,41 @@ service OvSearchService {
 | ov-session | Inbound (NATS) | Async | Session commit → hotness boost |
 | ov-resource | Inbound (NATS) | Async | Resource ingested → indexing |
 
-## 7. Observability
+## 7. Core Algorithms
+
+### 7.1. Hierarchical Search Pipeline
+
+The core search executes a 7-step pipeline to guarantee comprehensive and convergent retrieval:
+1. **Query Intent Analysis**: Analyze query to detect target node types and domain.
+2. **Dense Vector Search**: Qdrant search on `ov_embeddings` to find the closest L0 abstract chunks.
+3. **Sparse Keyword Search**: BM25 exact match on sparse vectors (if enabled).
+4. **Hierarchical Score Propagation**: Propagate match scores up the VikingFS directory tree (Child → Parent) to elevate relevant subtrees.
+5. **Hotness Score Integration**: Multiply the semantic score by the `exp(-λt)` decayed hotness score to favor recently active contexts.
+6. **Convergence Detection**: Stop expanding the search radius when the aggregated scores of top-N nodes stabilize between iterations (delta < epsilon).
+7. **Cross-Encoder Reranking**: Send the top-K filtered results to a reranking model to refine the final ordering.
+
+### 7.2. Hotness Scoring & Decay
+
+Hotness represents the recency and frequency of access/updates:
+- **Base Score**: Initialized when a file/directory is written or referenced.
+- **Decay Function**: `H(t) = H_0 * exp(-λ * Δt)` where `λ` is the decay constant, and `Δt` is the time elapsed since the last update.
+- **Boost Event**: Listening to `ov.session.committed` boosts the hotness of all files referenced in that session by `+B`.
+
+### 7.3. Tiered Context Loading
+
+Contextual payload retrieval depends on the target depth required by the LLM prompt:
+- **L0 (Abstract)**: Quick vector metadata, minimal tokens (~100 tokens).
+- **L1 (Overview)**: Extended summary fetched from `ov-fs` (~2K tokens).
+- **L2 (Full Content)**: Entire file loaded from `ov-fs` for deep analysis.
+
+## 8. Observability
 
 - **Metrics**: Query count/latency, embedding upsert count, hotness recompute duration
 - **Traces**: OTel spans: `ov-search.HierarchicalSearch` (with sub-spans per pipeline step)
 - **Logs**: Structured JSON with `request_id`, `account_id`, `query_hash`
 - **Health**: gRPC Health v1 + HTTP `/healthz` on port 9105
 
-## 8. Multi-Tenancy
+## 9. Multi-Tenancy
 
 - **Isolation Key**: `account_id` — Qdrant payload filter + PostgreSQL WHERE clause
 - **Vector Isolation**: Payload index on `account_id` for filtered search

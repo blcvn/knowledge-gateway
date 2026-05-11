@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package vnp.memory.smsearch.v1;
+option go_package = "vnp-memory/services/sm-search/api/proto/v1;smsearchv1";
+
+service SmSearchService {
+  rpc HybridSearch(HybridSearchRequest) returns (HybridSearchResponse);
+}
+
+message HybridSearchRequest {
+  string query = 1;
+  string space_id = 2;
+  int32 limit = 3;
+}
+
+message HybridSearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  string id = 1;
+  string content = 2;
+  float score = 3;
+}

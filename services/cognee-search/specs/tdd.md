@@ -2,22 +2,23 @@
 id: TDD-cognee-search
 title: Technical Design — cognee-search
 service: cognee-search
-version: 1.0.0
-status: Draft
+version: 2.0.0
+status: Ready
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-10
 group: Cognee
+linked_sol: SOL-001
 ---
 
 # Technical Design — cognee-search
 
-> **Group**: Cognee | **gRPC Port**: 9013 | **Origin**: Cognee L5
+> **Group**: Cognee | **gRPC Port**: 9013 | **Health Port**: 9093 | **Origin**: Cognee L5
 
 ## 1. Service Overview
 
-15 retrieval strategies over knowledge graph + vector store. RAG completion with LLM. Strategy pattern dispatcher routes queries to appropriate retriever implementations.
+15 retrieval strategies over knowledge graph + vector store. 3-phase pipeline: retrieve → merge (RRF) → rerank. RAG completion with LLM. Strategy pattern dispatcher routes queries to appropriate retriever implementations.
 
-## 2. Search Strategies (from Cognee SearchType)
+## 2. Search Strategies
 
 | Type | Source | LLM Required | Performance |
 |------|--------|-------------|-------------|
@@ -59,12 +60,38 @@ service CogneeSearchService {
 |--------|----------|---------|
 | vnp-search-hub | gRPC (called by) | Cross-engine search fan-out |
 
-## 6. Observability
+## 6. Multi-Tenancy
 
-- Metrics: search latency per strategy, cache hit ratio
-- Traces: OTel spans per retriever
-- Logs: slog JSON with query_type, top_k, result_count
+Tenant isolation via Qdrant tenant_id filter + Neo4j namespace labels.
 
 ---
 
-> **Next Steps**: Decompose into FEAT specs for each retriever strategy.
+## Feature Specs Registry
+
+| ID | Title | Status | Priority | Phase |
+|----|-------|--------|----------|-------|
+| [FEAT-SEA-001](./features/FEAT-SEA-001-domain-usecase-layer.md) | Domain + Usecase (15 Strategies, RRF) | Ready | P0 | Phase 1 |
+| [FEAT-SEA-002](./features/FEAT-SEA-002-adapter-layer.md) | Adapter Layer (15 Retrievers + gRPC) | Ready | P0 | Phase 2 |
+| [FEAT-SEA-003](./features/FEAT-SEA-003-infra-wire.md) | Infrastructure + Wire DI | Ready | P0 | Phase 3 |
+
+## Architecture Specs Registry
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| — | _To be populated_ | — | — |
+
+## Technical Specs Registry
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| — | _To be populated_ | — | — |
+
+## Quality Specs Registry
+
+| ID | Title | Status | Priority |
+|----|-------|--------|----------|
+| — | _To be populated_ | — | — |
+
+---
+
+> **Linked**: [SOL-001](../../cognee-pipeline/specs/solutions/SOL-001-implement-cognee-pipeline-service.md) | [Architecture Spec](../../../services/cognee/specs/services/04-cognee-search.md)

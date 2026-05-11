@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.smauth.v1;
+option go_package = "vnp-memory/services/sm-auth/api/proto/v1;smauthv1";
+
+service SmAuthService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

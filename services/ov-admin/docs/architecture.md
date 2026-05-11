@@ -79,18 +79,18 @@ Each API key is scoped to an account. Users cannot access resources outside thei
 
 ### Health Aggregation
 
-Fan-out gRPC health checks to all 5 OV services using `errgroup`:
+Fan-out gRPC health checks to the active OV services using `errgroup`:
 
 ```go
-services := []string{"ov-fs:9051", "ov-search:9052", "ov-session:9053", "ov-resource:9054", "ov-crypto:9055"}
+services := []string{"ov-storage:9051", "ov-search:9052", "ov-session:9053"}
 // Parallel health check → aggregate → return unified status
 ```
 
 ## External Dependencies
 
 - **PostgreSQL**: Account, user, API key persistence
-- **ov-crypto**: Argon2id hashing (or direct use of `golang.org/x/crypto/argon2`)
-- **All OV services**: Health aggregation via gRPC Health v1
+- **ov-storage**: Argon2id hashing (if delegated) or direct `crypto/argon2`
+- **OV services**: Health aggregation via gRPC Health v1 (`ov-storage`, `ov-search`, `ov-session`)
 
 ## Component Diagram
 
@@ -100,11 +100,9 @@ graph LR
     AD --> UC[Account/User Usecase]
     UC --> PG[(PostgreSQL)]
     UC --> HC[Health Checker]
-    HC --> FS[ov-fs]
+    HC --> OS[ov-storage]
     HC --> SR[ov-search]
     HC --> SS[ov-session]
-    HC --> RS[ov-resource]
-    HC --> CR[ov-crypto]
 ```
 
 ## Known Limitations

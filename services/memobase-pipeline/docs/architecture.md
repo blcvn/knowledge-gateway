@@ -38,6 +38,20 @@ services/memobase-pipeline/
 3. **Token threshold**: Buffer flushes when accumulated tokens ≥ 1024 (configurable). FSM state transitions tracked in Redis for fast lookups.
 4. **External events preserved**: `memobase.pipeline.completed` → memobase-context (for context assembly), `memobase.profile.changed` → memobase-context (cache invalidation), `memobase.event.created` → vnp-platform (event timeline).
 
+## Memory Processing Pipeline Algorithm
+
+The pipeline executes a deterministic, fixed-cost sequence for extracting profiles and events:
+
+1. **Entry Summary (LLM #1)**: Summarizes the entire token-buffered conversational input into a single `user_memo_str`.
+2. **Profile Processing**:
+   - **Topic Extraction (LLM #2)**: Parses `user_memo_str` into structured facts (Topic, Subtopic, Content).
+   - **YOLO Merge (LLM #3)**: Compares extracted facts with existing profiles to make one-shot Add/Update/Delete decisions.
+   - **Organize Profiles**: Subtopic reorganization to ensure topic budgets are maintained (no LLM).
+   - **Re-summary**: Triggered only if a merged profile slot exceeds the hard token limit (conditional LLM).
+3. **Temporal Processing**:
+   - **Event Tagging**: Optional semantic classification of the event.
+   - **Persistence & Embedding**: Event and gist data saved and embedded via vector adapters (pgvector).
+
 ## External Dependencies
 
 | Dependency | Purpose |

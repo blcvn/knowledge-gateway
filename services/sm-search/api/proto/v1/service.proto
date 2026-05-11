@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.smsearch.v1;
+option go_package = "vnp-memory/services/sm-search/api/proto/v1;smsearchv1";
+
+service SmSearchService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

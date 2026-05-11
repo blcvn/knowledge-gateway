@@ -1,0 +1,12 @@
+syntax = "proto3";
+package vnp.memory.smconnector.v1;
+option go_package = "vnp-memory/services/sm-connector/api/proto/v1;smconnectorv1";
+
+service SmConnectorService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {}
+message PingResponse {
+  string status = 1;
+}

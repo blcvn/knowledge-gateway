@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package openviking.admin.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/services/ov-admin/api/gen/openviking/admin/v1;adminv1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_ROOT = 1;
+  ROLE_ADMIN = 2;
+  ROLE_USER = 3;
+  ROLE_AGENT = 4;
+}
+
+message NamespacePolicy {
+  int32 max_users = 1;
+  int32 storage_quota_mb = 2;
+}
+
+message Account {
+  string id = 1;
+  string name = 2;
+  NamespacePolicy namespace_policy = 3;
+  string status = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message User {
+  string id = 1;
+  string account_id = 2;
+  string name = 3;
+  Role role = 4;
+  string status = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message APIKey {
+  string key_id = 1;
+  string raw_key = 2; // Only populated on creation
+  Role role = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message ValidateAPIKeyResponse {
+  bool valid = 1;
+  string account_id = 2;
+  string user_id = 3;
+  Role role = 4;
+  string agent_id = 5;
+}
+
+// Requests
+message CreateAccountRequest {
+  string name = 1;
+  NamespacePolicy namespace_policy = 2;
+}
+
+message GetAccountRequest {
+  string id = 1;
+}
+
+message ListAccountsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message ListAccountsResponse {
+  repeated Account accounts = 1;
+}
+
+message DeleteAccountRequest {
+  string id = 1;
+}
+
+message CreateUserRequest {
+  string account_id = 1;
+  string name = 2;
+  Role role = 3;
+}
+
+message GetUserRequest {
+  string account_id = 1;
+  string id = 2;
+}
+
+message ListUsersRequest {
+  string account_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+message DeleteUserRequest {
+  string account_id = 1;
+  string id = 2;
+}
+
+message CreateAPIKeyRequest {
+  string account_id = 1;
+  string user_id = 2;
+  Role role = 3;
+  string label = 4;
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message ValidateAPIKeyRequest {
+  string raw_key = 1;
+}
+
+message RevokeRequest {
+  string key_id = 1;
+}
+
+message ListAPIKeysRequest {
+  string account_id = 1;
+}
+
+message ListAPIKeysResponse {
+  repeated APIKey api_keys = 1;
+}
+
+message HealthResponse {
+  map<string, string> services = 1;
+}
+
+service OvAdminService {
+  rpc CreateAccount(CreateAccountRequest) returns (Account);
+  rpc GetAccount(GetAccountRequest) returns (Account);
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc DeleteAccount(DeleteAccountRequest) returns (google.protobuf.Empty);
+
+  rpc CreateUser(CreateUserRequest) returns (User);
+  rpc GetUser(GetUserRequest) returns (User);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty);
+
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (APIKey);
+  rpc ValidateAPIKey(ValidateAPIKeyRequest) returns (ValidateAPIKeyResponse);
+  rpc RevokeAPIKey(RevokeRequest) returns (google.protobuf.Empty);
+  rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
+
+  rpc GetHealth(google.protobuf.Empty) returns (HealthResponse);
+}

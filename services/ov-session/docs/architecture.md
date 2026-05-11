@@ -54,22 +54,24 @@ services/ov-session/
 │       └── wire/wire.go
 ```
 
-## Key Design Decisions
+## Core Algorithms & Design Decisions
 
-### 2-Phase Commit (from `session.py` 107KB)
+### Two-Phase Commit Algorithm (from `session.py` 107KB)
 
-Phase 1 — **Archive**: SessionCompressor summarizes conversation, writes compressed archive to ov-fs.
+When a session concludes:
+- **Phase 1 (Archive)**: `SessionCompressor` summarizes conversation, writes compressed archive to `ov-fs`, and triggers `ov.session.committed`.
+- **Phase 2 (Extract)**: `MemoryExtractor` (LLM) extracts categorized memories, `MemoryDeduplicator` detects duplicates via semantic similarity, writes unique memories to `ov-fs`.
 
-Phase 2 — **Extract**: MemoryExtractor (LLM) extracts categorized memories, MemoryDeduplicator detects duplicates, writes unique memories to ov-fs.
+### Semantic Deduplication Algorithm (from `memory_deduplicator.py`)
 
-### Memory Deduplication (from `memory_deduplicator.py`)
-
-| Decision | Action |
-|----------|--------|
-| `CREATE` | New unique memory → write to ov-fs |
-| `MERGE` | Similar existing memory → merge content |
-| `SKIP` | Exact duplicate → discard |
-| `ARCHIVE` | Outdated existing memory → mark archived |
+Calculates semantic similarity between a new candidate memory and existing memories in the same category:
+| Similarity | Action | Meaning |
+|------------|--------|---------|
+| `sim < 0.60` | `CREATE` | New unique topic → write to ov-fs |
+| `sim > 0.60` | `CREATE` | Distinct but related |
+| `sim > 0.85` | `MERGE` | Highly similar → LLM fuses them |
+| `sim == 1.0` | `SKIP` | Exact duplicate → discard |
+| Invalidated | `ARCHIVE` | Outdated memory → mark archived |
 
 ### Compressor Versioning (from `compressor_v2.py`)
 

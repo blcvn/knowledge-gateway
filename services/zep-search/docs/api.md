@@ -1,91 +1,44 @@
----
-id: DOC-S02
-service: zep-search
-version: 1.1.0
-status: Active
-created: 2026-05-09
-updated: 2026-05-10
----
+# Zep Search API
 
-# zep-search — API Reference
+## Overview
+The Zep Search Service provides high-performance semantic and hybrid search capabilities across both message histories (PostgreSQL pgvector) and the Knowledge Graph (Neo4j).
 
-## gRPC Service Definition
+## gRPC Services (Port 9065)
 
+### ZepSearchService
+
+#### Search Capabilities
 ```protobuf
-syntax = "proto3";
-package zep.search.v1;
-
-service SearchService {
-  rpc GraphSearch(GraphSearchRequest) returns (SearchResponse);
-  rpc SearchSessions(SessionSearchRequest) returns (SessionSearchResponse);
-  rpc GetRelevantFacts(GetRelevantFactsRequest) returns (FactListResponse);
-}
-```
-
-## Messages
-
-### GraphSearchRequest
-```protobuf
-message GraphSearchRequest {
+message SearchRequest {
   string query = 1;
-  optional string user_id = 2;
-  repeated string group_ids = 3;
-  string scope = 4;              // "edges" | "nodes" | "episodes" | "all"
-  string reranker = 5;           // "rrf" | "mmr" | "cross_encoder" | "node_distance" | "episode_mentions"
-  repeated string node_labels = 6;
-  repeated string edge_types = 7;
-  int32 limit = 8;
-  optional double min_fact_rating = 9;
-  optional double mmr_lambda = 10;      // 0.0=diversity, 1.0=relevance
-  optional string center_node_uuid = 11; // for node_distance reranker
+  string project_uuid = 2;
+  string user_uuid = 3;
+  string thread_uuid = 4;
+  int32 limit = 5;
+  string mode = 6; // 'graph', 'session', 'hybrid'
 }
+
+message SearchResult {
+  string id = 1;
+  string content = 2;
+  float score = 3;
+  map<string, string> metadata = 4;
+}
+
+rpc GraphSearch(GraphSearchRequest) returns (SearchResponse);
+rpc SessionSearch(SessionSearchRequest) returns (SearchResponse);
 ```
 
-### SearchResponse
-```protobuf
-message SearchResponse {
-  repeated SearchItem items = 1;
-  int32 total = 2;
-  string query = 3;
-  string scope = 4;
-  string reranker = 5;
-  int64 latency_ms = 6;
-}
+## Search Modes & Strategies
 
-message SearchItem {
-  string uuid = 1;
-  double score = 2;
-  oneof result {
-    FactResult fact = 3;
-    NodeResult node = 4;
-    EpisodeResult episode = 5;
-  }
-}
-```
+1. **Session Search (Vector)**
+   - Queries `pgvector` index in PostgreSQL.
+   - Used for fetching direct contextual quotes from recent chat history.
 
-### GetRelevantFactsRequest
-```protobuf
-message GetRelevantFactsRequest {
-  string group_id = 1;
-  repeated string query_messages = 2;   // last 4 messages as context
-  int32 max_facts = 3;                  // default: 5
-}
-```
+2. **Graph Search (Traversal + Vector)**
+   - Queries Neo4j for entities matching the user's intent.
+   - Extracts 1-hop and 2-hop subgraphs containing relevant facts.
 
-## RPC Details
-
-### GraphSearch
-
-| Attribute | Value |
-|-----------|-------|
-| **Cache** | Redis with 30s TTL |
-| **Search scopes** | edges (facts), nodes (entities), episodes, all |
-| **Reranking** | 5 strategies with configurable parameters |
-
-### GetRelevantFacts (Internal)
-
-| Attribute | Value |
-|-----------|-------|
-| **Caller** | zep-memory (GetMemory context assembly) |
-| **Input** | GroupID + last 4 messages as search context |
-| **Output** | Max 5 relevant facts from knowledge graph |
+3. **Hybrid Search**
+   - Fuses results using Reciprocal Rank Fusion (RRF) and Maximal Marginal Relevance (MMR).
+   - Applies Temporal Decay to downweight older facts.
