@@ -1,0 +1,13 @@
+# UI Build and Dependencies
+ui/node_modules/
+ui/dist/
+
+# Sensitive Data
+client_secret_*.json
+*.env
+*.env.*
+*.pem
+*.key
+
+# OS Generated Files
+.DS_Store
