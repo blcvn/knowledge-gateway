@@ -66,6 +66,7 @@ curl http://localhost:8080/healthz
 | `/v1/zep/*` | Zep | users, sessions, memory, graph |
 | `/v1/sm/*` | Supermemory | documents, memories, search, rag |
 | `/v1/admin/*` | Platform | tenants, keys, health |
+| `/v1/console/*` | Console UI | dashboard, explorer, graph, profiles, debugger, governance, sessions, pipelines, infra, observability |
 | `/webdav/*` | OpenViking | WebDAV file access |
 
 ## Links

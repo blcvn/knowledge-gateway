@@ -1,18 +1,19 @@
 ###############################################################################
 # VNP Memory — Dev Server Docker Compose (172.20.2.39)
 #
-# Runs all four memory services (Cognee, Graphiti, OpenViking, Zep) with
-# shared infrastructure: Neo4j, PostgreSQL (pgvector), Redis, Qdrant,
-# and routes LLM calls through the external Bifrost AI Gateway.
+# All application services are built from Go source code in ../../apps/
+# using multi-stage Dockerfiles that produce minimal Alpine containers.
 #
 # Usage:
 #   cp .env.example .env                         # fill in API keys
-#   docker compose --profile memory up -d        # start Memory services
+#   docker compose --profile monolith up -d      # start Memory Monolith (API+UI)
+#   docker compose --profile memory up -d        # start individual engine services
 #   docker compose --profile memory --profile ui up -d  # + Cognee UI
 #   docker compose logs -f                       # watch logs
 #
 # Profiles:
-#   memory     — Cognee, Graphiti, OpenViking, Zep (+ shared infra)
+#   monolith   — VNP Memory Monolith (unified API gateway + embedded UI console)
+#   memory     — Cognee, Graphiti, OpenViking, Zep, Memobase, Supermemory
 #   kgs        — KGS Platform + NATS + OPA (+ shared infra)
 #   surrealdb  — SurrealDB (for KGS unified mode)
 #   ui         — Cognee frontend
@@ -147,12 +148,59 @@ services:
       start_period: 10s
 
   # ===========================================================================
-  #  APPLICATION SERVICES
+  #  VNP MEMORY MONOLITH — Unified API Gateway + Embedded UI Console
+  #  Built from ../../apps/memory via multi-stage Dockerfile (Node + Go)
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
-  # Cognee — Knowledge engine (Python/FastAPI)
-  # Built locally and deployed as image: vnp/cognee:latest
+  # VNP Memory Monolith — Single binary serving REST API + Web Console
+  # Ports: 8080 (REST+UI), 8082 (MCP), 8083 (Health)
+  # ---------------------------------------------------------------------------
+  vnp-memory:
+    container_name: vnp_memory_monolith
+    profiles:
+      - monolith
+    restart: unless-stopped
+    image: vnp/memory:latest
+    volumes:
+      - ./config/memory.yaml:/app/configs/config.yaml:ro
+    environment:
+      - VNP_MEMORY_SERVER_LOG_LEVEL=info
+      - VNP_MEMORY_BIFROST_URL=${BIFROST_URL:-https://b9.openledger.vn}
+    ports:
+      - "${MEMORY_REST_PORT:-8080}:8080"     # REST API + UI Console
+      - "${MEMORY_MCP_PORT:-8082}:8082"      # MCP (AI agent interface)
+      - "${MEMORY_HEALTH_PORT:-8083}:8083"   # Health / readiness
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - memory-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4GB
+
+  # ===========================================================================
+  #  APPLICATION SERVICES — Individual engine services (legacy/alternative)
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Cognee — Knowledge engine (Go)
+  # Built from ../../apps/cognee via Dockerfile (multi-stage Go build)
   # ---------------------------------------------------------------------------
   cognee:
     container_name: vnp_cognee
@@ -171,8 +219,7 @@ services:
       - LLM_MODEL=${LLM_MODEL:-openai/gpt-4o-mini}
       - LLM_PROVIDER=openai
       - LLM_ENDPOINT=${BIFROST_URL:-https://b9.openledger.vn}/v1
-      # Embedding — routed through Bifrost; use tiktoken-compatible model name
-      # (Cognee uses tiktoken which cannot map gemini model names to tokenizers)
+      # Embedding — routed through Bifrost
       - EMBEDDING_ENDPOINT=${BIFROST_URL:-https://b9.openledger.vn}/v1
       - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-bifrost}
       - EMBEDDING_MODEL=text-embedding-3-large
@@ -189,7 +236,7 @@ services:
       - GRAPH_DATABASE_NAME=neo4j
       - GRAPH_DATABASE_USERNAME=${NEO4J_USER:-neo4j}
       - GRAPH_DATABASE_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}
-      # Vector — use PGVector (cognee v1.0.3 supports: LanceDB, PGVector, neptune_analytics, ChromaDB)
+      # Vector — use PGVector
       - VECTOR_DB_PROVIDER=pgvector
       - VECTOR_DB_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/cognee_db
       # Access control
@@ -206,7 +253,7 @@ services:
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11080/healthz || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -218,8 +265,8 @@ services:
           memory: 8GB
 
   # ---------------------------------------------------------------------------
-  # Graphiti — Temporal knowledge graph service (Python/FastAPI)
-  # Built locally and deployed as image: vnp/graphiti:latest
+  # Graphiti — Temporal knowledge graph service (Go)
+  # Built from ../../apps/graphiti via Dockerfile (multi-stage Go build)
   # ---------------------------------------------------------------------------
   graphiti:
     container_name: vnp_graphiti
@@ -228,9 +275,11 @@ services:
     restart: unless-stopped
     image: vnp/graphiti:latest
     environment:
+      - ENVIRONMENT=dev
       # LLM — routed through external Bifrost AI Gateway
       - OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
       - OPENAI_BASE_URL=${BIFROST_URL:-https://b9.openledger.vn}/v1
+      - LLM_API_KEY=${BIFROST_API_KEY:-bifrost}
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=${NEO4J_USER:-neo4j}
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}
@@ -244,34 +293,33 @@ services:
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthcheck')"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
 
   # ---------------------------------------------------------------------------
-  # OpenViking — Vector search engine (Rust + Python)
+  # OpenViking — Vector search engine (Go)
+  # Built from ../../apps/OpenViking via Dockerfile (multi-stage Go build)
   # ---------------------------------------------------------------------------
   openviking:
     container_name: vnp_openviking
     profiles:
       - memory
     restart: unless-stopped
-    image: ghcr.io/volcengine/openviking:latest
-    environment:
-      # Config injected via entrypoint — writes to /app/.openviking/ov.conf
-      - OPENVIKING_CONF_CONTENT={"server":{"host":"0.0.0.0","port":1933,"auth_mode":"api_key","root_api_key":"${BIFROST_API_KEY:-bifrost}"},"embedding":{"dense":{"provider":"openai","model":"${EMBEDDING_MODEL:-gemini/gemini-embedding-001}","api_key":"${EMBEDDING_API_KEY:-bifrost}","api_base":"${BIFROST_URL:-https://b9.openledger.vn}/v1","dimension":3072}},"storage":{"workspace":"/app/.openviking/data"}}
-      - OPENVIKING_WITH_BOT=0
+    image: vnp/openviking:latest
     ports:
       - "${OPENVIKING_HTTP_PORT:-1933}:1933"
       - "${OPENVIKING_GRPC_PORT:-8020}:8020"
     volumes:
       - openviking_data:/app/.openviking
+    environment:
+      - AUTH_DEV_MODE=true
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:1933/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:1933/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -279,18 +327,21 @@ services:
 
   # ---------------------------------------------------------------------------
   # Zep — Context engineering platform (Go)
+  # Built from ../../apps/zep via Dockerfile (multi-stage Go build)
   # ---------------------------------------------------------------------------
   zep:
     container_name: vnp_zep
     profiles:
       - memory
     restart: unless-stopped
-    image: ghcr.io/getzep/zep:latest
+    image: vnp/zep:latest
     ports:
       - "${ZEP_PORT:-8002}:8000"
     volumes:
-      - ./config/zep.yaml:/app/config.yaml:ro
+      - ./config/zep.yaml:/config/zep.yaml:ro
     environment:
+      - AUTH_DEV_MODE=true
+      - ZEP_CONFIG_FILE=/config/zep.yaml
       - ZEP_OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
     depends_on:
       graphiti-zep:
@@ -300,7 +351,7 @@ services:
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -309,17 +360,20 @@ services:
   # ---------------------------------------------------------------------------
   # Graphiti for Zep — Dedicated Graphiti instance for Zep (port 8003)
   # Zep requires its own Graphiti instance with a specific configuration
+  # Built from ../../apps/graphiti via Dockerfile (multi-stage Go build)
   # ---------------------------------------------------------------------------
   graphiti-zep:
     container_name: vnp_graphiti_zep
     profiles:
       - memory
     restart: unless-stopped
-    image: zepai/graphiti:0.3
+    image: vnp/graphiti:latest
     environment:
+      - ENVIRONMENT=dev
       # LLM — routed through external Bifrost AI Gateway
       - OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
       - OPENAI_BASE_URL=${BIFROST_URL:-https://b9.openledger.vn}/v1
+      - LLM_API_KEY=${BIFROST_API_KEY:-bifrost}
       - MODEL_NAME=${ZEP_MODEL_NAME:-gpt-4o-mini}
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=${NEO4J_USER:-neo4j}
@@ -333,11 +387,42 @@ services:
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/healthcheck')"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Memobase — Memory service (Go)
+  # Built from ../../apps/memobase via Dockerfile (multi-stage Go build)
+  # ---------------------------------------------------------------------------
+  memobase:
+    container_name: vnp_memobase
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: vnp/memobase:latest
+    environment:
+      - ENVIRONMENT=dev
+      - AUTH_DEV_MODE=true
+    networks:
+      - memory-net
+
+  # ---------------------------------------------------------------------------
+  # Supermemory — Memory service (Go)
+  # Built from ../../apps/supermemory via Dockerfile (multi-stage Go build)
+  # ---------------------------------------------------------------------------
+  supermemory:
+    container_name: vnp_supermemory
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: vnp/supermemory:latest
+    environment:
+      - AUTH_DEV_MODE=true
+    networks:
+      - memory-net
 
   # ===========================================================================
   #  OPTIONAL SERVICES (via profiles)
@@ -345,7 +430,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # Cognee Frontend (profile: ui)
-  # Built locally and deployed as image: vnp/cognee-frontend:latest
+  # Built from ../../apps/cognee/cognee-frontend
   # ---------------------------------------------------------------------------
   cognee-frontend:
     container_name: vnp_cognee_frontend

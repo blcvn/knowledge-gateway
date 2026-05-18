@@ -10,7 +10,7 @@ version: "3.8"
 services:
   # ─── UNIFIED GATEWAY ───
   vnp-gateway:
-    build: ./services/vnp-gateway
+    build: ./gateway
     ports: ["8080:8080", "8081:8081", "8082:8082"]
     depends_on: [redis, cognee-ingestion, cognee-cognify, cognee-search, cognee-memory,
                  graphiti-ingestion, graphiti-search, graphiti-knowledge, graphiti-store, vnp-admin]

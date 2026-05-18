@@ -35,3 +35,19 @@ type UserRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByTenant(ctx context.Context, tenantID uuid.UUID, offset, limit int) ([]*model.User, int, error)
 }
+
+// AuditLogRepository persists audit log entries.
+type AuditLogRepository interface {
+	Create(ctx context.Context, log *model.AuditLog) error
+	Search(ctx context.Context, filter model.AuditLogFilter) ([]*model.AuditLog, int, error)
+}
+
+// PolicyRepository persists OPA governance policies.
+type PolicyRepository interface {
+	Create(ctx context.Context, p *model.Policy) error
+	FindByID(ctx context.Context, id uuid.UUID) (*model.Policy, error)
+	Update(ctx context.Context, p *model.Policy) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]*model.Policy, error)
+}
+

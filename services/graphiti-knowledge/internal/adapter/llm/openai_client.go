@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sashabaranov/go-openai"
+	pb "vnp-memory/services/graphiti-knowledge/internal/adapter/grpc/pb"
 )
 
 // OpenAIClient implements the LLMClient interface for generating JSON outputs.
@@ -57,18 +58,12 @@ func (c *OpenAIClient) GenerateJSON(ctx context.Context, systemPrompt, userPromp
 
 	content := resp.Choices[0].Message.Content
 
-	// Pre-process the output: ensure it's a valid JSON payload.
-	// Some models might wrap JSON in Markdown code blocks even when JSON mode is enforced.
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 
-	// Since we asked for an array, but JSON mode requires an object, 
-	// the LLM might return `{"entities": [...]}`. 
-	// We handle this loosely by checking if it's an object wrapping an array.
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(content), &raw); err == nil {
-		// If there's exactly one key pointing to an array, extract it.
 		if len(raw) == 1 {
 			for _, val := range raw {
 				return val, nil
@@ -76,7 +71,49 @@ func (c *OpenAIClient) GenerateJSON(ctx context.Context, systemPrompt, userPromp
 		}
 	}
 
-	// Fallback: return the raw content if it was a flat array (though strict JSON mode forbids this, 
-	// compatible endpoints like Anthropic via translation proxy might return it).
 	return []byte(content), nil
+}
+
+// EvaluateSimilarity evaluates a newly extracted entity against existing candidates to resolve duplicates.
+func (c *OpenAIClient) EvaluateSimilarity(ctx context.Context, newEntity *pb.ExtractedEntity, candidates []*pb.ExtractedEntity) (*pb.Resolution, error) {
+	// Construct the prompt
+	systemPrompt := `You are an Entity Resolution Expert.
+Determine if the NEW entity refers to the EXACT SAME real-world concept as one of the CANDIDATE entities.
+Output a JSON object with:
+- 'decision': strictly one of ["MERGE", "CREATE_NEW"]
+- 'existing_entity_name': the name of the matched candidate (only if decision is MERGE)
+- 'confidence': float between 0.0 and 1.0`
+
+	var candidatesStr string
+	for i, cand := range candidates {
+		candidatesStr += fmt.Sprintf("[%d] Name: %s, Label: %s, Summary: %s\n", i, cand.Name, cand.Label, cand.Summary)
+	}
+
+	userPrompt := fmt.Sprintf("NEW ENTITY:\nName: %s, Label: %s, Summary: %s\n\nCANDIDATES:\n%s", newEntity.Name, newEntity.Label, newEntity.Summary, candidatesStr)
+
+	responseBytes, err := c.GenerateJSON(ctx, systemPrompt, userPrompt)
+	if err != nil {
+		return nil, err
+	}
+
+	var decision struct {
+		Decision           string  `json:"decision"`
+		ExistingEntityName string  `json:"existing_entity_name"`
+		Confidence         float64 `json:"confidence"`
+	}
+	if err := json.Unmarshal(responseBytes, &decision); err != nil {
+		return nil, err
+	}
+
+	res := &pb.Resolution{
+		ExtractedEntity: newEntity,
+		Decision:        decision.Decision,
+		Confidence:      decision.Confidence,
+	}
+
+	if decision.Decision == "MERGE" {
+		res.ExistingEntityId = decision.ExistingEntityName // In Neo4j we're using Name as matching ID for now
+	}
+
+	return res, nil
 }

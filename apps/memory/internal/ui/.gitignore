@@ -1,0 +1,2 @@
+# UI dist assets are generated at build time — do not commit
+ui_dist/

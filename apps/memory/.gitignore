@@ -1,0 +1,4 @@
+# Generated UI dist (copied by Makefile during build)
+ui_dist/
+# Binary output
+bin/

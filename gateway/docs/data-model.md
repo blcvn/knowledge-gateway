@@ -86,6 +86,83 @@ erDiagram
     }
 ```
 
+### 1.4 `audit_logs` (PostgreSQL) — FEAT-011
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | UUID | PK | Log entry ID |
+| `tenant_id` | UUID | FK → tenants, NOT NULL | Tenant scope |
+| `actor` | VARCHAR(255) | NOT NULL | User/API key who performed action |
+| `action` | VARCHAR(100) | NOT NULL | Action type (create, update, delete, forget) |
+| `entity_type` | VARCHAR(100) | NOT NULL | Entity type (tenant, policy, memory, user) |
+| `entity_id` | VARCHAR(255) | NULL | Affected entity ID |
+| `engine` | VARCHAR(50) | NULL | Engine where action occurred |
+| `details` | JSONB | DEFAULT '{}' | Action-specific metadata |
+| `created_at` | TIMESTAMPTZ | DEFAULT now() | Timestamp |
+
+### 1.5 `policies` (PostgreSQL) — FEAT-011
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | UUID | PK | Policy ID |
+| `tenant_id` | UUID | FK → tenants, NOT NULL | Tenant scope |
+| `name` | VARCHAR(255) | NOT NULL | Policy name |
+| `type` | VARCHAR(50) | NOT NULL | Policy type (access, retention, privacy) |
+| `rego` | TEXT | NOT NULL | OPA Rego policy body |
+| `enabled` | BOOLEAN | DEFAULT true | Active flag |
+| `created_at` | TIMESTAMPTZ | DEFAULT now() | |
+| `updated_at` | TIMESTAMPTZ | DEFAULT now() | |
+
+## 2. Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+    tenants ||--o{ api_keys : "has many"
+    tenants ||--o{ audit_logs : "has many"
+    tenants ||--o{ policies : "has many"
+    tenants {
+        uuid id PK
+        varchar name
+        varchar plan
+        varchar rate_tier
+        jsonb settings
+        timestamptz created_at
+    }
+    api_keys {
+        uuid id PK
+        text key_hash UK
+        uuid tenant_id FK
+        varchar name
+        text_arr scopes
+        timestamptz expires_at
+        timestamptz revoked_at
+    }
+    route_configs {
+        serial id PK
+        varchar path_pattern UK
+        varchar target_service
+        int timeout_ms
+        boolean enabled
+    }
+    audit_logs {
+        uuid id PK
+        uuid tenant_id FK
+        varchar actor
+        varchar action
+        varchar entity_type
+        jsonb details
+        timestamptz created_at
+    }
+    policies {
+        uuid id PK
+        uuid tenant_id FK
+        varchar name
+        varchar type
+        text rego
+        boolean enabled
+    }
+```
+
 ## 3. Redis Data Structures
 
 | Key Pattern | Type | TTL | Purpose |
@@ -94,14 +171,26 @@ erDiagram
 | `apikey:{prefix}` | Hash | 5min | API key cache (avoid DB lookup) |
 | `health:{service}` | String | 30s | Service health cache |
 | `cb:{service}` | String | — | Circuit breaker state |
+| `dashboard:health` | Hash | 10s | Dashboard aggregated health cache |
+| `dashboard:metrics` | Hash | 30s | Dashboard KPI metrics cache |
+| `dashboard:throughput:{window}` | Hash | 30s | Per-engine throughput cache |
+| `ws:sessions` | Set | — | Active WebSocket session IDs |
+| `ws:channels:{session_id}` | Set | — | Subscribed channels per WS session |
 
 ## 4. Index Strategy
 
 ```sql
+-- Original indexes
 CREATE INDEX idx_api_keys_hash ON api_keys (key_hash);
 CREATE INDEX idx_api_keys_tenant ON api_keys (tenant_id) WHERE revoked_at IS NULL;
 CREATE INDEX idx_tenants_plan ON tenants (plan) WHERE suspended_at IS NULL;
 CREATE INDEX idx_route_configs_pattern ON route_configs (path_pattern) WHERE enabled = true;
+
+-- Governance indexes (v2.0.0)
+CREATE INDEX idx_audit_logs_tenant_time ON audit_logs (tenant_id, created_at DESC);
+CREATE INDEX idx_audit_logs_actor ON audit_logs (actor, created_at DESC);
+CREATE INDEX idx_audit_logs_action ON audit_logs (action) WHERE entity_type IS NOT NULL;
+CREATE INDEX idx_policies_tenant ON policies (tenant_id) WHERE enabled = true;
 ```
 
 ## 5. Migration History
@@ -109,3 +198,5 @@ CREATE INDEX idx_route_configs_pattern ON route_configs (path_pattern) WHERE ena
 | Version | Date | Description |
 |---------|------|-------------|
 | 1.0.0 | 2026-05-09 | Initial schema: tenants, api_keys, route_configs |
+| 2.0.0 | 2026-05-13 | Add audit_logs, policies tables (SOL-002 Governance) |
+

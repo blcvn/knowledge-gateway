@@ -1,0 +1,21 @@
+services:
+  document_port: 9001
+  memory_port: 9002
+  search_port: 9003
+  profile_port: 9004
+  connector_port: 9005
+  mcp_port: 9006
+  auth_port: 9007
+  analytics_port: 9008
+  project_port: 9009
+  engine_port: 9010
+  gateway_port: 8080
+
+infrastructure:
+  database_url: "postgres://supermemory:supermemory@localhost:5432/supermemory?sslmode=disable"
+  redis_addr: "localhost:6379"
+  nats_url: "nats://localhost:4222"
+
+security:
+  jwt_secret: "replace_with_a_secure_random_string"
+  api_key: "replace_with_master_api_key"

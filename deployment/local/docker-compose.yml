@@ -157,13 +157,14 @@ services:
     profiles:
       - memory
     restart: unless-stopped
-    build:
-      context: ../../services/cognee
-      dockerfile: Dockerfile
+    image: alpine:3.19
+    working_dir: /app
+    command: ["./cognee_bin"]
     environment:
       - DEBUG=false
       - HOST=0.0.0.0
       - ENVIRONMENT=local
+      - AUTH_DEV_MODE=true
       - LOG_LEVEL=INFO
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
       # LLM — routed through external Bifrost AI Gateway
@@ -181,6 +182,7 @@ services:
       - DB_USERNAME=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - DB_NAME=cognee_db
+      - POSTGRES_DSN=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/cognee_db?sslmode=disable
       # Graph — use shared Neo4j
       - GRAPH_DATABASE_PROVIDER=neo4j
       - GRAPH_DATABASE_URL=bolt://neo4j:7687
@@ -195,7 +197,7 @@ services:
     ports:
       - "${COGNEE_PORT:-8000}:8000"
     volumes:
-      - ../../services/cognee/cognee:/app/cognee
+      - ../../apps/cognee:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -206,7 +208,7 @@ services:
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:11080/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -225,13 +227,18 @@ services:
     profiles:
       - memory
     restart: unless-stopped
-    build:
-      context: ../../services/graphiti
-      dockerfile: Dockerfile
+    image: alpine:3.19
+    working_dir: /app
+    command: ["./graphiti_bin"]
+    volumes:
+      - ../../apps/graphiti:/app
     environment:
+      - ENVIRONMENT=local
+      - AUTH_DEV_MODE=true
       # LLM — routed through external Bifrost AI Gateway
       - OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
       - OPENAI_BASE_URL=${BIFROST_URL:-http://host.docker.internal:8080}/v1
+      - LLM_API_KEY=${BIFROST_API_KEY:-bifrost}
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=${NEO4J_USER:-neo4j}
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}
@@ -245,7 +252,7 @@ services:
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthcheck')"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -259,16 +266,21 @@ services:
     profiles:
       - memory
     restart: unless-stopped
-    image: ghcr.io/volcengine/openviking:latest
+    image: alpine:3.19
+    working_dir: /app
+    command: ["./openviking_bin"]
     ports:
       - "${OPENVIKING_HTTP_PORT:-1933}:1933"
       - "${OPENVIKING_GRPC_PORT:-8020}:8020"
     volumes:
       - openviking_data:/app/.openviking
+      - ../../apps/OpenViking:/app
+    environment:
+      - AUTH_DEV_MODE=true
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:1933/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:1933/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -282,13 +294,17 @@ services:
     profiles:
       - memory
     restart: unless-stopped
-    image: zepai/zep:latest
+    image: alpine:3.19
+    working_dir: /app
+    command: ["./zep_bin"]
     ports:
       - "${ZEP_PORT:-8002}:8000"
     volumes:
-      - ./config/zep.yaml:/app/zep.yaml:ro
+      - ./config/zep.yaml:/config/zep.yaml:ro
+      - ../../apps/zep:/app
     environment:
-      - ZEP_CONFIG_FILE=zep.yaml
+      - AUTH_DEV_MODE=true
+      - ZEP_CONFIG_FILE=/config/zep.yaml
     depends_on:
       graphiti-zep:
         condition: service_healthy
@@ -297,7 +313,7 @@ services:
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -312,11 +328,18 @@ services:
     profiles:
       - memory
     restart: unless-stopped
-    image: zepai/graphiti:0.3
+    image: alpine:3.19
+    working_dir: /app
+    command: ["./graphiti_bin"]
+    volumes:
+      - ../../apps/graphiti:/app
     environment:
+      - ENVIRONMENT=local
+      - AUTH_DEV_MODE=true
       # LLM — routed through external Bifrost AI Gateway
       - OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
       - OPENAI_BASE_URL=${BIFROST_URL:-http://host.docker.internal:8080}/v1
+      - LLM_API_KEY=${BIFROST_API_KEY:-bifrost}
       - MODEL_NAME=${ZEP_MODEL_NAME:-gpt-4o-mini}
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=${NEO4J_USER:-neo4j}
@@ -330,11 +353,48 @@ services:
     networks:
       - memory-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/healthcheck')"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Memobase — Memory service (Go)
+  # ---------------------------------------------------------------------------
+  memobase:
+    container_name: vnp_memobase
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: alpine:3.19
+    working_dir: /app
+    command: ["./memobase_bin"]
+    volumes:
+      - ../../apps/memobase:/app
+    environment:
+      - ENVIRONMENT=local
+      - AUTH_DEV_MODE=true
+    networks:
+      - memory-net
+
+  # ---------------------------------------------------------------------------
+  # Supermemory — Memory service (Go)
+  # ---------------------------------------------------------------------------
+  supermemory:
+    container_name: vnp_supermemory
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: alpine:3.19
+    working_dir: /app
+    command: ["./supermemory_bin"]
+    environment:
+      - AUTH_DEV_MODE=true
+    volumes:
+      - ../../apps/supermemory:/app
+    networks:
+      - memory-net
 
   # ===========================================================================
   #  OPTIONAL SERVICES (via profiles)
@@ -343,37 +403,39 @@ services:
   # ---------------------------------------------------------------------------
   # Cognee Frontend (profile: ui)
   # ---------------------------------------------------------------------------
-  cognee-frontend:
-    container_name: vnp_cognee_frontend
-    profiles:
-      - ui
-    restart: unless-stopped
-    build:
-      context: ../../services/cognee/cognee-frontend
-      dockerfile: Dockerfile
-    environment:
-      - NEXT_PUBLIC_BACKEND_API_URL=http://cognee:8000
-    ports:
-      - "${COGNEE_FRONTEND_PORT:-3000}:3000"
-    depends_on:
-      cognee:
-        condition: service_healthy
-    networks:
-      - memory-net
+#   cognee-frontend:
+#     container_name: vnp_cognee_frontend
+#     profiles:
+#       - ui
+#     restart: unless-stopped
+#     image: alpine:3.19
+#     working_dir: /app
+#     command: ["./cognee_frontend_bin"]
+#     volumes:
+#       - ../../apps/cognee/cognee-frontend:/app
+#     environment:
+#       - NEXT_PUBLIC_BACKEND_API_URL=http://cognee:8000
+#     ports:
+#       - "${COGNEE_FRONTEND_PORT:-3000}:3000"
+#     depends_on:
+#       cognee:
+#         condition: service_healthy
+#     networks:
+#       - memory-net
 
   # ---------------------------------------------------------------------------
   # RedisInsight (profile: monitoring)
   # ---------------------------------------------------------------------------
-  redisinsight:
-    image: redislabs/redisinsight:latest
-    container_name: vnp_redisinsight
-    profiles:
-      - monitoring
-    restart: unless-stopped
-    ports:
-      - "${REDISINSIGHT_PORT:-5540}:5540"
-    networks:
-      - memory-net
+#   redisinsight:
+#     image: redislabs/redisinsight:latest
+#     container_name: vnp_redisinsight
+#     profiles:
+#       - monitoring
+#     restart: unless-stopped
+#     ports:
+#       - "${REDISINSIGHT_PORT:-5540}:5540"
+#     networks:
+#       - memory-net
 
   # ===========================================================================
   #  KGS PLATFORM SERVICES (profile: kgs)

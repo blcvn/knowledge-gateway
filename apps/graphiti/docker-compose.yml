@@ -1,0 +1,75 @@
+# =============================================================================
+# Graphiti App — Docker Compose for Local Development
+# Starts the monolith + all infrastructure dependencies
+# =============================================================================
+#
+# Usage:
+#   docker compose up -d       # Start everything
+#   docker compose logs -f     # Follow logs
+#   docker compose down        # Stop everything
+#
+# Health check:
+#   curl http://localhost:9090/healthz
+#   curl http://localhost:9090/readyz
+#   curl http://localhost:8080/healthz
+
+services:
+  # ── Graphiti Monolith App ─────────────────────────────────────────────────
+  graphiti-app:
+    build:
+      context: ../..
+      dockerfile: apps/graphiti/Dockerfile
+    ports:
+      - "8080:8080"     # Gateway REST API
+      - "8082:8082"     # MCP server
+      - "9090:9090"     # Aggregated health probes
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      redis:
+        condition: service_started
+    env_file: .env.example
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY}
+    restart: unless-stopped
+
+  # ── Infrastructure ───────────────────────────────────────────────────────
+
+  # Neo4j — primary graph database for Graphiti knowledge store
+  neo4j:
+    image: neo4j:5-community
+    ports: ["7474:7474", "7687:7687"]
+    environment:
+      NEO4J_AUTH: "neo4j/password"
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # NATS — async event bus (ingestion events, pipeline triggers)
+  nats:
+    image: nats:2.10-alpine
+    ports: ["4222:4222", "8222:8222"]
+    command: ["--jetstream", "--store_dir=/data", "--http_port=8222"]
+    volumes:
+      - nats_data:/data
+
+  # Redis — search cache and rate limiting
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 3
+
+volumes:
+  neo4j_data:
+  nats_data:

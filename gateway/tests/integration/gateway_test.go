@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vnp-community/vnp-memory/gateway/internal/adapter/handler"
-	"github.com/vnp-community/vnp-memory/gateway/internal/domain"
-	"github.com/vnp-community/vnp-memory/gateway/internal/usecase"
+	"github.com/vnp-community/vnp-memory/gateway/adapter/handler"
+	"github.com/vnp-community/vnp-memory/gateway/domain"
+	"github.com/vnp-community/vnp-memory/gateway/usecase"
 )
 
 // mockRegistry implements port.ServiceRegistry for testing.
@@ -109,7 +109,28 @@ func setupTestServer(t *testing.T) (*httptest.Server, *mockRegistry) {
 	smH := handler.NewSMHandler(reg, logger)
 	adminH := handler.NewAdminHandler(reg, logger)
 
-	router := handler.Router(memoryH, cogneeH, graphitiH, memobaseH, ovH, zepH, smH, adminH, logger)
+	// Console handlers (SOL-002)
+	dashboardH := handler.NewDashboardHandler(reg, logger)
+	explorerH := handler.NewExplorerHandler(reg, logger)
+	graphH := handler.NewGraphHandler(reg, logger)
+	profileH := handler.NewProfileHandler(reg, logger)
+	adaptiveH := handler.NewAdaptiveHandler(reg, logger)
+	debuggerH := handler.NewDebuggerHandler(reg, logger)
+	sessionH := handler.NewSessionHandler(reg, logger)
+	governanceH := handler.NewGovernanceHandler(reg, logger)
+	pipelineH := handler.NewPipelineHandler(reg, logger)
+	infraH := handler.NewInfraHandler(reg, logger)
+	observabilityH := handler.NewObservabilityHandler(reg, logger)
+	wsH := handler.NewWSHandler(logger)
+
+	router := handler.Router(
+		memoryH, cogneeH, graphitiH, memobaseH, ovH, zepH, smH, adminH,
+		dashboardH, explorerH, graphH, profileH, adaptiveH,
+		debuggerH, sessionH, governanceH, pipelineH, infraH,
+		observabilityH, wsH,
+		logger,
+		nil, // no embedded UI in tests
+	)
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 

@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  zep:
+    build:
+      context: ../../
+      dockerfile: apps/zep/Dockerfile
+    container_name: zep-monolith
+    ports:
+      - "8080:8080" # Gateway REST
+      - "8081:8081" # Gateway gRPC
+    environment:
+      - ZEP_GATEWAY_PORT=8080
+      - ZEP_USER_PORT=9041
+      - ZEP_THREAD_PORT=9042
+      - ZEP_MEMORY_PORT=9043
+      - ZEP_GRAPH_PORT=9044
+      - ZEP_SEARCH_PORT=9045
+      - ZEP_ADMIN_PORT=9046
+      # Database and other infra connections would go here
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - NATS_URL=nats://nats:4222
+      - NEO4J_URI=neo4j://neo4j:7687
+    depends_on:
+      - postgres
+      - redis
+      - nats
+      - neo4j
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: zep
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: zepdb
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  nats:
+    image: nats:latest
+    command: ["--js"]
+    ports:
+      - "4222:4222"
+
+  neo4j:
+    image: neo4j:5.22
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"

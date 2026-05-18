@@ -1,0 +1,73 @@
+server:
+  rest_port: 8080
+  grpc_port: 8081
+  mcp_port: 8082
+  health_port: 8083
+  log_level: info
+
+auth:
+  dev_mode: true
+  jwt_public_key: ""
+  jwt_issuer: "vnp-memory"
+  jwt_audience: "vnp-memory"
+
+postgres:
+  dsn: "postgres://vnp:vnp@localhost:5432/vnp_memory?sslmode=disable"
+  max_conns: 50
+  min_conns: 5
+
+neo4j:
+  uri: "bolt://localhost:7687"
+  user: "neo4j"
+  password: "password"
+
+qdrant:
+  addr: "localhost:6333"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+nats:
+  mode: "embedded"
+  url: ""
+  store_dir: "./data/nats"
+
+minio:
+  endpoint: "localhost:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  bucket: "vnp-memory"
+
+bifrost:
+  url: "http://localhost:8443"
+
+cognee:
+  chunk_size: 1024
+  max_concurrent_jobs: 4
+
+graphiti:
+  community_detection: true
+  max_bfs_depth: 3
+
+memobase:
+  buffer_flush_threshold: 1024
+  buffer_idle_timeout: 1h
+  max_llm_calls_per_flush: 3
+
+openviking:
+  data_dir: "./data/vikingfs"
+  encryption_enabled: false
+
+zep:
+  context_assembly_timeout: 200ms
+  max_messages_per_thread: 10000
+
+supermemory:
+  forgetting_curve_enabled: true
+  decay_half_life: 168h
+
+platform:
+  search_hub_timeout: 2s
+  max_fan_out: 7

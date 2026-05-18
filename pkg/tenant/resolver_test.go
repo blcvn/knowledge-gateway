@@ -1,94 +1,70 @@
-package tenant
+package tenant_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
+	"vnp-memory/pkg/tenant"
+
 	"google.golang.org/grpc/metadata"
 )
 
-func TestTenantContextRoundTrip(t *testing.T) {
-	tenantID := uuid.New()
-	tc := &TenantContext{
-		TenantID: tenantID,
-		Aliases: map[Engine]string{
-			EngineGraphiti:   "custom-group-1",
-			EngineOpenViking: "custom-account-1",
-		},
-	}
+func TestInjectAndFromContext(t *testing.T) {
+	expectedTenantID := "tenant-12345"
 
-	// Test context injection/extraction
-	ctx := WithTenantContext(context.Background(), tc)
-	got, err := FromContext(ctx)
+	// 1. Create context with tenant
+	ctx := tenant.InjectIntoContext(context.Background(), expectedTenantID, "")
+
+	// 2. Extract tenant
+	actualTenantID, err := tenant.FromContext(ctx)
+
+	// 3. Assertions
 	if err != nil {
-		t.Fatalf("FromContext: %v", err)
+		t.Errorf("Expected no error, got: %v", err)
 	}
-	if got.TenantID != tenantID {
-		t.Errorf("TenantID = %v, want %v", got.TenantID, tenantID)
-	}
-
-	// Test engine key resolution
-	if key := got.EngineKey(EngineGraphiti); key != "custom-group-1" {
-		t.Errorf("EngineKey(Graphiti) = %q, want %q", key, "custom-group-1")
-	}
-	if key := got.EngineKey(EngineCognee); key != tenantID.String() {
-		t.Errorf("EngineKey(Cognee) = %q, want %q (fallback)", key, tenantID.String())
-	}
-
-	// Test gRPC metadata round-trip
-	md := tc.ToGRPCMetadata()
-	if v := md.Get(MetadataKey); len(v) == 0 || v[0] != tenantID.String() {
-		t.Errorf("metadata %s = %v, want %s", MetadataKey, v, tenantID.String())
-	}
-	if v := md.Get("x-group_id"); len(v) == 0 || v[0] != "custom-group-1" {
-		t.Errorf("metadata x-group_id = %v, want %q", v, "custom-group-1")
+	if actualTenantID != expectedTenantID {
+		t.Errorf("Expected tenant ID %s, got: %s", expectedTenantID, actualTenantID)
 	}
 }
 
-func TestFromGRPCMetadata(t *testing.T) {
-	tenantID := uuid.New()
-	md := metadata.New(map[string]string{
-		MetadataKey:    tenantID.String(),
-		"x-group_id":  "grp-123",
-		"x-account_id": "acc-456",
-	})
+func TestFromContext_MissingTenant(t *testing.T) {
+	// Empty context
+	ctx := context.Background()
+
+	_, err := tenant.FromContext(ctx)
+	if err == nil {
+		t.Errorf("Expected error for missing tenant, got nil")
+	}
+}
+
+func TestExtractFromMetadata(t *testing.T) {
+	expectedTenantID := "tenant-grpc-888"
+
+	// 1. Create a dummy metadata containing the x-tenant-id header
+	md := metadata.Pairs(string(tenant.TenantIDKey), expectedTenantID)
+
+	// 2. Attach metadata to incoming context (as gRPC would do)
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
-	tc, err := FromGRPCMetadata(ctx)
+	// 3. Extract it
+	actualTenantID, _, err := tenant.ExtractFromMetadata(ctx)
+
+	// 4. Assertions
 	if err != nil {
-		t.Fatalf("FromGRPCMetadata: %v", err)
+		t.Errorf("Expected no error, got: %v", err)
 	}
-	if tc.TenantID != tenantID {
-		t.Errorf("TenantID = %v, want %v", tc.TenantID, tenantID)
-	}
-	if tc.Aliases[EngineGraphiti] != "grp-123" {
-		t.Errorf("Graphiti alias = %q, want %q", tc.Aliases[EngineGraphiti], "grp-123")
-	}
-	if tc.Aliases[EngineOpenViking] != "acc-456" {
-		t.Errorf("OpenViking alias = %q, want %q", tc.Aliases[EngineOpenViking], "acc-456")
+	if actualTenantID != expectedTenantID {
+		t.Errorf("Expected %s, got %s", expectedTenantID, actualTenantID)
 	}
 }
 
-func TestFromContext_NoTenant(t *testing.T) {
-	_, err := FromContext(context.Background())
-	if err == nil {
-		t.Error("FromContext should fail when no TenantContext is set")
-	}
-}
-
-func TestFromGRPCMetadata_Missing(t *testing.T) {
-	// No metadata at all
-	_, err := FromGRPCMetadata(context.Background())
-	if err == nil {
-		t.Error("should fail without gRPC metadata")
-	}
-
-	// Metadata but no tenant key
-	md := metadata.New(map[string]string{"x-other": "value"})
+func TestExtractFromMetadata_MissingHeader(t *testing.T) {
+	// Metadata with wrong or missing header
+	md := metadata.Pairs("some-other-header", "123")
 	ctx := metadata.NewIncomingContext(context.Background(), md)
-	_, err = FromGRPCMetadata(ctx)
+
+	_, _, err := tenant.ExtractFromMetadata(ctx)
 	if err == nil {
-		t.Error("should fail without x-tenant-id")
+		t.Errorf("Expected error for missing tenant header, got nil")
 	}
 }

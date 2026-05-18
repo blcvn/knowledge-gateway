@@ -15,6 +15,12 @@ import (
 
 	"vnp-memory/pkg/telemetry"
 	"vnp-memory/pkg/tenant"
+
+	graphitigrpc "vnp-memory/services/graphiti-knowledge/internal/adapter/grpc"
+	pb "vnp-memory/services/graphiti-knowledge/internal/adapter/grpc/pb"
+	"vnp-memory/services/graphiti-knowledge/internal/adapter/llm"
+	"vnp-memory/services/graphiti-knowledge/internal/adapter/repository/neo4j"
+	"vnp-memory/services/graphiti-knowledge/internal/usecase/knowledge"
 )
 
 // Enterprise-grade bootstrap for graphiti-knowledge
@@ -38,16 +44,37 @@ func main() {
 		}
 	}()
 
-	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
+	// 3. Setup Dependencies
+	neo4jURI := getEnv("NEO4J_URI", "neo4j://localhost:7687")
+	neo4jUser := getEnv("NEO4J_USERNAME", "neo4j")
+	neo4jPass := getEnv("NEO4J_PASSWORD", "password")
+	graphRepo, err := neo4j.NewGraphRepository(neo4jURI, neo4jUser, neo4jPass)
+	if err != nil {
+		slog.Error("Failed to init Neo4j", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer graphRepo.Close(context.Background())
+
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	llmClient := llm.NewOpenAIClient(apiKey, "gpt-4o")
+
+	// 4. Initialize Usecase & Handler
+	knowledgeUsecase := knowledge.NewKnowledgeUsecase(llmClient, graphRepo)
+	knowledgeHandler := graphitigrpc.NewHandler(knowledgeUsecase)
+
+	// 5. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
 	)
 
-	// 4. Setup Health Probes
+	// Register the Knowledge Service
+	pb.RegisterGraphitiKnowledgeServiceServer(grpcServer, knowledgeHandler)
+
+	// 6. Setup Health Probes
 	healthCheck := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 
-	// 5. Start HTTP Health/Metrics Server
+	// 7. Start HTTP Health/Metrics Server
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +87,7 @@ func main() {
 		}
 	}()
 
-	// 6. Start gRPC Server
+	// 8. Start gRPC Server
 	lis, err := net.Listen("tcp", ":9090")
 	if err != nil {
 		slog.Error("failed to listen", slog.String("error", err.Error()))
@@ -75,11 +102,18 @@ func main() {
 		}
 	}()
 
-	// 7. Graceful Shutdown Management
+	// 9. Graceful Shutdown Management
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	slog.Info("Shutting down gracefully...")
 	grpcServer.GracefulStop()
 	slog.Info("Server exited properly")
+}
+
+func getEnv(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
 }

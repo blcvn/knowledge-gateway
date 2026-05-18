@@ -87,6 +87,11 @@ grpcurl -plaintext localhost:8081 grpc.health.v1.Health/Check
 | **High latency (>500ms)** | Redis slow or DNS resolution delay | Check Redis latency, verify service discovery addresses |
 | **MCP tools not responding** | SSE connection dropped | Client should reconnect; check MCP_PORT accessibility |
 | **WebDAV 502** | ov-fs service unreachable | Verify SVC_OV_FS_ADDR, check ov-fs health |
+| **Console 403** | User missing admin role | Verify JWT `roles` claim includes `admin` or `super_admin` |
+| **Dashboard slow (>2s)** | Fan-out timeout to multiple engines | Check DASHBOARD_FAN_OUT_TIMEOUT, verify engine health |
+| **WebSocket disconnects** | Connection limit or network issue | Check WS_MAX_CONNECTIONS, verify client reconnect logic |
+| **Debugger empty trace** | search-hub or memobase-context down | Check vnp-search-hub and memobase-context health |
+| **Audit log missing** | vnp-admin PostgreSQL unavailable | Verify vnp-admin DB connection, check audit_logs table |
 
 ## 5. Monitoring
 

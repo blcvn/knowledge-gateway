@@ -96,7 +96,7 @@ version: "3.9"
 services:
   # === Gateway ===
   vnp-gateway:
-    build: ./services/vnp-gateway
+    build: ./gateway
     ports: ["8080:8080", "8081:8081", "8082:8082"]
     depends_on: [postgresql, redis, nats]
 

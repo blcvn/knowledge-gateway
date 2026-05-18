@@ -91,6 +91,22 @@ updated: 2026-05-09
 | `OTEL_SERVICE_NAME` | string | `vnp-gateway` | No | Service name in traces |
 | `METRICS_ENABLED` | bool | `true` | No | Enable Prometheus metrics |
 
+### Console UI (SOL-002)
+
+| Variable | Type | Default | Required | Description |
+|----------|------|---------|----------|-------------|
+| `CONSOLE_ADMIN_ROLE` | string | `admin` | No | Required role for `/v1/console/*` endpoints |
+| `CONSOLE_SUPER_ADMIN_ROLE` | string | `super_admin` | No | Required role for governance endpoints |
+| `WS_MAX_CONNECTIONS` | int | `1000` | No | Max concurrent WebSocket connections |
+| `WS_PING_INTERVAL` | duration | `30s` | No | WebSocket keep-alive ping interval |
+| `WS_READ_BUFFER_SIZE` | int | `4096` | No | WebSocket read buffer bytes |
+| `WS_WRITE_BUFFER_SIZE` | int | `4096` | No | WebSocket write buffer bytes |
+| `DASHBOARD_HEALTH_CACHE_TTL` | duration | `10s` | No | Dashboard health aggregation cache TTL |
+| `DASHBOARD_METRICS_CACHE_TTL` | duration | `30s` | No | Dashboard metrics cache TTL |
+| `DASHBOARD_FAN_OUT_TIMEOUT` | duration | `5s` | No | Max wait for engine health check fan-out |
+| `DEBUGGER_MAX_TRACE_STEPS` | int | `20` | No | Max steps in context debugger trace |
+| `GRAPH_MAX_NODES` | int | `500` | No | Max nodes returned in subgraph query |
+
 ### NATS
 
 | Variable | Type | Default | Required | Description |
@@ -140,8 +156,15 @@ TIMEOUT_DEFAULT=30s
 TIMEOUT_INGESTION=120s
 TIMEOUT_SEARCH=10s
 
+# Console UI
+WS_MAX_CONNECTIONS=1000
+DASHBOARD_HEALTH_CACHE_TTL=10s
+DASHBOARD_FAN_OUT_TIMEOUT=5s
+CONSOLE_ADMIN_ROLE=admin
+
 # Service Discovery (examples)
 SVC_COGNEE_INGESTION_ADDR=cognee-ingestion:9011
 SVC_VNP_SEARCH_HUB_ADDR=vnp-search-hub:9042
 SVC_VNP_ADMIN_ADDR=vnp-admin:9050
 ```
+

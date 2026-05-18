@@ -1,0 +1,76 @@
+# =============================================================================
+# Memobase App — Docker Compose for Local Development
+# Starts the monolith + all infrastructure dependencies
+# =============================================================================
+#
+# Usage:
+#   docker compose up -d       # Start everything
+#   docker compose logs -f     # Follow logs
+#   docker compose down        # Stop everything
+#
+# Health check:
+#   curl http://localhost:9090/healthz
+#   curl http://localhost:9090/readyz
+#   curl http://localhost:8080/api/v1/healthcheck
+
+services:
+  # ── Memobase Monolith App ─────────────────────────────────────────────────
+  memobase-app:
+    build:
+      context: ../..
+      dockerfile: apps/memobase/Dockerfile
+    ports:
+      - "8080:8080"     # Gateway REST API
+      - "8082:8082"     # MCP server
+      - "9090:9090"     # Aggregated health probes
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      redis:
+        condition: service_started
+    env_file: .env.example
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY}
+    restart: unless-stopped
+
+  # ── Infrastructure ───────────────────────────────────────────────────────
+
+  # PostgreSQL — primary database
+  postgres:
+    image: pgvector/pgvector:pg17
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_USER: memobase
+      POSTGRES_PASSWORD: memobase
+      POSTGRES_DB: memobase
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memobase -d memobase"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # NATS — async event bus (pipeline triggers)
+  nats:
+    image: nats:2.10-alpine
+    ports: ["4222:4222", "8222:8222"]
+    command: ["--jetstream", "--store_dir=/data", "--http_port=8222"]
+    volumes:
+      - nats_data:/data
+
+  # Redis — profile cache and rate limiting
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+  nats_data:

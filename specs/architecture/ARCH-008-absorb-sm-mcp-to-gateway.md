@@ -26,8 +26,8 @@ Absorb sm-mcp tools vào vnp-gateway MCP server:
 ## Phạm Vi Refactor
 
 ### Files cần sửa
-- `services/vnp-gateway/internal/adapter/mcp/tools.go`: Register sm-mcp tools
-- `services/vnp-gateway/internal/infra/config/config.go`: Add sm-engine gRPC target
+- `gateway/internal/adapter/mcp/tools.go`: Register sm-mcp tools
+- `gateway/internal/infra/config/config.go`: Add sm-engine gRPC target
 
 ### Files cần xóa (sau migration)
 - `services/sm-mcp/` → toàn bộ

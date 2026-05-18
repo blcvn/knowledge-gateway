@@ -1,0 +1,72 @@
+# Cognee App — Unified Configuration Reference
+#
+# Configuration is loaded from environment variables (takes precedence).
+# This file documents all available settings with their defaults.
+
+server:
+  rest_port: 8080
+  health_port: 11080
+  shutdown_timeout: 30s
+  log_level: info
+
+# Embedded service gRPC ports
+services:
+  ingestion_port: 9011
+  cognify_port: 9012
+  search_port: 9013
+
+auth:
+  jwt_public_key: ""
+  jwt_issuer: "vnp-memory"
+  jwt_audience: "vnp-api"
+  dev_mode: true                    # Set false in production
+
+postgres:
+  dsn: "postgresql://postgres:password@localhost:5432/cognee"
+  max_conns: 20
+  min_conns: 5
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+# NATS JetStream for async service-to-service events
+nats:
+  url: "nats://localhost:4222"
+  creds_file: ""
+  stream_name: "cognee"
+
+neo4j:
+  uri: "bolt://localhost:7687"
+  username: "neo4j"
+  password: "password"
+
+qdrant:
+  url: "http://localhost:6333"
+  collection: "cognee"
+
+minio:
+  endpoint: "localhost:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  bucket: "cognee"
+  use_ssl: false
+
+llm:
+  provider: "openai"
+  api_key: ""                       # Required in production
+  model: "gpt-4o-mini"
+  embed_model: "text-embedding-3-small"
+  temperature: 0.0
+  base_url: ""
+
+cors:
+  allowed_origins: "*"
+  allow_credentials: true
+
+timeout:
+  default: 30s
+  ingestion: 120s
+  search: 10s
+  cognify: 300s

@@ -17,7 +17,7 @@ Single entry point cho toàn bộ VNP Cognitive Platform. Handles:
 ## 2. Clean Architecture Layout
 
 ```
-services/vnp-gateway/
+gateway/
 ├── cmd/server/main.go
 ├── internal/
 │   ├── domain/

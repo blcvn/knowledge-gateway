@@ -10,16 +10,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vnp-community/vnp-memory/gateway/internal/adapter/client"
-	"github.com/vnp-community/vnp-memory/gateway/internal/adapter/handler"
-	"github.com/vnp-community/vnp-memory/gateway/internal/adapter/mcp"
-	"github.com/vnp-community/vnp-memory/gateway/internal/adapter/webdav"
-	"github.com/vnp-community/vnp-memory/gateway/internal/domain"
-	"github.com/vnp-community/vnp-memory/gateway/internal/infra/config"
-	"github.com/vnp-community/vnp-memory/gateway/internal/infra/persistence"
-	"github.com/vnp-community/vnp-memory/gateway/internal/infra/server"
-	"github.com/vnp-community/vnp-memory/gateway/internal/usecase"
-	"github.com/vnp-community/vnp-memory/gateway/internal/usecase/port"
+	"github.com/vnp-community/vnp-memory/gateway/adapter/client"
+	"github.com/vnp-community/vnp-memory/gateway/adapter/handler"
+	"github.com/vnp-community/vnp-memory/gateway/adapter/mcp"
+	"github.com/vnp-community/vnp-memory/gateway/adapter/webdav"
+	"github.com/vnp-community/vnp-memory/gateway/domain"
+	"github.com/vnp-community/vnp-memory/gateway/infra/config"
+	"github.com/vnp-community/vnp-memory/gateway/infra/persistence"
+	"github.com/vnp-community/vnp-memory/gateway/infra/server"
+	"github.com/vnp-community/vnp-memory/gateway/usecase"
+	"github.com/vnp-community/vnp-memory/gateway/usecase/port"
 )
 
 func main() {
@@ -77,8 +77,10 @@ func main() {
 		publisher = &noopPublisher{}
 	}
 
-	// Key Store (PostgreSQL or noop)
+	// Key Store + Console Stores (PostgreSQL or noop)
 	var keyStore port.KeyStore
+	var auditStore port.AuditStore
+	var policyStore port.PolicyStore
 	if cfg.Postgres.DSN != "" {
 		pool, err := persistence.NewPGPool(cfg.Postgres.DSN, cfg.Postgres.MaxConns, cfg.Postgres.MinConns)
 		if err != nil {
@@ -94,13 +96,25 @@ func main() {
 			} else {
 				logger.Info("database schema migrated")
 			}
+			// Console schema migration (T08-T09)
+			if err := persistence.MigrateConsoleSchema(migrateCtx, pool); err != nil {
+				logger.Error("console schema migration failed", "error", err)
+			} else {
+				logger.Info("console schema migrated")
+			}
 			cancel()
 
 			pgStore := persistence.NewPGTenantStore(pool, logger)
 			keyStore = pgStore
+
+			// Console stores (T08-T09)
+			auditStore = persistence.NewPGAuditStore(pool, logger)
+			policyStore = persistence.NewPGPolicyStore(pool, logger)
 		}
 	} else {
 		keyStore = &noopKeyStore{}
+		auditStore = &noopAuditStore{}
+		policyStore = &noopPolicyStore{}
 	}
 
 	// Rate Limit Store (Redis or noop)
@@ -156,6 +170,14 @@ func main() {
 	_ = rateLimitUC // Used in middleware
 	_ = authUC      // Used in middleware
 
+	// Console Usecases (T08-T13)
+	auditUC := usecase.NewAuditUseCase(auditStore, publisher, logger)
+	_ = usecase.NewPolicyUseCase(policyStore, publisher, logger)
+	_ = usecase.NewPipelineUseCase(registry, logger)
+	_ = usecase.NewInfraUseCase(registry, logger)
+	_ = usecase.NewSearchUseCase(registry, logger)
+	_ = usecase.NewForgetUseCase(registry, publisher, auditUC, logger)
+
 	// ──── Adapter Layer ───────────────────────────
 
 	// HTTP Handlers
@@ -168,8 +190,29 @@ func main() {
 	smH := handler.NewSMHandler(registry, logger)
 	adminH := handler.NewAdminHandler(registry, logger)
 
+	// Console Handlers (SOL-002)
+	dashboardH := handler.NewDashboardHandler(registry, logger)
+	explorerH := handler.NewExplorerHandler(registry, logger)
+	graphH := handler.NewGraphHandler(registry, logger)
+	profileH := handler.NewProfileHandler(registry, logger)
+	adaptiveH := handler.NewAdaptiveHandler(registry, logger)
+	debuggerH := handler.NewDebuggerHandler(registry, logger)
+	sessionH := handler.NewSessionHandler(registry, logger)
+	governanceH := handler.NewGovernanceHandler(registry, logger)
+	pipelineH := handler.NewPipelineHandler(registry, logger)
+	infraH := handler.NewInfraHandler(registry, logger)
+	observabilityH := handler.NewObservabilityHandler(registry, logger)
+	wsH := handler.NewWSHandler(logger)
+
 	// HTTP Router
-	router := handler.Router(memoryH, cogneeH, graphitiH, memobaseH, ovH, zepH, smH, adminH, logger)
+	router := handler.Router(
+		memoryH, cogneeH, graphitiH, memobaseH, ovH, zepH, smH, adminH,
+		dashboardH, explorerH, graphH, profileH, adaptiveH,
+		debuggerH, sessionH, governanceH, pipelineH, infraH,
+		observabilityH, wsH,
+		logger,
+		nil, // no embedded UI in standalone gateway mode
+	)
 
 	// MCP Server
 	mcpSrv := mcp.NewServer(registry, logger)
@@ -261,3 +304,21 @@ func (r *noopRegistry) Forward(_ context.Context, _ *domain.RouteTarget, _ []byt
 	return []byte(`{"status":"not_connected"}`), nil
 }
 func (r *noopRegistry) HealthCheck(_ string) (bool, error) { return false, nil }
+
+type noopAuditStore struct{}
+
+func (s *noopAuditStore) Insert(_ context.Context, _ *domain.AuditEntry) error { return nil }
+func (s *noopAuditStore) Search(_ context.Context, _ *domain.AuditFilter) ([]*domain.AuditEntry, int, error) {
+	return nil, 0, nil
+}
+
+type noopPolicyStore struct{}
+
+func (s *noopPolicyStore) List(_ context.Context, _ string) ([]*domain.Policy, error) {
+	return nil, nil
+}
+func (s *noopPolicyStore) Get(_ context.Context, _ string) (*domain.Policy, error) {
+	return nil, domain.ErrNotFound.WithMessage("policy store unavailable")
+}
+func (s *noopPolicyStore) Create(_ context.Context, _ *domain.Policy) error { return nil }
+func (s *noopPolicyStore) Update(_ context.Context, _ *domain.Policy) error { return nil }

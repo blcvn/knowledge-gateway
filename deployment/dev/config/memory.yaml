@@ -1,0 +1,77 @@
+# VNP Memory Monolith — Dev Server Config (172.20.2.39)
+# Deployed via docker-compose as vnp-memory-monolith service
+# All infra addresses use Docker service names
+
+server:
+  rest_port: 8080
+  grpc_port: 8081
+  mcp_port: 8082
+  health_port: 8083
+  log_level: info
+
+auth:
+  dev_mode: true
+  jwt_public_key: ""
+  jwt_issuer: "vnp-memory"
+  jwt_audience: "vnp-memory"
+
+postgres:
+  dsn: "postgres://postgres:postgres@postgres:5432/vnp_memory?sslmode=disable"
+  max_conns: 50
+  min_conns: 5
+
+neo4j:
+  uri: "bolt://neo4j:7687"
+  user: "neo4j"
+  password: "neo4jpassword"
+
+qdrant:
+  addr: "qdrant:6333"
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+
+nats:
+  mode: "embedded"
+  url: ""
+  store_dir: "/app/data/nats"
+
+minio:
+  endpoint: "minio:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  bucket: "vnp-memory"
+
+bifrost:
+  url: "https://b9.openledger.vn"
+
+cognee:
+  chunk_size: 1024
+  max_concurrent_jobs: 4
+
+graphiti:
+  community_detection: true
+  max_bfs_depth: 3
+
+memobase:
+  buffer_flush_threshold: 1024
+  buffer_idle_timeout: 1h
+  max_llm_calls_per_flush: 3
+
+openviking:
+  data_dir: "/app/data/vikingfs"
+  encryption_enabled: false
+
+zep:
+  context_assembly_timeout: 200ms
+  max_messages_per_thread: 10000
+
+supermemory:
+  forgetting_curve_enabled: true
+  decay_half_life: 168h
+
+platform:
+  search_hub_timeout: 2s
+  max_fan_out: 7

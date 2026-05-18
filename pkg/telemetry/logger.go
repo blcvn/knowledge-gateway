@@ -1,44 +1,44 @@
 package telemetry
 
 import (
-\t"context"
-\t"log/slog"
-\t"os"
+	"context"
+	"log/slog"
+	"os"
 
-\t"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // InitLogger configures the global slog logger to use JSON format, suitable for production.
 func InitLogger(level string) {
-\tvar programLevel new(slog.LevelVar) // Info by default
-\t
-\tswitch level {
-\tcase "debug":
-\t\tprogramLevel.Set(slog.LevelDebug)
-\tcase "warn":
-\t\tprogramLevel.Set(slog.LevelWarn)
-\tcase "error":
-\t\tprogramLevel.Set(slog.LevelError)
-\tdefault:
-\t\tprogramLevel.Set(slog.LevelInfo)
-\t}
+	programLevel := new(slog.LevelVar) // Info by default
 
-\th := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-\t\tLevel: programLevel,
-\t})
-\tslog.SetDefault(slog.New(h))
+	switch level {
+	case "debug":
+		programLevel.Set(slog.LevelDebug)
+	case "warn":
+		programLevel.Set(slog.LevelWarn)
+	case "error":
+		programLevel.Set(slog.LevelError)
+	default:
+		programLevel.Set(slog.LevelInfo)
+	}
+
+	h := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: programLevel,
+	})
+	slog.SetDefault(slog.New(h))
 }
 
 // LogContext is a helper to inject OpenTelemetry trace and span IDs into structured logs.
 // This allows seamless correlation between logs and distributed traces in tools like Grafana/Datadog.
 func LogContext(ctx context.Context) []any {
-\tspan := trace.SpanFromContext(ctx)
-\tif !span.SpanContext().IsValid() {
-\t\treturn []any{} // Return empty if no active span
-\t}
+	span := trace.SpanFromContext(ctx)
+	if !span.SpanContext().IsValid() {
+		return []any{} // Return empty if no active span
+	}
 
-\treturn []any{
-\t\tslog.String("trace_id", span.SpanContext().TraceID().String()),
-\t\tslog.String("span_id", span.SpanContext().SpanID().String()),
-\t}
+	return []any{
+		slog.String("trace_id", span.SpanContext().TraceID().String()),
+		slog.String("span_id", span.SpanContext().SpanID().String()),
+	}
 }

@@ -59,6 +59,10 @@ gateway/
 │   │   ├── auth.go                    #   AuthenticateUseCase — JWT/APIKey validation
 │   │   ├── mcp.go                     #   MCPServerUseCase — tool dispatch
 │   │   ├── ratelimit.go               #   RateLimitUseCase — sliding window check
+│   │   ├── dashboard.go               #   DashboardUseCase — fan-out health/metrics
+│   │   ├── session.go                 #   SessionUseCase — merge Zep+OV sessions
+│   │   ├── debugger.go                #   DebuggerUseCase — context assembly trace
+│   │   ├── graph.go                   #   GraphUseCase — multi-engine graph merge
 │   │   └── port/                      #   Port interfaces
 │   │       ├── input.go               #     Router, Authenticator, MCPHandler
 │   │       └── output.go              #     ServiceRegistry, TenantStore, KeyStore
@@ -72,7 +76,18 @@ gateway/
 │   │   │   ├── openviking_handler.go #     /v1/ov/*
 │   │   │   ├── zep_handler.go        #     /v1/zep/*
 │   │   │   ├── sm_handler.go         #     /v1/sm/*
-│   │   │   └── admin_handler.go      #     /v1/admin/*
+│   │   │   ├── admin_handler.go      #     /v1/admin/*
+│   │   │   ├── dashboard_handler.go  #     /v1/console/dashboard/* (FEAT-006)
+│   │   │   ├── explorer_handler.go   #     /v1/console/memory/* (FEAT-007)
+│   │   │   ├── graph_handler.go      #     /v1/console/graph/* (FEAT-013)
+│   │   │   ├── profile_handler.go    #     /v1/console/profiles/* (FEAT-008)
+│   │   │   ├── adaptive_handler.go   #     /v1/console/adaptive/* (FEAT-009)
+│   │   │   ├── debugger_handler.go   #     /v1/console/debugger/* (FEAT-010)
+│   │   │   ├── session_handler.go    #     /v1/console/sessions/* (FEAT-014)
+│   │   │   ├── governance_handler.go #     /v1/console/governance/* (FEAT-011)
+│   │   │   ├── pipeline_handler.go   #     /v1/console/pipelines/* (FEAT-015)
+│   │   │   ├── infra_handler.go      #     /v1/console/infra/* (FEAT-016)
+│   │   │   └── observability_handler.go # /v1/console/observability/* (FEAT-017)
 │   │   ├── grpc/                      #   gRPC-Web proxy
 │   │   │   └── proxy.go              #     REST ↔ gRPC transcoding
 │   │   ├── mcp/                       #   MCP server

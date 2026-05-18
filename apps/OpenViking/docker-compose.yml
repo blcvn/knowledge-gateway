@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  openviking:
+    build: 
+      context: ../../
+      dockerfile: apps/OpenViking/Dockerfile
+    ports:
+      - "8080:8080"  # REST
+      - "8081:8081"  # gRPC
+      - "8082:8082"  # MCP
+      - "8000:8000"  # Management/Health
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      - redis
+      - nats
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  nats:
+    image: nats:alpine
+    ports:
+      - "4222:4222"
+    command: ["-js"]

@@ -1,10 +1,11 @@
 ---
 id: DOC-S02
 service: vnp-gateway
-version: 1.0.0
-status: Draft
+version: 2.0.0
+status: Active
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-14
+linked_sol: SOL-002, SOL-003
 ---
 
 # vnp-gateway — API Reference
@@ -299,3 +300,143 @@ X-RateLimit-Remaining: 0
 X-RateLimit-Reset: 1683820800
 Retry-After: 30
 ```
+
+---
+
+## 13. Console APIs (`/v1/console/*`)
+
+> **Auth**: All console endpoints require `admin` or `super_admin` role.  
+> **Linked**: SOL-002 UX Console API Upgrade, SOL-003 UI/Gateway Hardening  
+> **UI Client**: `ui/src/config/api.config.ts → API_CONFIG.console.*` routes  
+> **Verified**: 2026-05-14 — All 70 console routes match `router.go` HandleFunc registrations
+
+### 13.1 Dashboard (`/v1/console/dashboard/*`) — FEAT-006
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/console/dashboard/health` | Aggregated engine health (7 engines) |
+| GET | `/v1/console/dashboard/metrics` | KPI cards (agents, latency, savings) |
+| GET | `/v1/console/dashboard/throughput` | Per-engine throughput (`?window=5m\|1h\|24h`) |
+| GET | `/v1/console/dashboard/heatmap` | Memory density heatmap data |
+
+### 13.2 Memory Explorer (`/v1/console/memory/*`) — FEAT-007
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/console/memory/search` | Unified cross-engine search |
+| GET | `/v1/console/memory/{id}` | Memory detail with provenance |
+| GET | `/v1/console/memory/{id}/neighbors` | Graph neighbors |
+| GET | `/v1/console/memory/{id}/versions` | Version chain (Supermemory) |
+
+### 13.3 Graph Studio (`/v1/console/graph/*`) — FEAT-013
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/console/graph/subgraph` | Query subgraph by entity |
+| GET | `/v1/console/graph/entity/{id}` | Entity detail with neighbors |
+| POST | `/v1/console/graph/timeline` | Temporal subgraph for time range |
+| GET | `/v1/console/graph/ontology` | Get ontology schema |
+| PUT | `/v1/console/graph/ontology` | Update ontology schema |
+| POST | `/v1/console/graph/query` | Execute Cypher/NL query |
+
+### 13.4 User Profiles (`/v1/console/profiles/*`) — FEAT-008
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/console/profiles` | List user profiles (paginated) |
+| GET | `/v1/console/profiles/{user_id}` | Profile detail |
+| GET | `/v1/console/profiles/{user_id}/events` | Event timeline |
+| GET | `/v1/console/profiles/{user_id}/context` | Context assembly preview |
+| GET | `/v1/console/profiles/{user_id}/buffers` | Buffer zone status |
+| GET | `/v1/console/profiles/config` | Profile schema config |
+| PUT | `/v1/console/profiles/config` | Update profile schema |
+
+### 13.5 Adaptive Memory (`/v1/console/adaptive/*`) — FEAT-009
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/console/adaptive/memories` | List adaptive memories |
+| GET | `/v1/console/adaptive/memories/{id}/versions` | Version chain |
+| GET | `/v1/console/adaptive/connectors` | List external connectors |
+| POST | `/v1/console/adaptive/connectors` | Create connector |
+| POST | `/v1/console/adaptive/connectors/{id}/sync` | Trigger sync |
+| GET | `/v1/console/adaptive/analytics` | Adaptive memory analytics |
+| GET | `/v1/console/adaptive/forget-rules` | Auto-forget rules |
+| PUT | `/v1/console/adaptive/forget-rules` | Update forget rules |
+
+### 13.6 Context Debugger (`/v1/console/debugger/*`) — FEAT-010
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/console/debugger/trace` | Simulate context assembly |
+| GET | `/v1/console/debugger/traces/{id}` | Get saved trace |
+| GET | `/v1/console/debugger/traces` | List recent traces |
+
+### 13.7 Sessions (`/v1/console/sessions/*`) — FEAT-014
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/console/sessions` | List sessions (paginated) |
+| GET | `/v1/console/sessions/{id}` | Session detail with messages |
+| GET | `/v1/console/sessions/{id}/timeline` | Session replay timeline |
+| GET | `/v1/console/sessions/{id}/diff` | Memory diff (before vs after) |
+| GET | `/v1/console/sessions/{id}/working-memory` | Working memory state |
+| GET | `/v1/console/sessions/{id}/user-summary` | User memory summary |
+| GET | `/v1/console/sessions/live` | Active live sessions |
+
+### 13.8 Governance (`/v1/console/governance/*`) — FEAT-011
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/console/governance/tenants` | List tenants |
+| POST | `/v1/console/governance/tenants` | Create tenant |
+| PUT | `/v1/console/governance/tenants/{id}` | Update tenant |
+| GET | `/v1/console/governance/policies` | List OPA policies |
+| POST | `/v1/console/governance/policies` | Create policy |
+| PUT | `/v1/console/governance/policies/{id}` | Update policy |
+| GET | `/v1/console/governance/audit` | Search audit logs |
+| POST | `/v1/console/governance/gdpr/forget` | GDPR cascading forget |
+| POST | `/v1/console/governance/gdpr/forget/preview` | Dry-run forget preview |
+
+### 13.9 Pipelines (`/v1/console/pipelines/*`) — FEAT-015
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/console/pipelines/status` | All engines pipeline overview |
+| GET | `/v1/console/pipelines/{engine}` | Engine pipeline status |
+| GET | `/v1/console/pipelines/{engine}/jobs` | Active/recent jobs |
+| GET | `/v1/console/pipelines/{engine}/jobs/{id}` | Job detail with stages |
+| GET | `/v1/console/pipelines/queues` | Queue metrics across engines |
+| GET | `/v1/console/pipelines/workers` | Worker status |
+| GET | `/v1/console/pipelines/templates` | Pipeline templates |
+
+### 13.10 Infrastructure (`/v1/console/infra/*`) — FEAT-016
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/console/infra/topology` | Service topology graph |
+| GET | `/v1/console/infra/services` | All 18 services status |
+| GET | `/v1/console/infra/services/{name}` | Service detail |
+| GET | `/v1/console/infra/databases` | DB health (PG, Neo4j, Redis, NATS) |
+| GET | `/v1/console/infra/resources` | Resource usage per service |
+| GET | `/v1/console/infra/deployments` | Deployment timeline |
+
+### 13.11 Observability (`/v1/console/observability/*`) — FEAT-017
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/console/observability/metrics` | Aggregated metrics per engine |
+| GET | `/v1/console/observability/traces` | List distributed traces |
+| GET | `/v1/console/observability/traces/{id}` | Trace detail with spans |
+| GET | `/v1/console/observability/errors` | Error explorer |
+| GET | `/v1/console/observability/costs` | Cost analytics (LLM, tokens) |
+
+### 13.12 WebSocket Realtime (`/v1/console/ws`) — FEAT-012
+
+| Protocol | Path | Description |
+|----------|------|-------------|
+| WS | `/v1/console/ws?token=<jwt>` | Authenticated WebSocket |
+
+**Channels:** `engine.health`, `memory.flow`, `pipeline.progress`, `alerts`
+
+> **Total Console Routes**: ~70 endpoints across 11 namespaces + 1 WebSocket

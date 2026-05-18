@@ -1,16 +1,90 @@
 ---
 id: DOC-S07
 service: vnp-gateway
-version: 0.3.0
+version: 0.7.0
 status: Active
 created: 2026-05-09
-updated: 2026-05-09
+updated: 2026-05-14
 format: Keep a Changelog (keepachangelog.com)
 ---
 
 # Changelog — vnp-gateway
 
 All notable changes to this service will be documented in this file.
+
+## [Unreleased] — v0.7.0 (SOL-003: UI/Gateway Hardening)
+
+### Changed
+- **api.md**: Upgraded to v2.0.0 (Active status), verified 116 HandleFunc routes vs documentation parity
+- **api.md**: Added SOL-003 cross-reference, UI client notes (`api.config.ts → console.*` routes)
+- **Console namespace verified**: All 70 console endpoints match between `router.go` and `api.md` Section 13
+
+### Verified (SOL-003 Phase 1 — UI)
+- UI service layer: 10/10 services aligned to `/v1/console/*` namespace
+- Hook contracts: `useProfileList`, `usePolicies`, `useAdaptiveAnalytics` fixed
+- Type safety: Session/Observability types extended, mock `any` assertions removed
+- ErrorBoundary: Global error boundary wrapping lazy-loaded modules
+- Dead code: `Placeholder.tsx` removed
+- Build: `vite build` passes (2.15s, 22 chunks, 0 errors)
+
+### Planned (SOL-003 Phase 3 — Downstream)
+- TASK-062: vnp-admin audit log + policy CRUD handlers
+- TASK-063: vnp-platform pipeline status + infra probe handlers
+- TASK-064: vnp-search-hub unified search orchestrator
+- TASK-065: vnp-event GDPR cascade forget + timeline handlers
+
+## [Unreleased] — v0.6.0 (SOL-002: UX Console API Upgrade)
+
+### Added
+- **Console API namespace** (`/v1/console/*`): 11 handler groups, ~70 new REST endpoints
+  for VNP Memory Console UI. All require `admin` role.
+  - Dashboard API (FEAT-006): health, metrics, throughput, heatmap
+  - Memory Explorer API (FEAT-007): unified search, detail, neighbors, versions
+  - Graph Studio API (FEAT-013): subgraph, entity, timeline, ontology CRUD, query
+  - User Profiles API (FEAT-008): profile list, events, context, buffers, config
+  - Adaptive Memory API (FEAT-009): memories, versions, connectors, analytics, forget-rules
+  - Context Debugger API (FEAT-010): trace simulation, saved traces
+  - Sessions API (FEAT-014): session list, timeline, diff, working-memory, user-summary
+  - Governance API (FEAT-011): tenant/policy CRUD, audit logs, GDPR forget/preview
+  - Pipelines API (FEAT-015): status, jobs, queues, workers, templates
+  - Infrastructure API (FEAT-016): topology, services, databases, resources
+  - Observability API (FEAT-017): metrics, traces, errors, costs
+
+- **WebSocket realtime** (FEAT-012): `WS /v1/console/ws`
+  - Channels: engine.health, memory.flow, pipeline.progress, alerts
+  - JWT-authenticated, per-connection channel subscription
+
+- **Governance data model**: `audit_logs` + `policies` PostgreSQL tables
+  - Indexes for tenant-scoped time-range queries
+  - Migration v2.0.0
+
+- **Console configuration**: 11 new env vars
+  - `CONSOLE_ADMIN_ROLE`, `WS_MAX_CONNECTIONS`, `DASHBOARD_*_CACHE_TTL`, etc.
+
+- **Console usecases**: DashboardUseCase, SessionUseCase, DebuggerUseCase, GraphUseCase
+
+### Changed
+- **api.md**: Added Section 13 — Console APIs (~70 endpoints across 11 namespaces)
+- **architecture.md**: Added 11 console handler files + 4 console usecases to layer structure
+- **data-model.md**: Added audit_logs, policies tables + dashboard/WS Redis keys
+- **configuration.md**: Added Console UI section with WebSocket + dashboard config
+- **SOL-002**: Upgraded to v2.0.0 — added 5 missing FEAT specs (013-017), expanded to 21 tasks
+
+### Specs Added
+- `FEAT-013-graph-studio-api.md` — UX §6.3 Graph Studio
+- `FEAT-014-sessions-api.md` — UX §6.7 Sessions & Conversations
+- `FEAT-015-pipelines-console-api.md` — UX §6.9 Pipelines Console
+- `FEAT-016-infrastructure-health-api.md` — UX §6.10 Infrastructure View
+- `FEAT-017-observability-api.md` — UX §6.11 Observability
+
+## [Unreleased] — v0.5.0
+
+### Changed
+- **Merged `services/vnp-gateway` into `gateway/`**: Removed the legacy stub scaffold
+  that only contained docs and a basic main.go (86 LOC). All documentation and specs
+  now live alongside the production implementation in `gateway/`. Updated all external
+  references across the monorepo. Moved `QA-001-align-docs-with-implementation.md`
+  to `gateway/specs/quality/`.
 
 ## [Unreleased] — v0.4.0
 

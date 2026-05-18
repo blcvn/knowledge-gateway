@@ -1,0 +1,146 @@
+services:
+  # ── Application ──────────────────────────────────────────────
+  vnp-memory:
+    build:
+      context: ../..
+      dockerfile: apps/memory/Dockerfile
+    container_name: vnp-memory
+    ports:
+      - "8080:8080"   # REST API
+      - "8082:8082"   # MCP Server
+      - "8083:8083"   # Health/Metrics
+    environment:
+      VNP_MEMORY_SERVER_REST_PORT: "8080"
+      VNP_MEMORY_SERVER_MCP_PORT: "8082"
+      VNP_MEMORY_SERVER_HEALTH_PORT: "8083"
+      VNP_MEMORY_SERVER_LOG_LEVEL: "info"
+      VNP_MEMORY_AUTH_DEV_MODE: "true"
+      VNP_MEMORY_POSTGRES_DSN: "postgres://vnp:vnp@postgres:5432/vnp_memory?sslmode=disable"
+      VNP_MEMORY_POSTGRES_MAX_CONNS: "50"
+      VNP_MEMORY_POSTGRES_MIN_CONNS: "5"
+      VNP_MEMORY_NEO4J_URI: "bolt://neo4j:7687"
+      VNP_MEMORY_NEO4J_USER: "neo4j"
+      VNP_MEMORY_NEO4J_PASSWORD: "password"
+      VNP_MEMORY_QDRANT_ADDR: "qdrant:6334"
+      VNP_MEMORY_REDIS_ADDR: "redis:6379"
+      VNP_MEMORY_NATS_MODE: "embedded"
+      VNP_MEMORY_NATS_STORE_DIR: "/app/data/nats"
+      VNP_MEMORY_MINIO_ENDPOINT: "minio:9000"
+      VNP_MEMORY_MINIO_ACCESS_KEY: "minioadmin"
+      VNP_MEMORY_MINIO_SECRET_KEY: "minioadmin"
+      VNP_MEMORY_MINIO_BUCKET: "vnp-memory"
+    volumes:
+      - nats-data:/app/data/nats
+      - ov-data:/app/data/vikingfs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vnp-net
+
+  # ── Infrastructure ───────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: vnp-postgres
+    environment:
+      POSTGRES_USER: vnp
+      POSTGRES_PASSWORD: vnp
+      POSTGRES_DB: vnp_memory
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vnp -d vnp_memory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vnp-net
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: vnp-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - vnp-net
+
+  qdrant:
+    image: qdrant/qdrant:v1.14.0
+    container_name: vnp-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - vnp-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: vnp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - vnp-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: vnp-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vnp-net
+
+volumes:
+  pg-data:
+  neo4j-data:
+  qdrant-data:
+  redis-data:
+  minio-data:
+  nats-data:
+  ov-data:
+
+networks:
+  vnp-net:
+    driver: bridge
