@@ -37,6 +37,10 @@ func (m *mockGraphUsecase) GetNode(ctx context.Context, appID, tenantID, nodeID 
 	return m.getNodeFn(ctx, appID, tenantID, nodeID)
 }
 
+func (m *mockGraphUsecase) UpdateNode(ctx context.Context, appID, tenantID, nodeID string, mergeProperties map[string]any, newLabel string) (map[string]any, error) {
+	return map[string]any{"id": nodeID, "label": newLabel}, nil
+}
+
 func (m *mockGraphUsecase) CreateEdge(ctx context.Context, appID, tenantID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error) {
 	return map[string]any{}, nil
 }

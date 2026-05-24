@@ -2,11 +2,41 @@ syntax = "proto3";
 package vnp.memory.smconnector.v1;
 option go_package = "vnp-memory/services/sm-connector/api/proto/v1;smconnectorv1";
 
+// SmConnectorService provides external connector management.
+// Console endpoints: adaptive connectors (FEAT-009).
 service SmConnectorService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/adaptive/connectors
+  rpc ListConnectors(ListConnectorsRequest) returns (ListConnectorsResponse);
+  // Console: POST /v1/console/adaptive/connectors
+  rpc CreateConnector(CreateConnectorRequest) returns (ExternalConnector);
+  // Console: POST /v1/console/adaptive/connectors/{id}/sync
+  rpc SyncConnector(SyncConnectorRequest) returns (SyncConnectorResponse);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message ListConnectorsRequest {}
+message ListConnectorsResponse {
+  repeated ExternalConnector connectors = 1;
 }
+message ExternalConnector {
+  string id = 1;
+  string type = 2;
+  string status = 3;
+  string last_sync = 4;
+  int32 document_count = 5;
+  string sync_frequency = 6;
+  string error_message = 7;
+}
+
+message CreateConnectorRequest {
+  string type = 1;
+  string sync_frequency = 2;
+  map<string, string> config = 3;
+}
+
+message SyncConnectorRequest { string id = 1; }
+message SyncConnectorResponse { string status = 1; }

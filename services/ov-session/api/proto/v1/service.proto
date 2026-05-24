@@ -2,11 +2,21 @@ syntax = "proto3";
 package vnp.memory.ovsession.v1;
 option go_package = "vnp-memory/services/ov-session/api/proto/v1;ovsessionv1";
 
+// OvSessionService provides session management.
+// Console endpoints: working memory (FEAT-014).
 service OvSessionService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/sessions/{id}/working-memory
+  rpc GetWorkingMemory(GetWorkingMemoryRequest) returns (WorkingMemory);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message GetWorkingMemoryRequest { string id = 1; }
+message WorkingMemory {
+  string session_id = 1;
+  string summary = 2;
+  repeated string entities = 3;
 }

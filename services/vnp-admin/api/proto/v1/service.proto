@@ -2,11 +2,89 @@ syntax = "proto3";
 package vnp.memory.vnpadmin.v1;
 option go_package = "vnp-memory/services/vnp-admin/api/proto/v1;vnpadminv1";
 
+// VnpAdminService provides admin and governance management.
+// Console endpoints: governance (FEAT-011).
 service VnpAdminService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/governance/tenants
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  // Console: POST /v1/console/governance/tenants
+  rpc CreateTenant(CreateTenantRequest) returns (Tenant);
+  // Console: PUT /v1/console/governance/tenants/{id}
+  rpc UpdateTenant(UpdateTenantRequest) returns (Tenant);
+  // Console: GET /v1/console/governance/policies
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  // Console: POST /v1/console/governance/policies
+  rpc CreatePolicy(CreatePolicyRequest) returns (Policy);
+  // Console: PUT /v1/console/governance/policies/{id}
+  rpc UpdatePolicy(UpdatePolicyRequest) returns (Policy);
+  // Console: GET /v1/console/governance/audit
+  rpc SearchAudit(SearchAuditRequest) returns (SearchAuditResponse);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message ListTenantsRequest {}
+message ListTenantsResponse { repeated Tenant tenants = 1; }
+message Tenant {
+  string id = 1;
+  string name = 2;
+  string created_at = 3;
+  string status = 4;
+}
+message CreateTenantRequest { string name = 1; }
+message UpdateTenantRequest {
+  string id = 1;
+  string name = 2;
+  string status = 3;
+}
+
+message ListPoliciesRequest {}
+message ListPoliciesResponse { repeated Policy policies = 1; }
+message Policy {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string rego_code = 4;
+  string scope = 5;
+  bool enabled = 6;
+}
+message CreatePolicyRequest {
+  string name = 1;
+  string description = 2;
+  string rego_code = 3;
+  string scope = 4;
+  bool enabled = 5;
+}
+message UpdatePolicyRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string rego_code = 4;
+  string scope = 5;
+  bool enabled = 6;
+}
+
+message SearchAuditRequest {
+  string tenant_id = 1;
+  string actor_id = 2;
+  string action = 3;
+  string entity_type = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+}
+message SearchAuditResponse {
+  repeated AuditLogEntry entries = 1;
+  int32 total = 2;
+}
+message AuditLogEntry {
+  string id = 1;
+  string tenant_id = 2;
+  string actor_id = 3;
+  string action = 4;
+  string entity_type = 5;
+  string created_at = 6;
+  string result = 7;
 }

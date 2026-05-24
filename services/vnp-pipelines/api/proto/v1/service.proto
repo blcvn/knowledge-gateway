@@ -1,0 +1,86 @@
+syntax = "proto3";
+package vnp.memory.vnppipelines.v1;
+option go_package = "vnp-memory/services/vnp-pipelines/api/proto/v1;vnppipelinesv1";
+
+// VnpPipelinesService provides pipeline monitoring.
+// Split from vnp-platform (FEAT-015).
+service VnpPipelinesService {
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  rpc GetQueues(GetQueuesRequest) returns (QueueMetrics);
+  rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
+  rpc GetTemplates(GetTemplatesRequest) returns (GetTemplatesResponse);
+  rpc GetEngine(GetEngineRequest) returns (GetEngineResponse);
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse);
+  rpc GetJob(GetJobRequest) returns (PipelineJob);
+}
+
+message PingRequest {}
+message PingResponse { string status = 1; }
+
+message GetStatusRequest {}
+message GetStatusResponse {
+  map<string, EngineStatus> engines = 1;
+  int32 total_jobs = 2;
+  int32 queue_depth = 3;
+  int32 workers = 4;
+  string updated_at = 5;
+}
+message EngineStatus {
+  string name = 1;
+  string status = 2;
+  int32 active_jobs = 3;
+  int32 queue_depth = 4;
+  int32 workers = 5;
+}
+
+message GetQueuesRequest {}
+message QueueMetrics {
+  int32 depth = 1;
+  double throughput = 2;
+  int32 retry_count = 3;
+}
+
+message GetWorkersRequest {}
+message GetWorkersResponse {
+  repeated WorkerStatus workers = 1;
+}
+message WorkerStatus {
+  string engine = 1;
+  int32 running = 2;
+  int32 idle = 3;
+}
+
+message GetTemplatesRequest {}
+message GetTemplatesResponse {
+  repeated PipelineTemplate templates = 1;
+}
+message PipelineTemplate {
+  string name = 1;
+  string engine = 2;
+  string description = 3;
+  repeated string stages = 4;
+}
+
+message GetEngineRequest { string engine = 1; }
+message GetEngineResponse {
+  string engine = 1;
+  EngineStatus status = 2;
+  repeated PipelineJob recent_jobs = 3;
+}
+
+message ListJobsRequest { string engine = 1; }
+message ListJobsResponse { repeated PipelineJob jobs = 1; }
+
+message GetJobRequest {
+  string engine = 1;
+  string id = 2;
+}
+message PipelineJob {
+  string id = 1;
+  string engine = 2;
+  string status = 3;
+  double progress = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}

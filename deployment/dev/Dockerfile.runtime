@@ -1,0 +1,23 @@
+# =============================================================================
+# Dockerfile.runtime — Lightweight runtime base image for Go static binaries
+# =============================================================================
+# Image: vnp/runtime:latest
+#
+# Build once on the dev server (or locally and upload):
+#   docker build -t vnp/runtime:latest -f Dockerfile.runtime .
+#
+# All application services use this as their base image.
+# Binaries are mounted via Docker bind-mount, NOT baked into the image.
+# =============================================================================
+
+FROM alpine:3.21
+
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    curl \
+    wget
+
+ENV TZ=Asia/Ho_Chi_Minh
+
+WORKDIR /app

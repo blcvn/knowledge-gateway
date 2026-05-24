@@ -50,6 +50,12 @@ func newMockRegistry() *mockRegistry {
 			"sm-profile":         {Service: "sm-profile", Address: "localhost:9074"},
 			"sm-connector":       {Service: "sm-connector", Address: "localhost:9075"},
 			"sm-project":         {Service: "sm-project", Address: "localhost:9079"},
+			"sm-engine":          {Service: "sm-engine", Address: "localhost:9080"},
+			"zep-core":           {Service: "zep-core", Address: "localhost:9067"},
+			"vnp-dashboard":      {Service: "vnp-dashboard", Address: "localhost:9043"},
+			"vnp-pipelines":      {Service: "vnp-pipelines", Address: "localhost:9044"},
+			"vnp-infra":          {Service: "vnp-infra", Address: "localhost:9045"},
+			"vnp-observability":  {Service: "vnp-observability", Address: "localhost:9046"},
 		},
 		response: []byte(`{"status":"ok","id":"test-123"}`),
 	}
@@ -64,6 +70,13 @@ func (m *mockRegistry) Resolve(service string) (*domain.RouteTarget, error) {
 }
 
 func (m *mockRegistry) Forward(_ context.Context, _ *domain.RouteTarget, _ []byte) ([]byte, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.response, nil
+}
+
+func (m *mockRegistry) ForwardWithContext(_ context.Context, _ *domain.RouteTarget, _ *domain.ForwardRequest) ([]byte, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

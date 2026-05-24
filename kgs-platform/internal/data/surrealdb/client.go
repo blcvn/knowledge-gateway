@@ -27,8 +27,8 @@ func NewClient(url, namespace, database, user, password string, logger log.Logge
 		return nil, nil, fmt.Errorf("surrealdb connect %s: %w", url, err)
 	}
 
-	// Authenticate
-	if err := db.SignIn(ctx, map[string]interface{}{
+	// Authenticate — v1.4.0: SignIn returns (token string, error)
+	if _, err := db.SignIn(ctx, map[string]interface{}{
 		"username": user,
 		"password": password,
 	}); err != nil {
@@ -71,7 +71,8 @@ func (c *Client) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_, err := c.db.Query(ctx, "RETURN true", nil)
+	// v1.4.0: Query is a package-level generic function
+	_, err := surreal.Query[any](ctx, c.db, "RETURN true", nil)
 	if err != nil {
 		return fmt.Errorf("surrealdb health check failed: %w", err)
 	}
@@ -80,7 +81,8 @@ func (c *Client) Ping(ctx context.Context) error {
 
 // Query executes a SurrealQL query and returns the result.
 func (c *Client) Query(ctx context.Context, sql string, vars map[string]any) (any, error) {
-	result, err := c.db.Query(ctx, sql, vars)
+	// v1.4.0: Query is a package-level generic function
+	result, err := surreal.Query[any](ctx, c.db, sql, vars)
 	if err != nil {
 		c.log.Errorf("[KGS][SurrealDB] Query failed sql=%q err=%v", truncate(sql, 200), err)
 		return nil, err

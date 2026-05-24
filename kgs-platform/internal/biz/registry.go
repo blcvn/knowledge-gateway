@@ -13,6 +13,7 @@ type App struct {
 	Description string `gorm:"type:text"`
 	Owner       string `gorm:"type:varchar(100);not null"`
 	Status      string `gorm:"type:varchar(20);default:'ACTIVE'"` // ACTIVE, INACTIVE, SUSPENDED
+	ExternalID  string `gorm:"column:external_id;type:varchar(128);uniqueIndex:idx_app_external_id,where:external_id IS NOT NULL"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `gorm:"index"`

@@ -8,6 +8,7 @@ var (
 	ErrAPIKeyNotFound = kerrors.Unauthorized("ERR_UNAUTHORIZED", "api key not found")
 	ErrAPIKeyRevoked  = kerrors.Unauthorized("ERR_UNAUTHORIZED", "api key revoked")
 	ErrAPIKeyExpired  = kerrors.Unauthorized("ERR_UNAUTHORIZED", "api key expired")
+	ErrAppNotFound    = kerrors.NotFound("ERR_APP_NOT_FOUND", "application not found")
 )
 
 func ErrForbiddenWithMetadata(message string, metadata map[string]string) error {

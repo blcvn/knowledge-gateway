@@ -2,11 +2,75 @@ syntax = "proto3";
 package vnp.memory.memobasecontext.v1;
 option go_package = "vnp-memory/services/memobase-context/api/proto/v1;memobasecontextv1";
 
+// MemobaseContextService provides user profile and context assembly.
+// Console endpoints: profiles, context, user-summary (FEAT-008, FEAT-014).
 service MemobaseContextService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/profiles
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
+  // Console: GET /v1/console/profiles/{user_id}
+  rpc GetProfile(GetProfileRequest) returns (UserProfile);
+  // Console: GET /v1/console/profiles/config
+  rpc GetConfig(GetConfigRequest) returns (ProfileConfig);
+  // Console: PUT /v1/console/profiles/config
+  rpc UpdateConfig(UpdateConfigRequest) returns (ProfileConfig);
+  // Console: GET /v1/console/profiles/{user_id}/context
+  rpc GetContext(GetContextRequest) returns (ContextAssembly);
+  // Console: GET /v1/console/sessions/{id}/user-summary
+  rpc GetUserSummary(GetUserSummaryRequest) returns (GetUserSummaryResponse);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message ListProfilesRequest {}
+message ListProfilesResponse {
+  repeated UserProfile profiles = 1;
+}
+message UserProfile {
+  string user_id = 1;
+  repeated ProfileEntry profiles = 2;
+  string created_at = 3;
+  string updated_at = 4;
+}
+message ProfileEntry {
+  string topic = 1;
+  string sub_topic = 2;
+  string content = 3;
+  double confidence = 4;
+}
+
+message GetProfileRequest { string user_id = 1; }
+
+message GetConfigRequest {}
+message ProfileConfig {
+  repeated ProfileSchemaEntry profiles = 1;
+  bool strict_mode = 2;
+}
+message ProfileSchemaEntry {
+  string topic = 1;
+  string sub_topic = 2;
+  string description = 3;
+}
+message UpdateConfigRequest {
+  repeated ProfileSchemaEntry profiles = 1;
+  bool strict_mode = 2;
+}
+
+message GetContextRequest { string user_id = 1; }
+message ContextAssembly {
+  string user_id = 1;
+  string context_string = 2;
+  int32 token_count = 3;
+  int32 profile_section_tokens = 4;
+  int32 event_section_tokens = 5;
+  int64 latency_ms = 6;
+}
+
+message GetUserSummaryRequest { string id = 1; }
+message GetUserSummaryResponse {
+  string session_id = 1;
+  string user_id = 2;
+  string summary = 3;
 }

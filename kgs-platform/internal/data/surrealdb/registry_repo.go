@@ -57,6 +57,19 @@ func (r *surrealRegistryRepo) GetApp(ctx context.Context, appID string) (*biz.Ap
 	return &apps[0], nil
 }
 
+func (r *surrealRegistryRepo) GetAppByExternalID(ctx context.Context, externalID string) (*biz.App, error) {
+	sql := `SELECT * FROM kgs_apps WHERE external_id = $external_id AND deleted_at IS NONE LIMIT 1`
+	result, err := r.client.Query(ctx, sql, map[string]any{"external_id": externalID})
+	if err != nil {
+		return nil, err
+	}
+	apps, err := unmarshalSlice[biz.App](result)
+	if err != nil || len(apps) == 0 {
+		return nil, fmt.Errorf("app not found by external_id: %s", externalID)
+	}
+	return &apps[0], nil
+}
+
 func (r *surrealRegistryRepo) ListApps(ctx context.Context) ([]*biz.App, error) {
 	sql := `SELECT * FROM kgs_apps WHERE deleted_at IS NONE ORDER BY created_at DESC`
 	result, err := r.client.Query(ctx, sql, nil)

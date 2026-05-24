@@ -73,3 +73,17 @@ func (s *RegistryService) RevokeApiKey(ctx context.Context, req *pb.RevokeApiKey
 	}
 	return &pb.RevokeApiKeyReply{Success: true}, nil
 }
+
+func (s *RegistryService) GetAppByExternalID(ctx context.Context, req *pb.GetAppByExternalIDRequest) (*pb.GetAppReply, error) {
+	app, err := s.uc.GetAppByExternalID(ctx, req.ExternalId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetAppReply{
+		AppId:       app.AppID,
+		AppName:     app.AppName,
+		Description: app.Description,
+		Owner:       app.Owner,
+		Status:      app.Status,
+	}, nil
+}

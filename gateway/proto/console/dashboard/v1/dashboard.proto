@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package vnp.gateway.console.dashboard.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/dashboard/v1;dashboardv1";
+
+import "google/protobuf/timestamp.proto";
+
+// DashboardService provides console dashboard data (FEAT-006).
+// Implemented by: vnp-dashboard service.
+service DashboardService {
+  // Aggregated engine health status.
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+  // KPI metrics cards.
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+  // Per-engine throughput data.
+  rpc GetThroughput(GetThroughputRequest) returns (GetThroughputResponse);
+  // Memory density heatmap.
+  rpc GetHeatmap(GetHeatmapRequest) returns (GetHeatmapResponse);
+}
+
+// ──── Health ────────────────────────────────────────────────────
+
+message GetHealthRequest {}
+
+message GetHealthResponse {
+  repeated EngineHealth engines = 1;
+}
+
+message EngineHealth {
+  string name = 1;          // engine type: cognee, graphiti, zep, etc.
+  string role = 2;          // engine role description
+  string status = 3;        // Healthy, Warning, Critical
+  double latency_p50_ms = 4;
+  double latency_p95_ms = 5;
+  int32 queue_depth = 6;
+  int64 uptime_seconds = 7;
+  google.protobuf.Timestamp last_check = 8;
+}
+
+// ──── Metrics ───────────────────────────────────────────────────
+
+message GetMetricsRequest {}
+
+message GetMetricsResponse {
+  int32 active_agents = 1;
+  double recall_latency_p50_ms = 2;
+  double recall_latency_p95_ms = 3;
+  double context_savings_pct = 4;
+  int64 graph_nodes_total = 5;
+  int64 graph_edges_total = 6;
+  int32 graph_growth_24h = 7;
+  double error_rate_pct = 8;
+  int32 active_sessions = 9;
+  int32 active_profiles = 10;
+  int32 memory_versions = 11;
+}
+
+// ──── Throughput ─────────────────────────────────────────────────
+
+message GetThroughputRequest {}
+
+message GetThroughputResponse {
+  string window = 1;
+  map<string, MemoryFlowMetrics> engines = 2;
+}
+
+message MemoryFlowMetrics {
+  double ingest_per_sec = 1;
+  double recall_per_sec = 2;
+  double embed_per_sec = 3;
+  double profile_extractions_per_sec = 4;
+  int32 queue_backlog = 5;
+}
+
+// ──── Heatmap ───────────────────────────────────────────────────
+
+message GetHeatmapRequest {}
+
+message GetHeatmapResponse {
+  repeated HeatmapPoint points = 1;
+}
+
+message HeatmapPoint {
+  double x = 1;
+  double y = 2;
+  double density = 3;
+}

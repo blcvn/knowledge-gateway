@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package vnp.gateway.console.adaptive.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/adaptive/v1;adaptivev1";
+
+// AdaptiveService provides adaptive memory management (FEAT-009).
+// Implemented by: sm-memory + sm-connector + sm-engine services.
+service AdaptiveService {
+  // List adaptive memories.
+  rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
+  // Get version history for a memory.
+  rpc GetVersions(GetVersionsRequest) returns (GetVersionsResponse);
+  // List external connectors.
+  rpc ListConnectors(ListConnectorsRequest) returns (ListConnectorsResponse);
+  // Create a new connector.
+  rpc CreateConnector(CreateConnectorRequest) returns (ExternalConnector);
+  // Trigger sync on a connector.
+  rpc SyncConnector(SyncConnectorRequest) returns (SyncConnectorResponse);
+  // Get adaptive analytics.
+  rpc GetAnalytics(GetAnalyticsRequest) returns (AdaptiveAnalytics);
+  // Get forget rules.
+  rpc GetForgetRules(GetForgetRulesRequest) returns (GetForgetRulesResponse);
+  // Update forget rules.
+  rpc UpdateForgetRules(UpdateForgetRulesRequest) returns (GetForgetRulesResponse);
+}
+
+// ──── Memories ──────────────────────────────────────────────────
+
+message ListMemoriesRequest {}
+
+message ListMemoriesResponse {
+  repeated AdaptiveMemory memories = 1;
+}
+
+message AdaptiveMemory {
+  string id = 1;
+  string content = 2;
+  string memory_type = 3;       // static, dynamic
+  int32 version_count = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message GetVersionsRequest {
+  string id = 1;
+}
+
+message GetVersionsResponse {
+  repeated MemoryVersion versions = 1;
+}
+
+message MemoryVersion {
+  string id = 1;
+  string memory_id = 2;
+  string content = 3;
+  int32 version_number = 4;
+  bool is_latest = 5;
+  string diff = 6;
+  string created_at = 7;
+}
+
+// ──── Connectors ────────────────────────────────────────────────
+
+message ListConnectorsRequest {}
+
+message ListConnectorsResponse {
+  repeated ExternalConnector connectors = 1;
+}
+
+message ExternalConnector {
+  string id = 1;
+  string type = 2;              // google_drive, gmail, notion, onedrive, github
+  string status = 3;            // Connected, Disconnected, Error
+  string last_sync = 4;
+  int32 document_count = 5;
+  string sync_frequency = 6;
+  string error_message = 7;
+}
+
+message CreateConnectorRequest {
+  string type = 1;
+  string sync_frequency = 2;
+  map<string, string> config = 3;
+}
+
+message SyncConnectorRequest {
+  string id = 1;
+}
+
+message SyncConnectorResponse {
+  string status = 1;
+}
+
+// ──── Analytics ─────────────────────────────────────────────────
+
+message GetAnalyticsRequest {}
+
+message AdaptiveAnalytics {
+  double creation_rate = 1;
+  double deletion_rate = 2;
+  int32 contradiction_count = 3;
+  int32 connector_sync_count = 4;
+  int64 storage_usage_bytes = 5;
+}
+
+// ──── Forget Rules ──────────────────────────────────────────────
+
+message GetForgetRulesRequest {}
+
+message GetForgetRulesResponse {
+  repeated ForgetRule rules = 1;
+}
+
+message ForgetRule {
+  string id = 1;
+  string memory_type = 2;       // static, dynamic
+  string forget_after = 3;      // duration: "30d", "90d"
+  bool noise_filter = 4;
+  string contradiction_resolution = 5; // keep_latest, keep_both, manual
+}
+
+message UpdateForgetRulesRequest {
+  repeated ForgetRule rules = 1;
+}

@@ -1,15 +1,20 @@
 ###############################################################################
 # VNP Memory — Dev Server Docker Compose (172.20.2.39)
 #
-# All application services are built from Go source code in ../../apps/
-# using multi-stage Dockerfiles that produce minimal Alpine containers.
+# LOCAL COMPILE + BINARY SYNC deployment model:
+# - All Go apps are cross-compiled locally (CGO_ENABLED=0 GOOS=linux)
+# - Compiled binaries are synced to server via rsync
+# - Containers mount binaries from host filesystem (no Docker build needed)
+# - Runtime base image: vnp/runtime:latest (Alpine + ca-certs + tzdata)
+#
+# Setup (first time):
+#   make setup-runtime            # build runtime base image on server
 #
 # Usage:
-#   cp .env.example .env                         # fill in API keys
-#   docker compose --profile monolith up -d      # start Memory Monolith (API+UI)
-#   docker compose --profile memory up -d        # start individual engine services
-#   docker compose --profile memory --profile ui up -d  # + Cognee UI
-#   docker compose logs -f                       # watch logs
+#   make compile-all              # cross-compile all Go apps locally
+#   make sync-all                 # rsync binaries + configs to server
+#   make remote-up-monolith       # start Memory Monolith
+#   make deploy-monolith          # compile + sync + restart (one command)
 #
 # Profiles:
 #   monolith   — VNP Memory Monolith (unified API gateway + embedded UI console)
@@ -149,11 +154,12 @@ services:
 
   # ===========================================================================
   #  VNP MEMORY MONOLITH — Unified API Gateway + Embedded UI Console
-  #  Built from ../../apps/memory via multi-stage Dockerfile (Node + Go)
+  #  Binary compiled locally, synced via rsync, mounted into container
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
   # VNP Memory Monolith — Single binary serving REST API + Web Console
+  # Binary: ./bin/vnp-memory (cross-compiled for linux/amd64)
   # Ports: 8080 (REST+UI), 8082 (MCP), 8083 (Health)
   # ---------------------------------------------------------------------------
   vnp-memory:
@@ -161,8 +167,11 @@ services:
     profiles:
       - monolith
     restart: unless-stopped
-    image: vnp/memory:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./vnp-memory"]
     volumes:
+      - ./bin/vnp-memory:/app/vnp-memory:ro
       - ./config/memory.yaml:/app/configs/config.yaml:ro
     environment:
       - VNP_MEMORY_SERVER_LOG_LEVEL=info
@@ -195,19 +204,24 @@ services:
           memory: 4GB
 
   # ===========================================================================
-  #  APPLICATION SERVICES — Individual engine services (legacy/alternative)
+  #  APPLICATION SERVICES — Individual engine services
+  #  All binaries compiled locally, synced to ./bin/, mounted into containers
   # ===========================================================================
 
   # ---------------------------------------------------------------------------
   # Cognee — Knowledge engine (Go)
-  # Built from ../../apps/cognee via Dockerfile (multi-stage Go build)
+  # Binary: ./bin/cognee (cross-compiled for linux/amd64)
   # ---------------------------------------------------------------------------
   cognee:
     container_name: vnp_cognee
     profiles:
       - memory
     restart: unless-stopped
-    image: vnp/cognee:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./cognee"]
+    volumes:
+      - ./bin/cognee:/app/cognee:ro
     environment:
       - DEBUG=false
       - HOST=0.0.0.0
@@ -266,14 +280,18 @@ services:
 
   # ---------------------------------------------------------------------------
   # Graphiti — Temporal knowledge graph service (Go)
-  # Built from ../../apps/graphiti via Dockerfile (multi-stage Go build)
+  # Binary: ./bin/graphiti (cross-compiled for linux/amd64)
   # ---------------------------------------------------------------------------
   graphiti:
     container_name: vnp_graphiti
     profiles:
       - memory
     restart: unless-stopped
-    image: vnp/graphiti:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./graphiti"]
+    volumes:
+      - ./bin/graphiti:/app/graphiti:ro
     environment:
       - ENVIRONMENT=dev
       # LLM — routed through external Bifrost AI Gateway
@@ -301,18 +319,21 @@ services:
 
   # ---------------------------------------------------------------------------
   # OpenViking — Vector search engine (Go)
-  # Built from ../../apps/OpenViking via Dockerfile (multi-stage Go build)
+  # Binary: ./bin/openviking (cross-compiled for linux/amd64)
   # ---------------------------------------------------------------------------
   openviking:
     container_name: vnp_openviking
     profiles:
       - memory
     restart: unless-stopped
-    image: vnp/openviking:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./openviking"]
     ports:
       - "${OPENVIKING_HTTP_PORT:-1933}:1933"
       - "${OPENVIKING_GRPC_PORT:-8020}:8020"
     volumes:
+      - ./bin/openviking:/app/openviking:ro
       - openviking_data:/app/.openviking
     environment:
       - AUTH_DEV_MODE=true
@@ -327,17 +348,20 @@ services:
 
   # ---------------------------------------------------------------------------
   # Zep — Context engineering platform (Go)
-  # Built from ../../apps/zep via Dockerfile (multi-stage Go build)
+  # Binary: ./bin/zep (cross-compiled for linux/amd64)
   # ---------------------------------------------------------------------------
   zep:
     container_name: vnp_zep
     profiles:
       - memory
     restart: unless-stopped
-    image: vnp/zep:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./zep"]
     ports:
       - "${ZEP_PORT:-8002}:8000"
     volumes:
+      - ./bin/zep:/app/zep:ro
       - ./config/zep.yaml:/config/zep.yaml:ro
     environment:
       - AUTH_DEV_MODE=true
@@ -360,14 +384,18 @@ services:
   # ---------------------------------------------------------------------------
   # Graphiti for Zep — Dedicated Graphiti instance for Zep (port 8003)
   # Zep requires its own Graphiti instance with a specific configuration
-  # Built from ../../apps/graphiti via Dockerfile (multi-stage Go build)
+  # Binary: ./bin/graphiti (shared with main graphiti service)
   # ---------------------------------------------------------------------------
   graphiti-zep:
     container_name: vnp_graphiti_zep
     profiles:
       - memory
     restart: unless-stopped
-    image: vnp/graphiti:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./graphiti"]
+    volumes:
+      - ./bin/graphiti:/app/graphiti:ro
     environment:
       - ENVIRONMENT=dev
       # LLM — routed through external Bifrost AI Gateway
@@ -395,14 +423,18 @@ services:
 
   # ---------------------------------------------------------------------------
   # Memobase — Memory service (Go)
-  # Built from ../../apps/memobase via Dockerfile (multi-stage Go build)
+  # Binary: ./bin/memobase (cross-compiled for linux/amd64)
   # ---------------------------------------------------------------------------
   memobase:
     container_name: vnp_memobase
     profiles:
       - memory
     restart: unless-stopped
-    image: vnp/memobase:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./memobase"]
+    volumes:
+      - ./bin/memobase:/app/memobase:ro
     environment:
       - ENVIRONMENT=dev
       - AUTH_DEV_MODE=true
@@ -411,14 +443,18 @@ services:
 
   # ---------------------------------------------------------------------------
   # Supermemory — Memory service (Go)
-  # Built from ../../apps/supermemory via Dockerfile (multi-stage Go build)
+  # Binary: ./bin/supermemory (cross-compiled for linux/amd64)
   # ---------------------------------------------------------------------------
   supermemory:
     container_name: vnp_supermemory
     profiles:
       - memory
     restart: unless-stopped
-    image: vnp/supermemory:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./supermemory"]
+    volumes:
+      - ./bin/supermemory:/app/supermemory:ro
     environment:
       - AUTH_DEV_MODE=true
     networks:
@@ -430,14 +466,18 @@ services:
 
   # ---------------------------------------------------------------------------
   # Cognee Frontend (profile: ui)
-  # Built from ../../apps/cognee/cognee-frontend
+  # Compiled files synced to ./ui-dist/cognee-frontend/ and served via Node
   # ---------------------------------------------------------------------------
   cognee-frontend:
     container_name: vnp_cognee_frontend
     profiles:
       - ui
     restart: unless-stopped
-    image: vnp/cognee-frontend:latest
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node_modules/.bin/next", "start", "-p", "3000"]
+    volumes:
+      - ./ui-dist/cognee-frontend:/app:ro
     environment:
       - NEXT_PUBLIC_LOCAL_API_URL=${COGNEE_BACKEND_URL:-https://c6.openledger.vn/cognee}
     ports:
@@ -512,6 +552,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # KGS Platform — Knowledge Graph Service (Go/Kratos)
+  # Binary: ./bin/kgs-server (cross-compiled for linux/amd64)
   # Uses shared Neo4j, PostgreSQL, Redis, Qdrant + NATS, OPA
   # ---------------------------------------------------------------------------
   kgs-platform:
@@ -520,8 +561,11 @@ services:
       - kgs
     restart: unless-stopped
     platform: linux/amd64
-    image: vnp/kgs-platform:latest
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./kgs-server", "-conf", "/data/conf/config.yaml"]
     volumes:
+      - ./bin/kgs-server:/app/kgs-server:ro
       - ./config/kgs.yaml:/data/conf/config.yaml:ro
     environment:
       # Storage mode

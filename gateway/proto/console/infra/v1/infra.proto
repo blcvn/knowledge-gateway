@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package vnp.gateway.console.infra.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/infra/v1;infrav1";
+
+// InfraService provides infrastructure monitoring (FEAT-016).
+// Implemented by: vnp-infra service (split from vnp-platform).
+service InfraService {
+  // Get service topology graph.
+  rpc GetTopology(GetTopologyRequest) returns (GetTopologyResponse);
+  // List service health statuses.
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  // Get specific service detail.
+  rpc GetService(GetServiceRequest) returns (ServiceInfo);
+  // Get database health statuses.
+  rpc GetDatabases(GetDatabasesRequest) returns (GetDatabasesResponse);
+  // Get resource usage metrics.
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesResponse);
+  // Get deployment timeline.
+  rpc GetDeployments(GetDeploymentsRequest) returns (GetDeploymentsResponse);
+}
+
+// ──── Messages ──────────────────────────────────────────────────
+
+message GetTopologyRequest {}
+
+message GetTopologyResponse {
+  int32 total_services = 1;
+  int32 healthy_services = 2;
+  repeated ServiceNode nodes = 3;
+  repeated ServiceEdge connections = 4;
+  string timestamp = 5;
+}
+
+message ServiceNode {
+  string name = 1;
+  string status = 2;   // healthy, unhealthy
+}
+
+message ServiceEdge {
+  string from = 1;
+  string to = 2;
+  string protocol = 3;   // grpc, http, nats
+}
+
+message ListServicesRequest {}
+
+message ListServicesResponse {
+  repeated ServiceInfo services = 1;
+}
+
+message ServiceInfo {
+  string name = 1;
+  string version = 2;
+  string status = 3;   // Healthy, Warning, Critical
+  int64 uptime = 4;
+}
+
+message GetServiceRequest {
+  string name = 1;
+}
+
+message GetDatabasesRequest {}
+
+message GetDatabasesResponse {
+  repeated DatabaseHealth databases = 1;
+}
+
+message DatabaseHealth {
+  string name = 1;
+  string type = 2;      // PostgreSQL, Redis, Neo4j, Qdrant, NATS
+  string status = 3;    // Healthy, Warning, Critical
+  double latency_ms = 4;
+}
+
+message GetResourcesRequest {}
+
+message GetResourcesResponse {
+  repeated ResourceMetrics resources = 1;
+}
+
+message ResourceMetrics {
+  string service = 1;
+  double cpu_usage_pct = 2;
+  double memory_usage_mb = 3;
+  double disk_usage_pct = 4;
+}
+
+message GetDeploymentsRequest {}
+
+message GetDeploymentsResponse {
+  repeated Deployment deployments = 1;
+}
+
+message Deployment {
+  string service = 1;
+  string version = 2;
+  string status = 3;
+  string deployed_at = 4;
+  string deployed_by = 5;
+}

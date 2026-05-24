@@ -332,3 +332,124 @@ func traceIDFromContext(ctx context.Context) string {
 	}
 	return spanCtx.TraceID().String()
 }
+
+// GetNodesByLabel returns entities matching a given entity_type (label) with cursor-based pagination.
+func (r *EntityReader) GetNodesByLabel(
+	ctx context.Context,
+	appID, tenantID string,
+	label string,
+	limit int,
+	cursorID string,
+) ([]map[string]any, string, bool, int64, error) {
+	started := time.Now()
+	if r == nil || r.db == nil {
+		return nil, "", false, 0, fmt.Errorf("entity reader is not configured")
+	}
+	if limit <= 0 {
+		return nil, "", false, 0, fmt.Errorf("limit must be positive")
+	}
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return nil, "", false, 0, fmt.Errorf("label is required")
+	}
+	traceID := traceIDFromContext(ctx)
+	stdlog.Printf("[KGS][EntityReader] GetNodesByLabel start app_id=%s tenant_id=%s label=%s limit=%d cursor=%t trace_id=%s",
+		appID, tenantID, label, limit, strings.TrimSpace(cursorID) != "", traceID)
+
+	base := r.db.WithContext(ctx).
+		Model(&KGEntity{}).
+		Where("app_id = ? AND tenant_id = ?", appID, tenantID).
+		Where("entity_type = ?", label).
+		Where("is_deleted = FALSE")
+
+	var total int64
+	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		stdlog.Printf("[KGS][EntityReader] GetNodesByLabel failed stage=count app_id=%s tenant_id=%s label=%s trace_id=%s err=%v",
+			appID, tenantID, label, traceID, err)
+		return nil, "", false, 0, err
+	}
+
+	rowsQ := base.Session(&gorm.Session{})
+	if cursorID = strings.TrimSpace(cursorID); cursorID != "" {
+		rowsQ = rowsQ.Where("entity_id > ?", cursorID)
+	}
+
+	rows := make([]KGEntity, 0, limit+1)
+	if err := rowsQ.Order("entity_id ASC").Limit(limit + 1).Find(&rows).Error; err != nil {
+		stdlog.Printf("[KGS][EntityReader] GetNodesByLabel failed stage=find app_id=%s tenant_id=%s label=%s trace_id=%s err=%v",
+			appID, tenantID, label, traceID, err)
+		return nil, "", false, 0, err
+	}
+
+	hasMore := false
+	nextCursorID := ""
+	if len(rows) > limit {
+		hasMore = true
+		nextCursorID = rows[limit].EntityID
+		rows = rows[:limit]
+	}
+
+	entities := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		entities = append(entities, kgEntityToAPIMap(row))
+	}
+	stdlog.Printf("[KGS][EntityReader] GetNodesByLabel done app_id=%s tenant_id=%s label=%s returned=%d total=%d has_more=%t trace_id=%s duration=%s",
+		appID, tenantID, label, len(entities), total, hasMore, traceID, time.Since(started))
+	return entities, nextCursorID, hasMore, total, nil
+}
+
+// LabelCountRow holds an entity_type and its count for GORM scanning.
+type LabelCountRow struct {
+	Label string `gorm:"column:label"`
+	Count int64  `gorm:"column:count"`
+}
+
+// GetNamespaceStats returns aggregated statistics for a namespace (entity/edge counts by label).
+func (r *EntityReader) GetNamespaceStats(
+	ctx context.Context,
+	appID, tenantID string,
+	labels []string,
+) (totalNodes int64, totalEdges int64, byLabel map[string]int64, err error) {
+	started := time.Now()
+	if r == nil || r.db == nil {
+		return 0, 0, nil, fmt.Errorf("entity reader is not configured")
+	}
+	traceID := traceIDFromContext(ctx)
+	stdlog.Printf("[KGS][EntityReader] GetNamespaceStats start app_id=%s tenant_id=%s labels=%v trace_id=%s",
+		appID, tenantID, labels, traceID)
+
+	// Count entities by label
+	entityQ := r.db.WithContext(ctx).
+		Model(&KGEntity{}).
+		Select("entity_type AS label, COUNT(*) AS count").
+		Where("app_id = ? AND tenant_id = ? AND is_deleted = FALSE", appID, tenantID)
+	if len(labels) > 0 {
+		entityQ = entityQ.Where("entity_type IN ?", labels)
+	}
+	var rows []LabelCountRow
+	if err := entityQ.Group("entity_type").Order("entity_type ASC").Find(&rows).Error; err != nil {
+		stdlog.Printf("[KGS][EntityReader] GetNamespaceStats failed stage=by_label app_id=%s tenant_id=%s trace_id=%s err=%v",
+			appID, tenantID, traceID, err)
+		return 0, 0, nil, err
+	}
+
+	byLabel = make(map[string]int64, len(rows))
+	for _, row := range rows {
+		totalNodes += row.Count
+		byLabel[row.Label] = row.Count
+	}
+
+	// Count all edges in the namespace
+	edgeQ := r.db.WithContext(ctx).
+		Model(&KGEdge{}).
+		Where("app_id = ? AND tenant_id = ? AND is_deleted = FALSE", appID, tenantID)
+	if err := edgeQ.Count(&totalEdges).Error; err != nil {
+		stdlog.Printf("[KGS][EntityReader] GetNamespaceStats failed stage=count_edges app_id=%s tenant_id=%s trace_id=%s err=%v",
+			appID, tenantID, traceID, err)
+		return 0, 0, nil, err
+	}
+
+	stdlog.Printf("[KGS][EntityReader] GetNamespaceStats done app_id=%s tenant_id=%s total_nodes=%d total_edges=%d label_count=%d trace_id=%s duration=%s",
+		appID, tenantID, totalNodes, totalEdges, len(byLabel), traceID, time.Since(started))
+	return totalNodes, totalEdges, byLabel, nil
+}

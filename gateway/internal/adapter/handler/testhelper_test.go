@@ -24,6 +24,10 @@ func (r *noopTestRegistry) Forward(_ context.Context, _ *domain.RouteTarget, _ [
 	return []byte(`{"status":"ok"}`), nil
 }
 
+func (r *noopTestRegistry) ForwardWithContext(_ context.Context, _ *domain.RouteTarget, _ *domain.ForwardRequest) ([]byte, error) {
+	return []byte(`{"status":"ok"}`), nil
+}
+
 func (r *noopTestRegistry) HealthCheck(_ string) (bool, error) {
 	return true, nil
 }

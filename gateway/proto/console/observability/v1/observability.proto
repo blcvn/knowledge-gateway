@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package vnp.gateway.console.observability.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/observability/v1;observabilityv1";
+
+// ObservabilityService provides metrics, traces, and error tracking (FEAT-017).
+// Implemented by: vnp-observability service (split from vnp-platform).
+service ObservabilityService {
+  // Get system metrics.
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+  // List distributed traces.
+  rpc ListTraces(ListTracesRequest) returns (ListTracesResponse);
+  // Get a specific trace detail.
+  rpc GetTrace(GetTraceRequest) returns (TraceSpan);
+  // Get error entries.
+  rpc GetErrors(GetErrorsRequest) returns (GetErrorsResponse);
+  // Get cost analytics.
+  rpc GetCosts(GetCostsRequest) returns (GetCostsResponse);
+}
+
+// ──── Messages ──────────────────────────────────────────────────
+
+message GetMetricsRequest {}
+
+message GetMetricsResponse {
+  repeated MetricPoint points = 1;
+  MetricsSummary summary = 2;
+}
+
+message MetricPoint {
+  string timestamp = 1;
+  double value = 2;
+}
+
+message MetricsSummary {
+  double avg_latency = 1;
+  double request_rate = 2;
+  double error_rate = 3;
+  string uptime = 4;
+  double p50 = 5;
+  double p95 = 6;
+  double p99 = 7;
+}
+
+message ListTracesRequest {
+  string service = 1;
+  string status = 2;
+  string from = 3;
+  string to = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+}
+
+message ListTracesResponse {
+  repeated TraceSpan traces = 1;
+  int32 total = 2;
+}
+
+message GetTraceRequest {
+  string id = 1;
+}
+
+message TraceSpan {
+  string id = 1;
+  string trace_id = 2;
+  string span_id = 3;
+  string name = 4;
+  string operation = 5;
+  string service = 6;
+  int64 duration_ms = 7;
+  string status = 8;
+  string timestamp = 9;
+}
+
+message GetErrorsRequest {
+  string service = 1;
+  string from = 2;
+  string to = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message GetErrorsResponse {
+  repeated ErrorEntry errors = 1;
+  int32 total = 2;
+}
+
+message ErrorEntry {
+  string id = 1;
+  string message = 2;
+  string service = 3;
+  string timestamp = 4;
+  int32 count = 5;
+  string last_occurrence = 6;
+  string stack = 7;
+}
+
+message GetCostsRequest {}
+
+message GetCostsResponse {
+  repeated CostEntry costs = 1;
+  double total_cost = 2;
+  string period = 3;
+}
+
+message CostEntry {
+  string service = 1;
+  string model = 2;
+  int64 tokens = 3;
+  double cost = 4;
+}

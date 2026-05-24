@@ -2,11 +2,43 @@ syntax = "proto3";
 package vnp.memory.smengine.v1;
 option go_package = "vnp-memory/services/sm-engine/api/proto/v1;smenginev1";
 
+// SmEngineService provides adaptive analytics and forget rules.
+// Console endpoints: analytics + forget rules (FEAT-009).
 service SmEngineService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/adaptive/analytics
+  rpc GetAnalytics(GetAnalyticsRequest) returns (AdaptiveAnalytics);
+  // Console: GET /v1/console/adaptive/forget-rules
+  rpc GetForgetRules(GetForgetRulesRequest) returns (GetForgetRulesResponse);
+  // Console: PUT /v1/console/adaptive/forget-rules
+  rpc UpdateForgetRules(UpdateForgetRulesRequest) returns (GetForgetRulesResponse);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message GetAnalyticsRequest {}
+message AdaptiveAnalytics {
+  double creation_rate = 1;
+  double deletion_rate = 2;
+  int32 contradiction_count = 3;
+  int32 connector_sync_count = 4;
+  int64 storage_usage_bytes = 5;
+}
+
+message GetForgetRulesRequest {}
+message GetForgetRulesResponse {
+  repeated ForgetRule rules = 1;
+}
+message ForgetRule {
+  string id = 1;
+  string memory_type = 2;
+  string forget_after = 3;
+  bool noise_filter = 4;
+  string contradiction_resolution = 5;
+}
+
+message UpdateForgetRulesRequest {
+  repeated ForgetRule rules = 1;
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
 	sdb "github.com/blcvn/knowledge-gateway/kgs-platform/internal/data/surrealdb"
 
 	"github.com/go-kratos/kratos/v2/log"

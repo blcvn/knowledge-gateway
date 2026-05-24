@@ -8,11 +8,13 @@ import (
 	stdlog "log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/data"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/observability"
 	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/server/middleware"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -30,6 +32,8 @@ const (
 	kgEdgesMaxLimit        = 1000
 	kgLookupDefaultLimit   = 10
 	kgLookupMaxLimit       = 100
+	kgNodesByLabelDefaultLimit = 100
+	kgNodesByLabelMaxLimit     = 1000
 )
 
 type kgNamespaceRoute struct {
@@ -139,6 +143,12 @@ func (s *GraphService) HandleKGNamespaceHTTP(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		s.listKGEntitiesHTTP(rec, r)
+	case "/entities/query":
+		if r.Method != http.MethodPost {
+			writeKGHTTPError(rec, http.StatusMethodNotAllowed, "ERR_METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		s.queryNodesHTTP(rec, r)
 	case "/entities/lookup":
 		if r.Method != http.MethodPost {
 			writeKGHTTPError(rec, http.StatusMethodNotAllowed, "ERR_METHOD_NOT_ALLOWED", "method not allowed")
@@ -151,6 +161,18 @@ func (s *GraphService) HandleKGNamespaceHTTP(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		s.listKGEdgesHTTP(rec, r)
+	case "/nodes-by-label":
+		if r.Method != http.MethodGet {
+			writeKGHTTPError(rec, http.StatusMethodNotAllowed, "ERR_METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		s.getNodesByLabelHTTP(rec, r)
+	case "/stats":
+		if r.Method != http.MethodGet {
+			writeKGHTTPError(rec, http.StatusMethodNotAllowed, "ERR_METHOD_NOT_ALLOWED", "method not allowed")
+			return
+		}
+		s.getNamespaceStatsHTTP(rec, r)
 	default:
 		writeKGHTTPError(rec, http.StatusNotFound, "ERR_NOT_FOUND", "endpoint not found")
 	}
@@ -426,7 +448,7 @@ func parseKGNamespaceRoute(path string) (kgNamespaceRoute, error) {
 		return kgNamespaceRoute{}, fmt.Errorf("invalid kg path")
 	}
 	rest := strings.TrimPrefix(cleaned, "kg/")
-	patterns := []string{"/entities/lookup", "/entities", "/edges", "/graph/batch"}
+	patterns := []string{"/entities/lookup", "/entities/query", "/entities", "/edges", "/nodes-by-label", "/stats", "/graph/batch"}
 	for _, suffix := range patterns {
 		if !strings.HasSuffix(rest, suffix) {
 			continue
@@ -636,4 +658,194 @@ func kgTraceIDFromContext(ctx context.Context) string {
 		return ""
 	}
 	return spanCtx.TraceID().String()
+}
+
+func (s *GraphService) getNodesByLabelHTTP(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	if s.entityReader == nil {
+		writeKGHTTPError(w, http.StatusInternalServerError, "ERR_NOT_CONFIGURED", "entity reader is not configured")
+		return
+	}
+
+	appCtx, err := getAppContext(r.Context())
+	if err != nil {
+		writeKGHTTPError(w, http.StatusUnauthorized, "ERR_UNAUTHORIZED", err.Error())
+		return
+	}
+
+	query := r.URL.Query()
+	label := strings.TrimSpace(query.Get("label"))
+	if label == "" {
+		writeKGHTTPError(w, http.StatusBadRequest, "ERR_BAD_REQUEST", "label query parameter is required")
+		return
+	}
+
+	limit, err := parseLimit(query.Get("limit"), kgNodesByLabelDefaultLimit, kgNodesByLabelMaxLimit)
+	if err != nil {
+		writeKGHTTPError(w, http.StatusBadRequest, "ERR_BAD_REQUEST", err.Error())
+		return
+	}
+	cursorID, err := decodeKGCursor(query.Get("cursor"), "entityId")
+	if err != nil {
+		writeKGHTTPError(w, http.StatusBadRequest, "ERR_BAD_REQUEST", err.Error())
+		return
+	}
+
+	stdlog.Printf("[KGS][KGNamespaceHTTP] GetNodesByLabel start app_id=%s tenant_id=%s label=%s limit=%d has_cursor=%t trace_id=%s",
+		appCtx.AppID, appCtx.TenantID, label, limit, cursorID != "", kgTraceIDFromContext(r.Context()))
+
+	entities, nextCursorID, hasMore, total, err := s.entityReader.GetNodesByLabel(
+		r.Context(),
+		appCtx.AppID,
+		appCtx.TenantID,
+		label,
+		limit,
+		cursorID,
+	)
+	if err != nil {
+		stdlog.Printf("[KGS][KGNamespaceHTTP] GetNodesByLabel failed app_id=%s tenant_id=%s label=%s limit=%d trace_id=%s err=%v",
+			appCtx.AppID, appCtx.TenantID, label, limit, kgTraceIDFromContext(r.Context()), err)
+		writeKGHTTPError(w, http.StatusInternalServerError, "ERR_INTERNAL", err.Error())
+		return
+	}
+
+	// Convert entities to GraphNode format for compatibility with proto types
+	nodes := make([]map[string]any, 0, len(entities))
+	for _, entity := range entities {
+		node := map[string]any{
+			"id":    entity["id"],
+			"label": entity["entity_type"],
+		}
+		if propsJSON, err := json.Marshal(entity); err == nil {
+			node["properties_json"] = string(propsJSON)
+		}
+		node["properties"] = entity
+		nodes = append(nodes, node)
+	}
+
+	resp := map[string]any{
+		"nodes":      nodes,
+		"total":      total,
+		"nextCursor": nil,
+		"hasMore":    hasMore,
+	}
+	if hasMore && strings.TrimSpace(nextCursorID) != "" {
+		resp["nextCursor"] = encodeKGCursor("entityId", nextCursorID)
+	}
+	stdlog.Printf("[KGS][KGNamespaceHTTP] GetNodesByLabel done app_id=%s tenant_id=%s label=%s returned=%d total=%d has_more=%t trace_id=%s duration=%s",
+		appCtx.AppID, appCtx.TenantID, label, len(nodes), total, hasMore, kgTraceIDFromContext(r.Context()), time.Since(started))
+	writeKGHTTPSuccess(w, resp)
+}
+
+func (s *GraphService) getNamespaceStatsHTTP(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	if s.entityReader == nil {
+		writeKGHTTPError(w, http.StatusInternalServerError, "ERR_NOT_CONFIGURED", "entity reader is not configured")
+		return
+	}
+
+	appCtx, err := getAppContext(r.Context())
+	if err != nil {
+		writeKGHTTPError(w, http.StatusUnauthorized, "ERR_UNAUTHORIZED", err.Error())
+		return
+	}
+
+	query := r.URL.Query()
+	labelsRaw := strings.TrimSpace(query.Get("labels"))
+	var labels []string
+	if labelsRaw != "" {
+		for _, l := range strings.Split(labelsRaw, ",") {
+			if trimmed := strings.TrimSpace(l); trimmed != "" {
+				labels = append(labels, trimmed)
+			}
+		}
+	}
+
+	stdlog.Printf("[KGS][KGNamespaceHTTP] GetNamespaceStats start app_id=%s tenant_id=%s labels=%v trace_id=%s",
+		appCtx.AppID, appCtx.TenantID, labels, kgTraceIDFromContext(r.Context()))
+
+	totalNodes, totalEdges, byLabel, err := s.entityReader.GetNamespaceStats(r.Context(), appCtx.AppID, appCtx.TenantID, labels)
+	if err != nil {
+		stdlog.Printf("[KGS][KGNamespaceHTTP] GetNamespaceStats failed app_id=%s tenant_id=%s trace_id=%s err=%v",
+			appCtx.AppID, appCtx.TenantID, kgTraceIDFromContext(r.Context()), err)
+		writeKGHTTPError(w, http.StatusInternalServerError, "ERR_INTERNAL", err.Error())
+		return
+	}
+
+	stdlog.Printf("[KGS][KGNamespaceHTTP] GetNamespaceStats done app_id=%s tenant_id=%s total_nodes=%d total_edges=%d label_count=%d trace_id=%s duration=%s",
+		appCtx.AppID, appCtx.TenantID, totalNodes, totalEdges, len(byLabel), kgTraceIDFromContext(r.Context()), time.Since(started))
+
+	// Convert map to sorted list for JSON output
+	type labelEntry struct {
+		Label string `json:"label"`
+		Count int64  `json:"count"`
+	}
+	labelList := make([]labelEntry, 0, len(byLabel))
+	for label, count := range byLabel {
+		labelList = append(labelList, labelEntry{Label: label, Count: count})
+	}
+	sort.Slice(labelList, func(i, j int) bool { return labelList[i].Label < labelList[j].Label })
+
+	writeKGHTTPSuccess(w, map[string]any{
+		"total_nodes": totalNodes,
+		"total_edges": totalEdges,
+		"by_label":    labelList,
+	})
+}
+
+type queryNodesRequest struct {
+	Labels         []string          `json:"labels"`
+	PropertyEq     map[string]string `json:"property_eq"`
+	PropertyExists []string          `json:"property_exists"`
+	OrderBy        string            `json:"order_by"`
+	Limit          int               `json:"limit"`
+	Offset         int               `json:"offset"`
+}
+
+func (s *GraphService) queryNodesHTTP(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
+	if s.entityReader == nil {
+		writeKGHTTPError(w, http.StatusInternalServerError, "ERR_NOT_CONFIGURED", "entity reader is not configured")
+		return
+	}
+
+	appCtx, err := getAppContext(r.Context())
+	if err != nil {
+		writeKGHTTPError(w, http.StatusUnauthorized, "ERR_UNAUTHORIZED", err.Error())
+		return
+	}
+
+	var req queryNodesRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeKGHTTPError(w, http.StatusBadRequest, "ERR_SCHEMA_INVALID", fmt.Sprintf("invalid request body: %v", err))
+		return
+	}
+
+	stdlog.Printf("[KGS][KGNamespaceHTTP] QueryNodes start app_id=%s tenant_id=%s labels=%v property_eq_keys=%d property_exists=%v limit=%d offset=%d trace_id=%s",
+		appCtx.AppID, appCtx.TenantID, req.Labels, len(req.PropertyEq), req.PropertyExists, req.Limit, req.Offset, kgTraceIDFromContext(r.Context()))
+
+	filter := data.QueryNodesFilter{
+		Labels:         req.Labels,
+		PropertyEq:     req.PropertyEq,
+		PropertyExists: req.PropertyExists,
+		OrderBy:        req.OrderBy,
+		Limit:          req.Limit,
+		Offset:         req.Offset,
+	}
+	entities, total, err := s.entityReader.QueryNodes(r.Context(), appCtx.AppID, appCtx.TenantID, filter)
+	if err != nil {
+		stdlog.Printf("[KGS][KGNamespaceHTTP] QueryNodes failed app_id=%s tenant_id=%s trace_id=%s err=%v",
+			appCtx.AppID, appCtx.TenantID, kgTraceIDFromContext(r.Context()), err)
+		writeKGHTTPError(w, http.StatusInternalServerError, "ERR_INTERNAL", err.Error())
+		return
+	}
+
+	stdlog.Printf("[KGS][KGNamespaceHTTP] QueryNodes done app_id=%s tenant_id=%s returned=%d total=%d trace_id=%s duration=%s",
+		appCtx.AppID, appCtx.TenantID, len(entities), total, kgTraceIDFromContext(r.Context()), time.Since(started))
+	writeKGHTTPSuccess(w, map[string]any{
+		"entities": entities,
+		"total":    total,
+	})
 }

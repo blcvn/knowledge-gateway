@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package vnp.gateway.console.memory.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/memory/v1;memoryv1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// MemoryExplorerService provides console memory exploration (FEAT-007).
+// Implemented by: vnp-search-hub service.
+service MemoryExplorerService {
+  // Unified cross-engine search.
+  rpc SearchMemory(SearchMemoryRequest) returns (SearchMemoryResponse);
+  // Get memory detail by ID.
+  rpc GetMemory(GetMemoryRequest) returns (MemoryItem);
+  // Get graph neighbors for a memory.
+  rpc GetNeighbors(GetNeighborsRequest) returns (SearchMemoryResponse);
+  // Get version chain for a memory.
+  rpc GetVersions(GetVersionsRequest) returns (GetVersionsResponse);
+}
+
+// DebuggerService provides context assembly debugging (FEAT-010).
+// Implemented by: vnp-search-hub + vnp-event services.
+service DebuggerService {
+  // Simulate context assembly and produce a trace.
+  rpc CreateTrace(CreateTraceRequest) returns (CreateTraceResponse);
+  // Get a saved trace by ID.
+  rpc GetTrace(GetTraceRequest) returns (TraceDetail);
+  // List recent traces.
+  rpc ListTraces(ListTracesRequest) returns (ListTracesResponse);
+}
+
+// ──── Memory Explorer Messages ──────────────────────────────────
+
+message SearchMemoryRequest {
+  string query = 1;
+  string mode = 2;
+  repeated string engines = 3;
+  map<string, string> filters = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+  string reranking = 7;
+}
+
+message SearchMemoryResponse {
+  repeated MemoryItem results = 1;
+  int32 total = 2;
+  SearchFacets facets = 3;
+  int64 latency_ms = 4;
+}
+
+message SearchFacets {
+  map<string, int32> by_engine = 1;
+  map<string, int32> by_type = 2;
+}
+
+message MemoryItem {
+  string id = 1;
+  string engine = 2;
+  string memory_type = 3;
+  string title = 4;
+  string summary = 5;
+  string content = 6;
+  double score = 7;
+  repeated string entities = 8;
+  repeated string source_sessions = 9;
+  TemporalValidity temporal_validity = 10;
+  repeated string policy_tags = 11;
+  string version_chain = 12;
+  map<string, string> metadata = 13;
+}
+
+message TemporalValidity {
+  string from = 1;
+  string to = 2;
+}
+
+message GetMemoryRequest {
+  string id = 1;
+}
+
+message GetNeighborsRequest {
+  string id = 1;
+}
+
+message GetVersionsRequest {
+  string id = 1;
+}
+
+message GetVersionsResponse {
+  repeated MemoryVersion versions = 1;
+}
+
+message MemoryVersion {
+  string id = 1;
+  string memory_id = 2;
+  string content = 3;
+  int32 version_number = 4;
+  bool is_latest = 5;
+  string diff = 6;
+  string created_at = 7;
+}
+
+// ──── Debugger Messages ─────────────────────────────────────────
+
+message CreateTraceRequest {
+  string query = 1;
+  string user_id = 2;
+  map<string, string> params = 3;
+}
+
+message CreateTraceResponse {
+  string trace_id = 1;
+  repeated TraceStep steps = 2;
+  int64 total_latency_ms = 3;
+}
+
+message TraceStep {
+  string service = 1;
+  string operation = 2;
+  int64 duration_ms = 3;
+  string status = 4;
+  string data = 5;
+}
+
+message GetTraceRequest {
+  string id = 1;
+}
+
+message TraceDetail {
+  string id = 1;
+  string trace_id = 2;
+  string span_id = 3;
+  string name = 4;
+  string operation = 5;
+  string service = 6;
+  int64 duration_ms = 7;
+  string status = 8;
+  string timestamp = 9;
+}
+
+message ListTracesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message ListTracesResponse {
+  repeated TraceDetail traces = 1;
+  int32 total = 2;
+}

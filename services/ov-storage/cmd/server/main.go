@@ -1,6 +1,7 @@
 package main
 
 import (
+	"vnp-memory/pkg/forward"
 	"context"
 	"log/slog"
 	"net"
@@ -44,6 +45,10 @@ func main() {
 	)
 
 	// 4. Setup Health Probes
+	// Setup ForwardService Router
+	router := forward.NewRouter()
+	forward.RegisterForwardService(grpcServer, router)
+
 	healthCheck := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 

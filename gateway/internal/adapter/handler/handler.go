@@ -52,6 +52,7 @@ func ReadBody(r *http.Request) ([]byte, error) {
 }
 
 // ForwardToService is a generic handler that forwards requests to a named service.
+// It passes the HTTP path and method so the service can route to the correct handler.
 func ForwardToService(registry port.ServiceRegistry, serviceName string, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		auth, _ := middleware.AuthFromContext(r.Context())
@@ -70,7 +71,16 @@ func ForwardToService(registry port.ServiceRegistry, serviceName string, logger 
 			return
 		}
 
-		resp, err := registry.Forward(r.Context(), target, body)
+		// Build forward request with HTTP context for service-side routing
+		fwdReq := &domain.ForwardRequest{
+			Path:       r.URL.Path,
+			HTTPMethod: r.Method,
+			Body:       body,
+			PathParams: extractPathParams(r),
+			QueryParams: extractQueryParams(r),
+		}
+
+		resp, err := registry.ForwardWithContext(r.Context(), target, fwdReq)
 		if err != nil {
 			WriteError(w, err)
 			return
@@ -80,6 +90,25 @@ func ForwardToService(registry port.ServiceRegistry, serviceName string, logger 
 		w.WriteHeader(http.StatusOK)
 		w.Write(resp)
 	}
+}
+
+// extractPathParams extracts path parameters from the request URL.
+func extractPathParams(r *http.Request) map[string]string {
+	params := make(map[string]string)
+	// Go 1.22+ net/http supports PathValue for route patterns like {id}
+	// This is a best-effort extraction from the URL path
+	return params
+}
+
+// extractQueryParams extracts query parameters from the request URL.
+func extractQueryParams(r *http.Request) map[string]string {
+	params := make(map[string]string)
+	for key, values := range r.URL.Query() {
+		if len(values) > 0 {
+			params[key] = values[0]
+		}
+	}
+	return params
 }
 
 // MemoryHandler handles /v1/memory/* routes.

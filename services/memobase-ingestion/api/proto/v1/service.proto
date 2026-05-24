@@ -2,11 +2,25 @@ syntax = "proto3";
 package vnp.memory.memobaseingestion.v1;
 option go_package = "vnp-memory/services/memobase-ingestion/api/proto/v1;memobaseingestionv1";
 
+// MemobaseIngestionService provides buffer zone management.
+// Console endpoints: buffer status (FEAT-008).
 service MemobaseIngestionService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/profiles/{user_id}/buffer
+  rpc GetBuffers(GetBuffersRequest) returns (BufferZone);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message GetBuffersRequest { string user_id = 1; }
+message BufferZone {
+  string user_id = 1;
+  string buffer_type = 2;
+  int32 token_count = 3;
+  int32 token_threshold = 4;
+  string idle_timeout = 5;
+  string last_flush = 6;
+  int32 flush_count = 7;
 }

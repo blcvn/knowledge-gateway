@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package vnp.gateway.forward.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/forward/v1;forwardv1";
+
+// ForwardService is a generic RPC service implemented by all downstream services.
+// It allows the gateway to forward HTTP requests as raw bytes, with method routing
+// handled by the service based on the method field.
+//
+// This is an interim solution until full typed gRPC client stubs are generated
+// from the per-service proto definitions.
+service ForwardService {
+  // Forward handles a generic request and returns a generic response.
+  rpc Forward(ForwardRequest) returns (ForwardResponse);
+}
+
+// ForwardRequest encapsulates an HTTP request to be forwarded.
+message ForwardRequest {
+  // The RPC method to invoke (e.g., "GetHealth", "ListSessions").
+  string method = 1;
+  // The raw JSON request body.
+  bytes body = 2;
+  // HTTP path for routing context.
+  string path = 3;
+  // HTTP method (GET, POST, PUT, DELETE).
+  string http_method = 4;
+  // Path parameters extracted by the gateway router.
+  map<string, string> path_params = 5;
+  // Query parameters.
+  map<string, string> query_params = 6;
+}
+
+// ForwardResponse encapsulates the service response.
+message ForwardResponse {
+  // The raw JSON response body.
+  bytes body = 1;
+  // HTTP status code to return.
+  int32 status_code = 2;
+  // Optional error message.
+  string error = 3;
+}

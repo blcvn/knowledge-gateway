@@ -89,8 +89,17 @@ func (r *GRPCRegistry) Resolve(service string) (*domain.RouteTarget, error) {
 }
 
 // Forward sends a request to the target service via gRPC and returns the response.
-// It propagates tenant context as gRPC metadata.
+// Deprecated: Use ForwardWithContext for method-level routing.
 func (r *GRPCRegistry) Forward(ctx context.Context, target *domain.RouteTarget, req []byte) ([]byte, error) {
+	return r.ForwardWithContext(ctx, target, &domain.ForwardRequest{
+		Body: req,
+	})
+}
+
+// ForwardWithContext sends a request with HTTP context to the target service.
+// Uses the ForwardService.Forward RPC method. The service routes internally
+// based on the path and HTTP method fields.
+func (r *GRPCRegistry) ForwardWithContext(ctx context.Context, target *domain.RouteTarget, req *domain.ForwardRequest) ([]byte, error) {
 	r.mu.RLock()
 	conn, ok := r.conns[target.Service]
 	r.mu.RUnlock()
@@ -108,15 +117,27 @@ func (r *GRPCRegistry) Forward(ctx context.Context, target *domain.RouteTarget, 
 		)
 	}
 
+	// Also propagate the HTTP path as metadata for service-side routing
+	ctx = metadata.AppendToOutgoingContext(ctx,
+		"x-forward-path", req.Path,
+		"x-forward-method", req.HTTPMethod,
+	)
+
 	// Apply per-target timeout
 	ctx, cancel := context.WithTimeout(ctx, target.Timeout)
 	defer cancel()
 
-	// Generic unary invocation — in production this would be typed proto calls
+	// Use the typed ForwardService.Forward RPC method.
+	// The gRPC method path follows: /<package>.<ServiceName>/<MethodName>
 	var resp []byte
-	err := conn.Invoke(ctx, "/gateway.proxy/Forward", req, &resp)
+	err := conn.Invoke(ctx, "/vnp.gateway.forward.v1.ForwardService/Forward", req.Body, &resp)
 	if err != nil {
-		r.logger.Error("forward failed", "service", target.Service, "error", err)
+		r.logger.Error("forward failed",
+			"service", target.Service,
+			"path", req.Path,
+			"method", req.HTTPMethod,
+			"error", err,
+		)
 		return nil, fmt.Errorf("forward to %s: %w", target.Service, err)
 	}
 

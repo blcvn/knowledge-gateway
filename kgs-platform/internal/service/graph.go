@@ -80,11 +80,29 @@ type GraphEntityReader interface {
 		versionID string,
 		isDeleted bool,
 	) ([]map[string]any, string, bool, int64, error)
+	GetNodesByLabel(
+		ctx context.Context,
+		appID, tenantID string,
+		label string,
+		limit int,
+		cursorID string,
+	) ([]map[string]any, string, bool, int64, error)
+	GetNamespaceStats(
+		ctx context.Context,
+		appID, tenantID string,
+		labels []string,
+	) (totalNodes int64, totalEdges int64, byLabel map[string]int64, err error)
+	QueryNodes(
+		ctx context.Context,
+		appID, tenantID string,
+		filter data.QueryNodesFilter,
+	) ([]map[string]any, int64, error)
 }
 
 type GraphUsecase interface {
 	CreateNode(ctx context.Context, appID, tenantID string, label string, properties map[string]any) (map[string]any, error)
 	GetNode(ctx context.Context, appID, tenantID, nodeID string) (map[string]any, error)
+	UpdateNode(ctx context.Context, appID, tenantID, nodeID string, mergeProperties map[string]any, newLabel string) (map[string]any, error)
 	CreateEdge(ctx context.Context, appID, tenantID string, relationType string, sourceNodeID string, targetNodeID string, properties map[string]any) (map[string]any, error)
 	DeleteNode(ctx context.Context, appID, tenantID, nodeID string) (int, error)
 	DeleteEdge(ctx context.Context, appID, tenantID, edgeID string) error
@@ -189,6 +207,25 @@ func (s *GraphService) GetNode(ctx context.Context, req *pb.GetNodeRequest) (*pb
 		return nil, err
 	}
 	return &pb.GetNodeReply{
+		NodeId:         mapString(out, "id"),
+		Label:          mapString(out, "label"),
+		PropertiesJson: mustJSON(out),
+	}, nil
+}
+func (s *GraphService) UpdateNode(ctx context.Context, req *pb.UpdateNodeRequest) (*pb.UpdateNodeReply, error) {
+	appCtx, err := getAppContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	props, err := parseJSON(req.PropertiesJson)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.uc.UpdateNode(ctx, appCtx.AppID, appCtx.TenantID, req.NodeId, props, req.Label)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.UpdateNodeReply{
 		NodeId:         mapString(out, "id"),
 		Label:          mapString(out, "label"),
 		PropertiesJson: mustJSON(out),

@@ -109,8 +109,8 @@ func wireAppSurrealDB(confServer *conf.Server, confData *conf.Data, logger log.L
 	greeterService := service.NewGreeterService(greeterUsecase)
 	registryService := service.NewRegistryService(registryUsecase)
 
-	// OntologyService needs GORM DB — skip projection sync for SurrealDB mode
-	ontologyService := service.NewOntologyService(nil, ontologyRepoSurreal, nil)
+	// OntologyService needs *data.OntologyRepo — pass nil for SurrealDB mode (TBD: adapter)
+	ontologyService := service.NewOntologyService(nil, nil, nil)
 
 	// ViewResolver
 	projEngine := projection.NewEngine(nil, logger)
@@ -126,7 +126,7 @@ func wireAppSurrealDB(confServer *conf.Server, confData *conf.Data, logger log.L
 	batchUsecase := batch.NewUsecaseWithIndexer(nil, nil, nil, newBatchEntityValidator(ontologyValidator))
 
 	graphService := service.NewGraphServiceWithGraphBatchAndReader(
-		graphUsecase, batchUsecase, nil, entityReader,
+		graphUsecase, batchUsecase, nil, nil, // entityReader: nil — SurrealDB reader TBD
 		nil, // search engine TBD
 		nil, // overlay manager TBD
 		versionManager,

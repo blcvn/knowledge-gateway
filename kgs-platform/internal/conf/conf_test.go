@@ -26,8 +26,8 @@ func TestConfigYAMLOntologySection_IsLoadedByGetOntology(t *testing.T) {
 	if ontology == nil {
 		t.Fatalf("expected ontology config, got nil")
 	}
-	if ontology.GetValidationEnabled() {
-		t.Fatalf("expected validation_enabled=false")
+	if !ontology.GetValidationEnabled() {
+		t.Fatalf("expected validation_enabled=true")
 	}
 	if ontology.GetStrictMode() {
 		t.Fatalf("expected strict_mode=false")
@@ -35,10 +35,10 @@ func TestConfigYAMLOntologySection_IsLoadedByGetOntology(t *testing.T) {
 	if ontology.GetSchemaValidation() {
 		t.Fatalf("expected schema_validation=false")
 	}
-	if ontology.GetEdgeConstraintCheck() {
-		t.Fatalf("expected edge_constraint_check=false")
+	if !ontology.GetEdgeConstraintCheck() {
+		t.Fatalf("expected edge_constraint_check=true")
 	}
-	if ontology.GetSyncProjection() {
-		t.Fatalf("expected sync_projection=false")
+	if !ontology.GetSyncProjection() {
+		t.Fatalf("expected sync_projection=true")
 	}
 }

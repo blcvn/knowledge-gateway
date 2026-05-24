@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package vnp.gateway.console.governance.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/governance/v1;governancev1";
+
+// GovernanceService provides tenant and policy management (FEAT-011).
+// Implemented by: vnp-admin + vnp-event services.
+service GovernanceService {
+  // List tenants.
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  // Create a tenant.
+  rpc CreateTenant(CreateTenantRequest) returns (Tenant);
+  // Update a tenant.
+  rpc UpdateTenant(UpdateTenantRequest) returns (Tenant);
+  // List governance policies.
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  // Create a policy.
+  rpc CreatePolicy(CreatePolicyRequest) returns (Policy);
+  // Update a policy.
+  rpc UpdatePolicy(UpdatePolicyRequest) returns (Policy);
+  // Search audit logs.
+  rpc SearchAudit(SearchAuditRequest) returns (SearchAuditResponse);
+  // Execute GDPR forget.
+  rpc GDPRForget(GDPRForgetRequest) returns (GDPRForgetResponse);
+  // Preview GDPR forget impact.
+  rpc GDPRForgetPreview(GDPRForgetPreviewRequest) returns (GDPRForgetPreviewResponse);
+}
+
+// ──── Tenant ────────────────────────────────────────────────────
+
+message ListTenantsRequest {}
+
+message ListTenantsResponse {
+  repeated Tenant tenants = 1;
+}
+
+message Tenant {
+  string id = 1;
+  string name = 2;
+  string created_at = 3;
+  string status = 4;   // Active, Suspended
+}
+
+message CreateTenantRequest {
+  string name = 1;
+}
+
+message UpdateTenantRequest {
+  string id = 1;
+  string name = 2;
+  string status = 3;
+}
+
+// ──── Policy ────────────────────────────────────────────────────
+
+message ListPoliciesRequest {}
+
+message ListPoliciesResponse {
+  repeated Policy policies = 1;
+}
+
+message Policy {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string rego_code = 4;
+  string scope = 5;
+  bool enabled = 6;
+}
+
+message CreatePolicyRequest {
+  string name = 1;
+  string description = 2;
+  string rego_code = 3;
+  string scope = 4;
+  bool enabled = 5;
+}
+
+message UpdatePolicyRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string rego_code = 4;
+  string scope = 5;
+  bool enabled = 6;
+}
+
+// ──── Audit ─────────────────────────────────────────────────────
+
+message SearchAuditRequest {
+  string tenant_id = 1;
+  string actor_id = 2;
+  string action = 3;
+  string entity_type = 4;
+  string from = 5;
+  string to = 6;
+  int32 limit = 7;
+  int32 offset = 8;
+}
+
+message SearchAuditResponse {
+  repeated AuditLogEntry entries = 1;
+  int32 total = 2;
+}
+
+message AuditLogEntry {
+  string id = 1;
+  string tenant_id = 2;
+  string actor_id = 3;
+  string action = 4;
+  string entity_type = 5;
+  string created_at = 6;
+  string result = 7;
+}
+
+// ──── GDPR ──────────────────────────────────────────────────────
+
+message GDPRForgetRequest {
+  string user_id = 1;
+}
+
+message GDPRForgetResponse {
+  string user_id = 1;
+  int32 succeeded = 2;
+  int32 failed = 3;
+  repeated string errors = 4;
+  int64 latency_ms = 5;
+}
+
+message GDPRForgetPreviewRequest {
+  string user_id = 1;
+}
+
+message GDPRForgetPreviewResponse {
+  string user_id = 1;
+  repeated ForgetTarget targets = 2;
+  int32 total = 3;
+  bool dry_run = 4;
+}
+
+message ForgetTarget {
+  string service = 1;
+  string status = 2;   // reachable, unreachable
+}

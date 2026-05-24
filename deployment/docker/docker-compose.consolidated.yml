@@ -144,8 +144,11 @@ services:
       POSTGRES_DSN: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
       REDIS_ADDR: "redis:6379"
       NATS_URL: "nats://nats:4222"
-      # Consolidated route targets (Phase 1)
-      PLATFORM_TARGET: "vnp-platform:9050"
+      # Consolidated route targets (Phase 1 → Phase 2: split services)
+      DASHBOARD_TARGET: "vnp-dashboard:9043"
+      PIPELINES_TARGET: "vnp-pipelines:9044"
+      INFRA_TARGET: "vnp-infra:9045"
+      OBSERVABILITY_TARGET: "vnp-observability:9046"
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -154,27 +157,77 @@ services:
       - vnp-net
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # PLATFORM SERVICES (2)
+  # PLATFORM SERVICES (5 — vnp-platform split into 4 + search-hub)
   # ═══════════════════════════════════════════════════════════════════════════
 
-  vnp-platform:
+  vnp-dashboard:
     build:
-      context: ../../services/vnp-platform
+      context: ../../services/vnp-dashboard
       dockerfile: Dockerfile
-    container_name: vnp-platform
+    container_name: vnp-dashboard
     restart: unless-stopped
     ports:
-      - "9050:9050"
+      - "9043:9043"
     environment:
-      GRPC_PORT: "9050"
-      HEALTH_PORT: "9103"
+      GRPC_PORT: "9043"
+      HEALTH_PORT: "9143"
       DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
       REDIS_URL: "redis://redis:6379/0"
       NATS_URL: "nats://nats:4222"
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
-      nats: { condition: service_started }
+    networks:
+      - vnp-net
+
+  vnp-pipelines:
+    build:
+      context: ../../services/vnp-pipelines
+      dockerfile: Dockerfile
+    container_name: vnp-pipelines
+    restart: unless-stopped
+    ports:
+      - "9044:9044"
+    environment:
+      GRPC_PORT: "9044"
+      HEALTH_PORT: "9144"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  vnp-infra:
+    build:
+      context: ../../services/vnp-infra
+      dockerfile: Dockerfile
+    container_name: vnp-infra
+    restart: unless-stopped
+    ports:
+      - "9045:9045"
+    environment:
+      GRPC_PORT: "9045"
+      HEALTH_PORT: "9145"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks:
+      - vnp-net
+
+  vnp-observability:
+    build:
+      context: ../../services/vnp-observability
+      dockerfile: Dockerfile
+    container_name: vnp-observability
+    restart: unless-stopped
+    ports:
+      - "9046:9046"
+    environment:
+      GRPC_PORT: "9046"
+      HEALTH_PORT: "9146"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+    depends_on:
+      postgres: { condition: service_healthy }
     networks:
       - vnp-net
 

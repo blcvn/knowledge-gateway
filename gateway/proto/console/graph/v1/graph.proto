@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package vnp.gateway.console.graph.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/graph/v1;graphv1";
+
+// GraphStudioService provides knowledge graph exploration (FEAT-013).
+// Implemented by: graphiti-store + cognee-search services.
+service GraphStudioService {
+  // Query subgraph by entity/parameters.
+  rpc GetSubgraph(SubgraphRequest) returns (SubgraphResponse);
+  // Get entity detail by ID.
+  rpc GetEntity(GetEntityRequest) returns (EntityResponse);
+  // Query temporal subgraph.
+  rpc GetTimeline(GraphTimelineRequest) returns (GraphTimelineResponse);
+  // Get ontology schema.
+  rpc GetOntology(GetOntologyRequest) returns (OntologySchema);
+  // Update ontology schema.
+  rpc UpdateOntology(OntologySchema) returns (OntologySchema);
+  // Execute Cypher/NL query.
+  rpc Query(GraphQueryRequest) returns (SubgraphResponse);
+}
+
+// ──── Messages ──────────────────────────────────────────────────
+
+message SubgraphRequest {
+  map<string, string> params = 1;
+}
+
+message SubgraphResponse {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+}
+
+message GraphNode {
+  string id = 1;
+  string label = 2;
+  string type = 3;
+  map<string, string> properties = 4;
+}
+
+message GraphEdge {
+  string id = 1;
+  string source = 2;
+  string target = 3;
+  string type = 4;
+  map<string, string> properties = 5;
+}
+
+message GetEntityRequest {
+  string id = 1;
+}
+
+message EntityResponse {
+  string id = 1;
+  string label = 2;
+  string type = 3;
+  map<string, string> properties = 4;
+}
+
+message GraphTimelineRequest {
+  map<string, string> params = 1;
+}
+
+message GraphTimelineResponse {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+}
+
+message GetOntologyRequest {}
+
+message OntologySchema {
+  repeated string classes = 1;
+  repeated string relationships = 2;
+  map<string, OntologyProperties> properties = 3;
+}
+
+message OntologyProperties {
+  repeated string values = 1;
+}
+
+message GraphQueryRequest {
+  string query = 1;
+}

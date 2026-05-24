@@ -2,11 +2,80 @@ syntax = "proto3";
 package vnp.memory.vnpsearchhub.v1;
 option go_package = "vnp-memory/services/vnp-search-hub/api/proto/v1;vnpsearchhubv1";
 
+// VnpSearchHubService provides unified cross-engine search.
+// Console endpoints: memory explorer + debugger (FEAT-007, FEAT-010).
 service VnpSearchHubService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: POST /v1/console/memory/search
+  rpc SearchMemory(SearchMemoryRequest) returns (SearchMemoryResponse);
+  // Console: GET /v1/console/memory/{id}
+  rpc GetMemory(GetMemoryRequest) returns (MemoryItem);
+  // Console: GET /v1/console/memory/{id}/neighbors
+  rpc GetNeighbors(GetNeighborsRequest) returns (SearchMemoryResponse);
+  // Console: POST /v1/console/debugger/trace
+  rpc CreateTrace(CreateTraceRequest) returns (CreateTraceResponse);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message SearchMemoryRequest {
+  string query = 1;
+  string mode = 2;
+  repeated string engines = 3;
+  map<string, string> filters = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+  string reranking = 7;
+}
+message SearchMemoryResponse {
+  repeated MemoryItem results = 1;
+  int32 total = 2;
+  SearchFacets facets = 3;
+  int64 latency_ms = 4;
+}
+message SearchFacets {
+  map<string, int32> by_engine = 1;
+  map<string, int32> by_type = 2;
+}
+message MemoryItem {
+  string id = 1;
+  string engine = 2;
+  string memory_type = 3;
+  string title = 4;
+  string summary = 5;
+  string content = 6;
+  double score = 7;
+  repeated string entities = 8;
+  repeated string source_sessions = 9;
+  TemporalValidity temporal_validity = 10;
+  repeated string policy_tags = 11;
+  string version_chain = 12;
+  map<string, string> metadata = 13;
+}
+message TemporalValidity {
+  string from = 1;
+  string to = 2;
+}
+
+message GetMemoryRequest { string id = 1; }
+message GetNeighborsRequest { string id = 1; }
+
+message CreateTraceRequest {
+  string query = 1;
+  string user_id = 2;
+  map<string, string> params = 3;
+}
+message CreateTraceResponse {
+  string trace_id = 1;
+  repeated TraceStep steps = 2;
+  int64 total_latency_ms = 3;
+}
+message TraceStep {
+  string service = 1;
+  string operation = 2;
+  int64 duration_ms = 3;
+  string status = 4;
+  string data = 5;
 }

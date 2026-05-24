@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package vnp.gateway.console.session.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/session/v1;sessionv1";
+
+// SessionService provides session management (FEAT-014).
+// Implemented by: zep-core + vnp-event + ov-session + memobase-context services.
+service SessionService {
+  // List all sessions.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  // List active/live sessions.
+  rpc ListLiveSessions(ListLiveSessionsRequest) returns (ListSessionsResponse);
+  // Get session detail with messages.
+  rpc GetSession(GetSessionRequest) returns (Conversation);
+  // Get session timeline.
+  rpc GetTimeline(GetTimelineRequest) returns (GetTimelineResponse);
+  // Get memory diff for a session.
+  rpc GetDiff(GetDiffRequest) returns (GetDiffResponse);
+  // Get working memory snapshot.
+  rpc GetWorkingMemory(GetWorkingMemoryRequest) returns (WorkingMemory);
+  // Get user summary for a session.
+  rpc GetUserSummary(GetUserSummaryRequest) returns (GetUserSummaryResponse);
+}
+
+// ──── Messages ──────────────────────────────────────────────────
+
+message ListSessionsRequest {}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+}
+
+message Session {
+  string id = 1;
+  string user_id = 2;
+  string title = 3;
+  string agent_id = 4;
+  string status = 5;       // active, completed, failed
+  int32 message_count = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message ListLiveSessionsRequest {}
+
+message GetSessionRequest {
+  string id = 1;
+}
+
+message Conversation {
+  string session_id = 1;
+  repeated Message messages = 2;
+}
+
+message Message {
+  string id = 1;
+  string role = 2;          // user, assistant, system
+  string content = 3;
+  string timestamp = 4;
+  repeated string memory_sources = 5;
+}
+
+message GetTimelineRequest {
+  string id = 1;
+}
+
+message GetTimelineResponse {
+  repeated TimelineEntry entries = 1;
+}
+
+message TimelineEntry {
+  string type = 1;
+  string content = 2;
+  string timestamp = 3;
+  map<string, string> metadata = 4;
+}
+
+message GetDiffRequest {
+  string id = 1;
+}
+
+message GetDiffResponse {
+  string session_id = 1;
+  string diff_content = 2;
+}
+
+message GetWorkingMemoryRequest {
+  string id = 1;
+}
+
+message WorkingMemory {
+  string session_id = 1;
+  string summary = 2;
+  repeated string entities = 3;
+}
+
+message GetUserSummaryRequest {
+  string id = 1;
+}
+
+message GetUserSummaryResponse {
+  string session_id = 1;
+  string user_id = 2;
+  string summary = 3;
+}

@@ -63,13 +63,13 @@ func newSpecializedBundle(c *conf.Data, logger log.Logger) (*StorageBundle, func
 
 	bundle := &StorageBundle{
 		GraphRepo:     NewGraphRepo(data, logger),
-		WriteRepo:     NewGraphWriteRepo(data, logger),
+		WriteRepo:     NewPGWriteRepo(data.db),
 		Reader:        NewEntityReader(NewGraphRepo(data, logger), data.db),
 		RegistryRepo:  NewRegistryRepo(data, logger),
 		RulesRepo:     NewRulesRepo(data, logger),
 		PolicyRepo:    NewPolicyRepo(data, logger),
 		OntologyRepo:  NewOntologyRepo(data, logger),
-		LockMgr:       lock.NewRedisLockManager(data.rc, logger),
+		LockMgr:       lock.NewRedisLockManager(data.rc),
 		OutboxEnabled: true,
 		Cleanup:       cleanup,
 	}

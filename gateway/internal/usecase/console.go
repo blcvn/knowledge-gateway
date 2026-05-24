@@ -170,10 +170,11 @@ var allServices = []string{
 	"graphiti-ingestion", "graphiti-search", "graphiti-knowledge", "graphiti-store",
 	"memobase-ingestion", "memobase-engine", "memobase-context",
 	"vnp-event", "vnp-search-hub", "vnp-admin",
+	"vnp-dashboard", "vnp-pipelines", "vnp-infra", "vnp-observability",
 	"ov-fs", "ov-search", "ov-session", "ov-resource", "ov-crypto", "ov-admin",
-	"zep-user", "zep-thread", "zep-memory", "zep-graph", "zep-search", "zep-admin",
+	"zep-user", "zep-thread", "zep-memory", "zep-graph", "zep-search", "zep-admin", "zep-core",
 	"sm-document", "sm-memory", "sm-search", "sm-profile", "sm-connector",
-	"sm-mcp", "sm-auth", "sm-analytics", "sm-project",
+	"sm-mcp", "sm-auth", "sm-analytics", "sm-project", "sm-engine",
 }
 
 // Topology returns the service topology with connection state.

@@ -2,11 +2,50 @@ syntax = "proto3";
 package vnp.memory.smmemory.v1;
 option go_package = "vnp-memory/services/sm-memory/api/proto/v1;smmemoryv1";
 
+// SmMemoryService provides adaptive memory management.
+// Console endpoints: adaptive memories + versions (FEAT-009).
 service SmMemoryService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/adaptive/memories
+  rpc ListMemories(ListMemoriesRequest) returns (ListMemoriesResponse);
+  // Console: GET /v1/console/adaptive/memories/{id}/versions
+  rpc GetVersions(GetVersionsRequest) returns (GetVersionsResponse);
+  // Console: GET /v1/console/memory/{id}/versions
+  rpc GetMemoryVersions(GetMemoryVersionsRequest) returns (GetMemoryVersionsResponse);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message ListMemoriesRequest {}
+message ListMemoriesResponse {
+  repeated AdaptiveMemory memories = 1;
+}
+message AdaptiveMemory {
+  string id = 1;
+  string content = 2;
+  string memory_type = 3;
+  int32 version_count = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message GetVersionsRequest { string id = 1; }
+message GetVersionsResponse {
+  repeated MemoryVersion versions = 1;
+}
+message MemoryVersion {
+  string id = 1;
+  string memory_id = 2;
+  string content = 3;
+  int32 version_number = 4;
+  bool is_latest = 5;
+  string diff = 6;
+  string created_at = 7;
+}
+
+message GetMemoryVersionsRequest { string id = 1; }
+message GetMemoryVersionsResponse {
+  repeated MemoryVersion versions = 1;
 }

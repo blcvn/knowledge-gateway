@@ -196,7 +196,11 @@ func defaultServiceAddresses() map[string]string {
 		"sm-analytics":       "sm-analytics:9078",
 		"sm-project":         "sm-project:9079",
 		// Console-specific services (SOL-002 / T14)
-		"vnp-platform":       "vnp-platform:9043",
+		// vnp-platform split into 4 dedicated services
+		"vnp-dashboard":      "vnp-dashboard:9043",
+		"vnp-pipelines":      "vnp-pipelines:9044",
+		"vnp-infra":          "vnp-infra:9045",
+		"vnp-observability":  "vnp-observability:9046",
 		"sm-engine":          "sm-engine:9080",
 		"zep-core":           "zep-core:9067",
 	}

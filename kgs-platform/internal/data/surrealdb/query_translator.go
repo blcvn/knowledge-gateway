@@ -133,6 +133,7 @@ LET $frontier = [$node_id];
 LET $all_edges = [];
 LET $depth = 0;
 
+-- Iterative BFS upstream up to depth %d
 REPEAT {
   LET $new_edges = (SELECT * FROM kg_edges
     WHERE to_entity_id IN $frontier AND app_id = $app_id AND tenant_id = $tenant_id AND is_deleted = false

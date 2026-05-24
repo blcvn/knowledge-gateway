@@ -2,11 +2,31 @@ syntax = "proto3";
 package vnp.memory.cogneesearch.v1;
 option go_package = "vnp-memory/services/cognee-search/api/proto/v1;cogneesearchv1";
 
+// CogneeSearchService provides knowledge graph search and ontology management.
+// Console endpoints: graph ontology (FEAT-013).
 service CogneeSearchService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/graph/ontology
+  rpc GetOntology(GetOntologyRequest) returns (OntologySchema);
+  // Console: PUT /v1/console/graph/ontology
+  rpc UpdateOntology(UpdateOntologyRequest) returns (OntologySchema);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message GetOntologyRequest {}
+message OntologySchema {
+  repeated string classes = 1;
+  repeated string relationships = 2;
+  map<string, OntologyProperties> properties = 3;
+}
+message OntologyProperties {
+  repeated string values = 1;
+}
+message UpdateOntologyRequest {
+  repeated string classes = 1;
+  repeated string relationships = 2;
+  map<string, OntologyProperties> properties = 3;
 }

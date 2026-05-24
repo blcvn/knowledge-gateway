@@ -20,6 +20,7 @@ const (
 type RegistryRepo interface {
 	CreateApp(ctx context.Context, app *App) error
 	GetApp(ctx context.Context, appID string) (*App, error)
+	GetAppByExternalID(ctx context.Context, externalID string) (*App, error)
 	ListApps(ctx context.Context) ([]*App, error)
 	CreateAPIKey(ctx context.Context, key *APIKey) error
 	GetAPIKeyByHash(ctx context.Context, keyHash string) (*APIKey, error)
@@ -59,6 +60,15 @@ func (uc *RegistryUsecase) GetApp(ctx context.Context, appID string) (*App, erro
 
 func (uc *RegistryUsecase) ListApps(ctx context.Context) ([]*App, error) {
 	return uc.repo.ListApps(ctx)
+}
+
+// GetAppByExternalID looks up an app by its external system identifier (e.g., project UUID).
+func (uc *RegistryUsecase) GetAppByExternalID(ctx context.Context, externalID string) (*App, error) {
+	externalID = strings.TrimSpace(externalID)
+	if externalID == "" {
+		return nil, ErrAppNotFound
+	}
+	return uc.repo.GetAppByExternalID(ctx, externalID)
 }
 
 func (uc *RegistryUsecase) IssueAPIKey(ctx context.Context, appID, name, scopes string, ttlSeconds int64) (rawKey string, key *APIKey, err error) {

@@ -2,11 +2,57 @@ syntax = "proto3";
 package vnp.memory.graphitistore.v1;
 option go_package = "vnp-memory/services/graphiti-store/api/proto/v1;graphitistorev1";
 
+// GraphitiStoreService provides knowledge graph storage and query.
+// Console endpoints: graph studio (FEAT-013).
 service GraphitiStoreService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/graph/subgraph
+  rpc GetSubgraph(SubgraphRequest) returns (SubgraphResponse);
+  // Console: GET /v1/console/graph/entities/{id}
+  rpc GetEntity(GetEntityRequest) returns (EntityResponse);
+  // Console: GET /v1/console/graph/timeline
+  rpc GetTimeline(GraphTimelineRequest) returns (SubgraphResponse);
+  // Console: POST /v1/console/graph/query
+  rpc Query(GraphQueryRequest) returns (SubgraphResponse);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message SubgraphRequest {
+  map<string, string> params = 1;
+}
+message SubgraphResponse {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+}
+message GraphNode {
+  string id = 1;
+  string label = 2;
+  string type = 3;
+  map<string, string> properties = 4;
+}
+message GraphEdge {
+  string id = 1;
+  string source = 2;
+  string target = 3;
+  string type = 4;
+  map<string, string> properties = 5;
+}
+
+message GetEntityRequest { string id = 1; }
+message EntityResponse {
+  string id = 1;
+  string label = 2;
+  string type = 3;
+  map<string, string> properties = 4;
+}
+
+message GraphTimelineRequest {
+  map<string, string> params = 1;
+}
+
+message GraphQueryRequest {
+  string query = 1;
 }

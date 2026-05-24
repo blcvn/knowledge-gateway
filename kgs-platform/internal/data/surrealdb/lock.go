@@ -32,6 +32,16 @@ func (m *surrealLockManager) AcquireNamespaceLock(ctx context.Context, namespace
 	return m.acquireLock(ctx, lockKey, ttl)
 }
 
+func (m *surrealLockManager) AcquireSubgraphLock(ctx context.Context, namespace, rootID string, depth int, ttl time.Duration) (string, error) {
+	lockKey := fmt.Sprintf("%s:subgraph:%s:%d", namespace, rootID, depth)
+	return m.acquireLock(ctx, lockKey, ttl)
+}
+
+func (m *surrealLockManager) AcquireVersionLock(ctx context.Context, namespace string, ttl time.Duration) (string, error) {
+	lockKey := fmt.Sprintf("%s:version", namespace)
+	return m.acquireLock(ctx, lockKey, ttl)
+}
+
 func (m *surrealLockManager) Release(ctx context.Context, token string) error {
 	if token == "" {
 		return nil

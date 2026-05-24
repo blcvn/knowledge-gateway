@@ -210,10 +210,13 @@ func (uc *GraphUsecase) CreateNode(ctx context.Context, appID, tenantID string, 
 	uc.redisCli.XAdd(lockCtx, &redis.XAddArgs{
 		Stream: "kgs:events:nodes",
 		Values: map[string]interface{}{
-			"event_type": "node.created",
-			"app_id":     appID,
-			"tenant_id":  tenantID,
-			"label":      label,
+			"event_type":  "ENTITY_UPSERTED",
+			"entity_id":   nodeID,
+			"entity_type": label,
+			"app_id":      appID,
+			"tenant_id":   tenantID,
+			"operation":   "create",
+			"timestamp":   time.Now().UTC().Format(time.RFC3339),
 		},
 	})
 	uc.log.Infof("[KGS][GraphUsecase] CreateNode done app_id=%s tenant_id=%s label=%s node_id=%s duration=%s",
@@ -336,6 +339,22 @@ func (uc *GraphUsecase) CreateEdge(ctx context.Context, appID, tenantID string, 
 	} else {
 		uc.log.Infof("[KGS][GraphUsecase] CreateEdge done app_id=%s tenant_id=%s relation=%s source=%s target=%s edge_id=%s duration=%s",
 			appID, tenantID, relationType, sourceNodeID, targetNodeID, fmt.Sprint(result["id"]), time.Since(started))
+		if uc.redisCli != nil {
+			_ = uc.redisCli.XAdd(lockCtx, &redis.XAddArgs{
+				Stream: "kgs:events:edges",
+				Values: map[string]any{
+					"event_type":     "EDGE_UPSERTED",
+					"edge_id":        fmt.Sprint(result["id"]),
+					"relation_type":  relationType,
+					"source_node_id": sourceNodeID,
+					"target_node_id": targetNodeID,
+					"app_id":         appID,
+					"tenant_id":      tenantID,
+					"operation":      "create",
+					"timestamp":      time.Now().UTC().Format(time.RFC3339),
+				},
+			}).Err()
+		}
 	}
 	observability.ObserveEntityWrite("create_edge", err)
 	return result, err
@@ -488,11 +507,15 @@ func (uc *GraphUsecase) DeleteNode(ctx context.Context, appID, tenantID, nodeID 
 
 	if uc.redisCli != nil {
 		_ = uc.redisCli.XAdd(lockCtx, &redis.XAddArgs{
-			Stream: fmt.Sprintf("kgs:events:%s:%s", appID, tenantID),
+			Stream: "kgs:events:nodes",
 			Values: map[string]any{
-				"event":         "node.deleted",
-				"node_id":       nodeID,
+				"event_type":    "ENTITY_DELETED",
+				"entity_id":     nodeID,
+				"app_id":        appID,
+				"tenant_id":     tenantID,
+				"operation":     "delete",
 				"edges_removed": edgesRemoved,
+				"timestamp":     time.Now().UTC().Format(time.RFC3339),
 			},
 		}).Err()
 	}
@@ -568,6 +591,19 @@ func (uc *GraphUsecase) DeleteEdge(ctx context.Context, appID, tenantID, edgeID 
 	} else {
 		uc.log.Infof("[KGS][GraphUsecase] DeleteEdge done app_id=%s tenant_id=%s edge_id=%s duration=%s",
 			appID, tenantID, edgeID, time.Since(started))
+		if uc.redisCli != nil {
+			_ = uc.redisCli.XAdd(lockCtx, &redis.XAddArgs{
+				Stream: "kgs:events:edges",
+				Values: map[string]any{
+					"event_type": "EDGE_DELETED",
+					"edge_id":    edgeID,
+					"app_id":     appID,
+					"tenant_id":  tenantID,
+					"operation":  "delete",
+					"timestamp":  time.Now().UTC().Format(time.RFC3339),
+				},
+			}).Err()
+		}
 	}
 	observability.ObserveEntityWrite("delete_edge", err)
 	return err
@@ -901,6 +937,127 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// UpdateNode performs a partial update on a node's properties (JSON merge patch semantics).
+// It reads the current entity, merges properties, then upserts via the writeRepo pipeline.
+func (uc *GraphUsecase) UpdateNode(ctx context.Context, appID, tenantID, nodeID string, mergeProperties map[string]any, newLabel string) (map[string]any, error) {
+	started := time.Now()
+	uc.log.Infof("[KGS][GraphUsecase] UpdateNode start app_id=%s tenant_id=%s node_id=%s props_keys=%d new_label=%q",
+		appID, tenantID, nodeID, len(mergeProperties), newLabel)
+
+	if strings.TrimSpace(nodeID) == "" {
+		return nil, fmt.Errorf("node_id is required")
+	}
+
+	lockCtx := lock.WithOwnerID(ctx, "graph-write-"+uuid.NewString())
+	lockToken, err := uc.acquireNodeLock(lockCtx, appID, tenantID, nodeID)
+	if err != nil {
+		uc.log.Errorf("[KGS][GraphUsecase] UpdateNode acquire lock failed app_id=%s tenant_id=%s node_id=%s err=%v",
+			appID, tenantID, nodeID, err)
+		return nil, err
+	}
+	defer uc.releaseLock(lockCtx, lockToken)
+
+	// 1. Read existing entity
+	existing, err := uc.GetNode(lockCtx, appID, tenantID, nodeID)
+	if err != nil {
+		uc.log.Errorf("[KGS][GraphUsecase] UpdateNode read existing failed app_id=%s tenant_id=%s node_id=%s err=%v",
+			appID, tenantID, nodeID, err)
+		return nil, fmt.Errorf("node not found: %w", err)
+	}
+	if existing == nil {
+		uc.log.Warnf("[KGS][GraphUsecase] UpdateNode node not found app_id=%s tenant_id=%s node_id=%s", appID, tenantID, nodeID)
+		return nil, fmt.Errorf("node not found: %s", nodeID)
+	}
+
+	// 2. Merge properties (incoming overrides existing)
+	merged := cloneProperties(existing)
+	for k, v := range mergeProperties {
+		if v == nil {
+			delete(merged, k) // explicit null = delete key
+		} else {
+			merged[k] = v
+		}
+	}
+
+	// 3. Determine label
+	label := toString(existing["entity_type"])
+	if label == "" {
+		label = toString(existing["label"])
+	}
+	if strings.TrimSpace(newLabel) != "" {
+		label = strings.TrimSpace(newLabel)
+	}
+	merged["id"] = nodeID
+
+	// 4. Persist via writeRepo (with outbox)
+	if uc.writeRepo == nil {
+		// Fallback: direct Neo4j write
+		result, err := uc.repo.CreateNode(lockCtx, appID, tenantID, label, merged)
+		if err != nil {
+			uc.log.Errorf("[KGS][GraphUsecase] UpdateNode repo write failed app_id=%s tenant_id=%s node_id=%s err=%v",
+				appID, tenantID, nodeID, err)
+		}
+		observability.ObserveEntityWrite("update_node", err)
+		return result, err
+	}
+
+	entity := mapNodeToWriteEntity(appID, tenantID, label, merged)
+	entity.EntityID = nodeID // ensure same entity ID
+	err = uc.writeRepo.WithTx(lockCtx, func(txRepo GraphWriteRepo) error {
+		op, err := txRepo.UpsertEntity(lockCtx, entity)
+		if err != nil {
+			uc.log.Errorf("[KGS][GraphUsecase] UpdateNode postgres upsert failed app_id=%s tenant_id=%s node_id=%s err=%v",
+				appID, tenantID, nodeID, err)
+			return err
+		}
+		uc.log.Infof("[KGS][GraphUsecase] UpdateNode postgres upsert done app_id=%s tenant_id=%s node_id=%s op=%s",
+			appID, tenantID, nodeID, op)
+		rec := buildEntityOutboxRecord(OutboxOpUpsertEntity, entity)
+		if err := txRepo.EnqueueOutbox(lockCtx, rec); err != nil {
+			uc.log.Errorf("[KGS][GraphUsecase] UpdateNode enqueue outbox failed app_id=%s tenant_id=%s node_id=%s err=%v",
+				appID, tenantID, nodeID, err)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		uc.log.Errorf("[KGS][GraphUsecase] UpdateNode transactional write failed app_id=%s tenant_id=%s node_id=%s err=%v",
+			appID, tenantID, nodeID, err)
+		observability.ObserveEntityWrite("update_node", err)
+		return nil, err
+	}
+
+	result := cloneProperties(merged)
+	result["id"] = nodeID
+	result["label"] = label
+	result["entity_type"] = label
+
+	// 5. Publish event
+	if uc.redisCli != nil {
+		changedKeys := make([]string, 0, len(mergeProperties))
+		for k := range mergeProperties {
+			changedKeys = append(changedKeys, k)
+		}
+		_ = uc.redisCli.XAdd(lockCtx, &redis.XAddArgs{
+			Stream: "kgs:events:nodes",
+			Values: map[string]interface{}{
+				"event_type":         "ENTITY_UPDATED",
+				"entity_id":          nodeID,
+				"entity_type":        label,
+				"app_id":             appID,
+				"tenant_id":          tenantID,
+				"properties_changed": strings.Join(changedKeys, ","),
+				"timestamp":          time.Now().UTC().Format(time.RFC3339),
+			},
+		}).Err()
+	}
+
+	uc.log.Infof("[KGS][GraphUsecase] UpdateNode done app_id=%s tenant_id=%s node_id=%s label=%s duration=%s",
+		appID, tenantID, nodeID, label, time.Since(started))
+	observability.ObserveEntityWrite("update_node", nil)
+	return result, nil
 }
 
 func lockTTLFromEnv() time.Duration {

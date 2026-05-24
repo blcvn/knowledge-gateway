@@ -2,11 +2,85 @@ syntax = "proto3";
 package vnp.memory.vnpevent.v1;
 option go_package = "vnp-memory/services/vnp-event/api/proto/v1;vnpeventv1";
 
+// VnpEventService provides event sourcing and audit trails.
+// Console endpoints: profile events, session diffs, debugger traces, GDPR (FEAT-008,010,011,014).
 service VnpEventService {
   rpc Ping(PingRequest) returns (PingResponse);
+
+  // Console: GET /v1/console/profiles/{user_id}/events
+  rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
+  // Console: GET /v1/console/debugger/traces/{id}
+  rpc GetTrace(GetTraceRequest) returns (TraceDetail);
+  // Console: GET /v1/console/debugger/traces
+  rpc ListTraces(ListTracesRequest) returns (ListTracesResponse);
+  // Console: GET /v1/console/sessions/{id}/diff
+  rpc GetDiff(GetDiffRequest) returns (GetDiffResponse);
+  // Console: POST /v1/console/governance/gdpr/forget
+  rpc GDPRForget(GDPRForgetRequest) returns (GDPRForgetResponse);
+  // Console: POST /v1/console/governance/gdpr/forget/preview
+  rpc GDPRForgetPreview(GDPRForgetPreviewRequest) returns (GDPRForgetPreviewResponse);
 }
 
 message PingRequest {}
-message PingResponse {
-  string status = 1;
+message PingResponse { string status = 1; }
+
+message GetEventsRequest { string user_id = 1; }
+message GetEventsResponse {
+  repeated UserEvent events = 1;
+}
+message UserEvent {
+  string id = 1;
+  string user_id = 2;
+  string gist = 3;
+  repeated string tags = 4;
+  string created_at = 5;
+}
+
+message GetTraceRequest { string id = 1; }
+message TraceDetail {
+  string id = 1;
+  string trace_id = 2;
+  string span_id = 3;
+  string name = 4;
+  string operation = 5;
+  string service = 6;
+  int64 duration_ms = 7;
+  string status = 8;
+  string timestamp = 9;
+}
+
+message ListTracesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+message ListTracesResponse {
+  repeated TraceDetail traces = 1;
+  int32 total = 2;
+}
+
+message GetDiffRequest { string id = 1; }
+message GetDiffResponse {
+  string session_id = 1;
+  string diff_content = 2;
+}
+
+message GDPRForgetRequest { string user_id = 1; }
+message GDPRForgetResponse {
+  string user_id = 1;
+  int32 succeeded = 2;
+  int32 failed = 3;
+  repeated string errors = 4;
+  int64 latency_ms = 5;
+}
+
+message GDPRForgetPreviewRequest { string user_id = 1; }
+message GDPRForgetPreviewResponse {
+  string user_id = 1;
+  repeated ForgetTarget targets = 2;
+  int32 total = 3;
+  bool dry_run = 4;
+}
+message ForgetTarget {
+  string service = 1;
+  string status = 2;
 }

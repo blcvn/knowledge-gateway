@@ -59,6 +59,14 @@ func (r *registryRepo) GetApp(ctx context.Context, appID string) (*biz.App, erro
 	return &app, nil
 }
 
+func (r *registryRepo) GetAppByExternalID(ctx context.Context, externalID string) (*biz.App, error) {
+	var app biz.App
+	if err := r.data.db.WithContext(ctx).Where("external_id = ?", externalID).First(&app).Error; err != nil {
+		return nil, err
+	}
+	return &app, nil
+}
+
 func (r *registryRepo) ListApps(ctx context.Context) ([]*biz.App, error) {
 	var rows []biz.App
 	if err := r.data.db.WithContext(ctx).Order("created_at DESC").Find(&rows).Error; err != nil {

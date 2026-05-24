@@ -2,16 +2,22 @@
 ###############################################################################
 # VNP Memory — Full Deployment Script for Dev Server (172.20.2.39)
 #
-# All application services are Go projects built from apps/ directory.
-# Build context = monorepo root so Dockerfiles can access shared pkg/.
+# LOCAL COMPILE + BINARY SYNC deployment model:
+# - All Go apps are cross-compiled locally for linux/amd64
+# - Frontend (UI) is built locally with npm
+# - Compiled binaries + configs are synced to server via rsync
+# - Containers mount binaries from host filesystem (no Docker build needed)
 #
 # Usage:
 #   ./deploy.sh                   # Full deploy (all services)
 #   ./deploy.sh --monolith        # Deploy Memory Monolith only (API+UI)
 #   ./deploy.sh --monolith-full   # Deploy Monolith + sync nginx on gateway
-#   ./deploy.sh --config-only     # Sync config & restart (no image rebuild)
-#   ./deploy.sh --images-only     # Build & upload images only (no restart)
+#   ./deploy.sh --kgs             # Deploy KGS Platform only
+#   ./deploy.sh --config-only     # Sync config & restart (no recompile)
+#   ./deploy.sh --compile-only    # Compile only (no sync/restart)
+#   ./deploy.sh --sync-only       # Sync only (no compile/restart)
 #   ./deploy.sh --nginx           # Sync nginx config to gateway server
+#   ./deploy.sh --setup           # First-time setup (build runtime image)
 ###############################################################################
 set -euo pipefail
 
@@ -22,72 +28,151 @@ DEPLOY_DIR="/opt/vnp-memory"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MONOREPO_ROOT="${SCRIPT_DIR}/../.."
 
+# Output directories (local)
+BIN_DIR="${SCRIPT_DIR}/bin"
+UI_DIST_DIR="${SCRIPT_DIR}/ui-dist"
+
 # Gateway server (nginx + certbot)
 GATEWAY_SERVER="172.20.2.16"
 GATEWAY_USER="ubuntu"
 
-# App Dockerfiles (all Go-based, relative to monorepo root)
-MEMORY_DOCKERFILE="${MONOREPO_ROOT}/apps/memory/Dockerfile"
-COGNEE_DOCKERFILE="${MONOREPO_ROOT}/apps/cognee/Dockerfile"
-GRAPHITI_DOCKERFILE="${MONOREPO_ROOT}/apps/graphiti/Dockerfile"
-OPENVIKING_DOCKERFILE="${MONOREPO_ROOT}/apps/OpenViking/Dockerfile"
-ZEP_DOCKERFILE="${MONOREPO_ROOT}/apps/zep/Dockerfile"
-MEMOBASE_DOCKERFILE="${MONOREPO_ROOT}/apps/memobase/Dockerfile"
-SUPERMEMORY_DOCKERFILE="${MONOREPO_ROOT}/apps/supermemory/Dockerfile"
-COGNEE_FRONTEND_SRC="${MONOREPO_ROOT}/apps/cognee/cognee-frontend"
+# Cross-compile flags
+export CGO_ENABLED=0
+export GOOS=linux
+export GOARCH=amd64
+GO_LDFLAGS="-ldflags=-s -w"
+
+# App source directories (relative to monorepo root)
+MEMORY_APP="apps/memory"
+COGNEE_APP="apps/cognee"
+GRAPHITI_APP="apps/graphiti"
+OPENVIKING_APP="apps/OpenViking"
+ZEP_APP="apps/zep"
+MEMOBASE_APP="apps/memobase"
+SUPERMEMORY_APP="apps/supermemory"
+KGS_APP="kgs-platform"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 log()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
 ok()   { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 err()  { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+step() { echo -e "${CYAN}  →${NC} $*"; }
 
-# ── Functions ────────────────────────────────────────────────────────────────
+# ── Compile Functions ────────────────────────────────────────────────────────
 
-build_and_upload_image() {
+compile_app() {
     local name="$1"
-    local dockerfile="$2"
-    local context="$3"
-    local image="vnp/${name}:latest"
-    local tmp="/tmp/vnp-${name}.tar.gz"
+    local app_dir="$2"
+    local build_target="$3"
+    local output_name="$4"
 
-    log "Building ${image} from ${dockerfile} (context: ${context}) ..."
-    docker build -t "${image}" -f "${dockerfile}" "${context}"
+    log "Compiling ${name} (linux/amd64) ..."
+    mkdir -p "${BIN_DIR}"
 
-    log "Exporting ${image} ..."
-    docker save "${image}" | gzip > "${tmp}"
+    cd "${MONOREPO_ROOT}/${app_dir}"
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+        -ldflags="-s -w" \
+        -o "${BIN_DIR}/${output_name}" \
+        "${build_target}"
 
-    log "Uploading to ${DEV_SERVER} ..."
-    scp "${tmp}" "${DEV_USER}@${DEV_SERVER}:/tmp/"
-    ssh "${DEV_USER}@${DEV_SERVER}" "docker load < /tmp/vnp-${name}.tar.gz && rm /tmp/vnp-${name}.tar.gz"
-    rm -f "${tmp}"
-
-    ok "${image} loaded on ${DEV_SERVER}"
+    local size
+    size=$(du -sh "${BIN_DIR}/${output_name}" | awk '{print $1}')
+    ok "${name} compiled → bin/${output_name} (${size})"
 }
 
-build_and_upload_frontend() {
-    local name="cognee-frontend"
-    local image="vnp/${name}:latest"
-    local tmp="/tmp/vnp-${name}.tar.gz"
+compile_kgs() {
+    log "Compiling KGS Platform (linux/amd64) ..."
+    mkdir -p "${BIN_DIR}"
 
-    log "Building ${image} from ${COGNEE_FRONTEND_SRC} ..."
-    docker build -t "${image}" "${COGNEE_FRONTEND_SRC}"
+    cd "${MONOREPO_ROOT}/${KGS_APP}"
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+        -mod=mod \
+        -ldflags="-s -w" \
+        -o "${BIN_DIR}/kgs-server" \
+        ./cmd/server/
 
-    log "Exporting ${image} ..."
-    docker save "${image}" | gzip > "${tmp}"
+    local size
+    size=$(du -sh "${BIN_DIR}/kgs-server" | awk '{print $1}')
+    ok "KGS Platform compiled → bin/kgs-server (${size})"
+}
 
-    log "Uploading to ${DEV_SERVER} ..."
-    scp "${tmp}" "${DEV_USER}@${DEV_SERVER}:/tmp/"
-    ssh "${DEV_USER}@${DEV_SERVER}" "docker load < /tmp/vnp-${name}.tar.gz && rm /tmp/vnp-${name}.tar.gz"
-    rm -f "${tmp}"
+compile_ui() {
+    log "Building UI frontend ..."
+    cd "${MONOREPO_ROOT}/ui"
+    npm run build
+    ok "UI built: ui/dist/"
+}
 
-    ok "${image} loaded on ${DEV_SERVER}"
+compile_memory_monolith() {
+    # Step 1: Build UI
+    compile_ui
+
+    # Step 2: Embed UI assets into Go binary path
+    log "Embedding UI assets into Memory Monolith ..."
+    rm -rf "${MONOREPO_ROOT}/${MEMORY_APP}/internal/ui/ui_dist"
+    mkdir -p "${MONOREPO_ROOT}/${MEMORY_APP}/internal/ui/ui_dist"
+    cp -r "${MONOREPO_ROOT}/ui/dist/"* "${MONOREPO_ROOT}/${MEMORY_APP}/internal/ui/ui_dist/"
+    ok "UI assets embedded"
+
+    # Step 3: Compile Memory Monolith from monorepo root (needs go.work)
+    log "Compiling Memory Monolith (linux/amd64) ..."
+    mkdir -p "${BIN_DIR}"
+
+    cd "${MONOREPO_ROOT}"
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+        -ldflags="-s -w" \
+        -o "${BIN_DIR}/vnp-memory" \
+        "./${MEMORY_APP}/cmd/server"
+
+    local size
+    size=$(du -sh "${BIN_DIR}/vnp-memory" | awk '{print $1}')
+    ok "Memory Monolith compiled → bin/vnp-memory (${size})"
+}
+
+compile_all_apps() {
+    compile_app "Cognee"      "${COGNEE_APP}"      "./cmd/cognee/"     "cognee"
+    compile_app "Graphiti"    "${GRAPHITI_APP}"     "./cmd/graphiti/"   "graphiti"
+    compile_app "OpenViking"  "${OPENVIKING_APP}"   "./cmd/openviking/" "openviking"
+    compile_app "Zep"         "${ZEP_APP}"          "./cmd/zep/"        "zep"
+    compile_app "Memobase"    "${MEMOBASE_APP}"     "./cmd/memobase/"   "memobase"
+    compile_app "Supermemory" "${SUPERMEMORY_APP}"  "./cmd/supermemory/" "supermemory"
+}
+
+compile_all() {
+    compile_all_apps
+    compile_kgs
+    compile_memory_monolith
+
+    echo ""
+    ok "All services compiled!"
+    echo ""
+    ls -lh "${BIN_DIR}/"
+    echo ""
+}
+
+# ── Sync Functions ───────────────────────────────────────────────────────────
+
+sync_binaries() {
+    log "Syncing binaries to ${DEV_SERVER}:${DEPLOY_DIR}/bin/ ..."
+    ssh "${DEV_USER}@${DEV_SERVER}" "mkdir -p ${DEPLOY_DIR}/bin"
+    rsync -avz --progress "${BIN_DIR}/" "${DEV_USER}@${DEV_SERVER}:${DEPLOY_DIR}/bin/"
+    ssh "${DEV_USER}@${DEV_SERVER}" "chmod +x ${DEPLOY_DIR}/bin/*"
+    ok "Binaries synced to ${DEV_SERVER}"
+}
+
+sync_ui() {
+    log "Syncing UI dist to ${DEV_SERVER}:${DEPLOY_DIR}/ui-dist/ ..."
+    ssh "${DEV_USER}@${DEV_SERVER}" "mkdir -p ${DEPLOY_DIR}/ui-dist"
+    rsync -avz --delete --progress "${MONOREPO_ROOT}/ui/dist/" "${DEV_USER}@${DEV_SERVER}:${DEPLOY_DIR}/ui-dist/"
+    ok "UI dist synced to ${DEV_SERVER}"
 }
 
 sync_config() {
@@ -95,6 +180,7 @@ sync_config() {
     ssh "${DEV_USER}@${DEV_SERVER}" "mkdir -p ${DEPLOY_DIR}/config"
 
     scp "${SCRIPT_DIR}/docker-compose.yml" "${DEV_USER}@${DEV_SERVER}:${DEPLOY_DIR}/"
+    scp "${SCRIPT_DIR}/Dockerfile.runtime" "${DEV_USER}@${DEV_SERVER}:${DEPLOY_DIR}/"
     scp "${SCRIPT_DIR}/init-db.sql"        "${DEV_USER}@${DEV_SERVER}:${DEPLOY_DIR}/"
     scp "${SCRIPT_DIR}/config/zep.yaml"    "${DEV_USER}@${DEV_SERVER}:${DEPLOY_DIR}/config/"
     scp "${SCRIPT_DIR}/config/kgs.yaml"    "${DEV_USER}@${DEV_SERVER}:${DEPLOY_DIR}/config/"
@@ -121,6 +207,13 @@ sync_nginx() {
     echo "  https://c6.openledger.vn → ${DEV_SERVER}:8080"
 }
 
+sync_all() {
+    sync_binaries
+    sync_config
+}
+
+# ── Remote Functions ─────────────────────────────────────────────────────────
+
 remote_stop() {
     log "Stopping services on ${DEV_SERVER} ..."
     ssh "${DEV_USER}@${DEV_SERVER}" \
@@ -132,6 +225,13 @@ remote_stop_monolith() {
     log "Stopping Memory Monolith on ${DEV_SERVER} ..."
     ssh "${DEV_USER}@${DEV_SERVER}" \
         "cd ${DEPLOY_DIR} && docker compose --profile monolith down" \
+        || true
+}
+
+remote_stop_kgs() {
+    log "Stopping KGS Platform on ${DEV_SERVER} ..."
+    ssh "${DEV_USER}@${DEV_SERVER}" \
+        "cd ${DEPLOY_DIR} && docker compose --profile kgs down" \
         || true
 }
 
@@ -149,6 +249,13 @@ remote_start_monolith() {
     ok "Memory Monolith started!"
 }
 
+remote_start_kgs() {
+    log "Starting KGS Platform on ${DEV_SERVER} ..."
+    ssh "${DEV_USER}@${DEV_SERVER}" \
+        "cd ${DEPLOY_DIR} && docker compose --profile kgs up -d --pull never"
+    ok "KGS Platform started!"
+}
+
 remote_pull() {
     log "Pulling latest public images on ${DEV_SERVER} ..."
     ssh "${DEV_USER}@${DEV_SERVER}" \
@@ -156,15 +263,36 @@ remote_pull() {
         || true
 }
 
+setup_runtime() {
+    log "Building runtime base image on ${DEV_SERVER} ..."
+    sync_config
+    ssh "${DEV_USER}@${DEV_SERVER}" \
+        "cd ${DEPLOY_DIR} && docker build -t vnp/runtime:latest -f Dockerfile.runtime ."
+    ok "vnp/runtime:latest built on ${DEV_SERVER}"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 MODE="${1:-full}"
 
 case "${MODE}" in
+    --setup)
+        log "🔧 First-time setup: building runtime base image"
+        echo ""
+        setup_runtime
+        echo ""
+        ok "🎉 Setup complete! Runtime image ready on ${DEV_SERVER}"
+        echo ""
+        echo "  Next steps:"
+        echo "  1. ./deploy.sh --monolith    # Deploy Memory Monolith"
+        echo "  2. ./deploy.sh               # Deploy all services"
+        echo ""
+        ;;
     --monolith)
         log "🧊 Memory Monolith deployment"
         echo ""
-        build_and_upload_image "memory" "${MEMORY_DOCKERFILE}" "${MONOREPO_ROOT}"
+        compile_memory_monolith
+        sync_binaries
         sync_config
         remote_stop_monolith
         remote_start_monolith
@@ -181,7 +309,8 @@ case "${MODE}" in
     --monolith-full)
         log "🧊 Memory Monolith + Nginx full deployment"
         echo ""
-        build_and_upload_image "memory" "${MEMORY_DOCKERFILE}" "${MONOREPO_ROOT}"
+        compile_memory_monolith
+        sync_binaries
         sync_config
         remote_stop_monolith
         remote_start_monolith
@@ -195,6 +324,21 @@ case "${MODE}" in
         echo "  MCP:           https://c6.openledger.vn/mcp/"
         echo ""
         ;;
+    --kgs)
+        log "📊 KGS Platform deployment"
+        echo ""
+        compile_kgs
+        sync_binaries
+        sync_config
+        remote_stop_kgs
+        remote_start_kgs
+        echo ""
+        ok "🎉 KGS Platform deployed!"
+        echo ""
+        echo "  HTTP: http://${DEV_SERVER}:8010"
+        echo "  gRPC: http://${DEV_SERVER}:9010"
+        echo ""
+        ;;
     --nginx)
         log "🌐 Nginx config sync only"
         sync_nginx
@@ -205,16 +349,13 @@ case "${MODE}" in
         remote_stop
         remote_start
         ;;
-    --images-only)
-        log "📦 Images-only deployment (all services)"
-        build_and_upload_image "memory" "${MEMORY_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "cognee" "${COGNEE_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "graphiti" "${GRAPHITI_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "openviking" "${OPENVIKING_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "zep" "${ZEP_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "memobase" "${MEMOBASE_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "supermemory" "${SUPERMEMORY_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_frontend
+    --compile-only)
+        log "📦 Compile-only (no sync/restart)"
+        compile_all
+        ;;
+    --sync-only)
+        log "🚀 Sync-only (no compile/restart)"
+        sync_all
         ;;
     --pull)
         log "⬇️  Pull latest public images"
@@ -224,30 +365,26 @@ case "${MODE}" in
         log "🚀 Full deployment to ${DEV_SERVER}"
         echo ""
 
-        # Step 1: Build & upload all service images (including monolith)
-        build_and_upload_image "memory" "${MEMORY_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "cognee" "${COGNEE_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "graphiti" "${GRAPHITI_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "openviking" "${OPENVIKING_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "zep" "${ZEP_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "memobase" "${MEMOBASE_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_image "supermemory" "${SUPERMEMORY_DOCKERFILE}" "${MONOREPO_ROOT}"
-        build_and_upload_frontend
+        # Step 1: Compile all services
+        log "Step 1/4: Compiling all services ..."
+        compile_all
 
-        # Step 2: Sync configuration
-        sync_config
+        # Step 2: Sync binaries + configs
+        log "Step 2/4: Syncing to server ..."
+        sync_all
 
         # Step 3: Stop → Start
+        log "Step 3/4: Restarting services ..."
         remote_stop
         remote_start
 
+        # Step 4: Done
         echo ""
         ok "🎉 Full deployment complete!"
         echo ""
         echo "  Memory Console: https://c6.openledger.vn"
         echo "  Memory API:     https://c6.openledger.vn/v1/"
         echo "  Cognee API:     http://${DEV_SERVER}:8000"
-        echo "  Cognee UI:      http://${DEV_SERVER}:3000"
         echo "  Graphiti API:   http://${DEV_SERVER}:8001"
         echo "  Zep API:        http://${DEV_SERVER}:8002"
         echo "  OpenViking API: http://${DEV_SERVER}:1933"

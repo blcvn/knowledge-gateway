@@ -14,7 +14,11 @@ type ServiceRegistry interface {
 	// Resolve looks up the RouteTarget for a named service.
 	Resolve(service string) (*domain.RouteTarget, error)
 	// Forward sends a request to the target service and returns the response body.
+	// Deprecated: Use ForwardWithContext for method-level routing.
 	Forward(ctx context.Context, target *domain.RouteTarget, req []byte) ([]byte, error)
+	// ForwardWithContext sends a request with HTTP path/method context to the target service.
+	// The service uses the path and method to route to the correct internal handler.
+	ForwardWithContext(ctx context.Context, target *domain.RouteTarget, req *domain.ForwardRequest) ([]byte, error)
 	// HealthCheck returns the health status of a downstream service.
 	HealthCheck(service string) (bool, error)
 }

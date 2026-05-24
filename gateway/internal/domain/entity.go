@@ -93,3 +93,13 @@ const (
 	MemoryTypeProcedural     = "procedural"
 	MemoryTypeAuto           = "auto"
 )
+
+// ForwardRequest encapsulates an HTTP request being forwarded to a downstream service.
+// The service uses Path and HTTPMethod to route to the correct internal handler.
+type ForwardRequest struct {
+	Path        string            `json:"path"`
+	HTTPMethod  string            `json:"http_method"`
+	Body        []byte            `json:"body,omitempty"`
+	PathParams  map[string]string `json:"path_params,omitempty"`
+	QueryParams map[string]string `json:"query_params,omitempty"`
+}

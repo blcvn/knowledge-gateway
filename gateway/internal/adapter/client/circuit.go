@@ -71,14 +71,19 @@ func (cr *CircuitRegistry) Resolve(service string) (*domain.RouteTarget, error) 
 
 // Forward wraps the inner Forward call with a circuit breaker.
 func (cr *CircuitRegistry) Forward(ctx context.Context, target *domain.RouteTarget, req []byte) ([]byte, error) {
+	return cr.ForwardWithContext(ctx, target, &domain.ForwardRequest{Body: req})
+}
+
+// ForwardWithContext wraps the inner ForwardWithContext call with a circuit breaker.
+func (cr *CircuitRegistry) ForwardWithContext(ctx context.Context, target *domain.RouteTarget, req *domain.ForwardRequest) ([]byte, error) {
 	cb, ok := cr.breakers[target.Service]
 	if !ok {
 		// No circuit breaker for this service — pass through
-		return cr.inner.Forward(ctx, target, req)
+		return cr.inner.ForwardWithContext(ctx, target, req)
 	}
 
 	result, err := cb.Execute(func() ([]byte, error) {
-		return cr.inner.Forward(ctx, target, req)
+		return cr.inner.ForwardWithContext(ctx, target, req)
 	})
 
 	if err != nil {

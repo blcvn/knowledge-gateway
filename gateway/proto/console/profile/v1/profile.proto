@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package vnp.gateway.console.profile.v1;
+
+option go_package = "github.com/vnp-community/vnp-memory/gateway/gen/go/console/profile/v1;profilev1";
+
+// ProfileService provides user profile management (FEAT-008).
+// Implemented by: memobase-context + vnp-event + memobase-ingestion services.
+service ProfileService {
+  // List all user profiles.
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
+  // Get profile schema configuration.
+  rpc GetConfig(GetConfigRequest) returns (ProfileConfig);
+  // Update profile schema configuration.
+  rpc UpdateConfig(ProfileConfig) returns (ProfileConfig);
+  // Get a specific user's profile.
+  rpc GetProfile(GetProfileRequest) returns (UserProfile);
+  // Get user events timeline.
+  rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
+  // Get assembled context preview.
+  rpc GetContext(GetContextRequest) returns (ContextAssembly);
+  // Get buffer zone status.
+  rpc GetBuffers(GetBuffersRequest) returns (BufferZone);
+}
+
+// ──── Messages ──────────────────────────────────────────────────
+
+message ListProfilesRequest {}
+
+message ListProfilesResponse {
+  repeated UserProfile profiles = 1;
+}
+
+message UserProfile {
+  string user_id = 1;
+  repeated ProfileEntry profiles = 2;
+  string created_at = 3;
+  string updated_at = 4;
+}
+
+message ProfileEntry {
+  string topic = 1;
+  string sub_topic = 2;
+  string content = 3;
+  double confidence = 4;
+}
+
+message GetConfigRequest {}
+
+message ProfileConfig {
+  repeated ProfileSchemaEntry profiles = 1;
+  bool strict_mode = 2;
+}
+
+message ProfileSchemaEntry {
+  string topic = 1;
+  string sub_topic = 2;
+  string description = 3;
+}
+
+message GetProfileRequest {
+  string user_id = 1;
+}
+
+message GetEventsRequest {
+  string user_id = 1;
+}
+
+message GetEventsResponse {
+  repeated UserEvent events = 1;
+}
+
+message UserEvent {
+  string id = 1;
+  string user_id = 2;
+  string gist = 3;
+  repeated string tags = 4;
+  string created_at = 5;
+}
+
+message GetContextRequest {
+  string user_id = 1;
+}
+
+message ContextAssembly {
+  string user_id = 1;
+  string context_string = 2;
+  int32 token_count = 3;
+  int32 profile_section_tokens = 4;
+  int32 event_section_tokens = 5;
+  int64 latency_ms = 6;
+}
+
+message GetBuffersRequest {
+  string user_id = 1;
+}
+
+message BufferZone {
+  string user_id = 1;
+  string buffer_type = 2;
+  int32 token_count = 3;
+  int32 token_threshold = 4;
+  string idle_timeout = 5;
+  string last_flush = 6;
+  int32 flush_count = 7;
+}

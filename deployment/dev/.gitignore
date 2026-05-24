@@ -1,2 +1,8 @@
 # Sensitive credentials — never commit this file
 .env
+
+# Compiled binaries (cross-compiled for linux/amd64)
+bin/
+
+# Compiled UI dist (synced to server)
+ui-dist/

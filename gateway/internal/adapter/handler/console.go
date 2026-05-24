@@ -61,8 +61,8 @@ func (h *DashboardHandler) Health(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	// Fan-out health checks to all engine groups via vnp-platform
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	// Fan-out health checks to all engine groups via vnp-dashboard
+	ForwardToService(h.registry, "vnp-dashboard", h.logger)(w, r)
 }
 
 // Metrics handles GET /v1/console/dashboard/metrics — KPI cards.
@@ -70,7 +70,7 @@ func (h *DashboardHandler) Metrics(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-dashboard", h.logger)(w, r)
 }
 
 // Throughput handles GET /v1/console/dashboard/throughput — per-engine throughput.
@@ -78,7 +78,7 @@ func (h *DashboardHandler) Throughput(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-dashboard", h.logger)(w, r)
 }
 
 // Heatmap handles GET /v1/console/dashboard/heatmap — memory density heatmap.
@@ -86,7 +86,7 @@ func (h *DashboardHandler) Heatmap(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-dashboard", h.logger)(w, r)
 }
 
 // ──── T02: Explorer Handler (FEAT-007) ─────────────────────────
@@ -542,7 +542,7 @@ func (h *PipelineHandler) Status(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-pipelines", h.logger)(w, r)
 }
 
 // GetEngine handles GET /v1/console/pipelines/{engine} — engine pipeline.
@@ -550,7 +550,7 @@ func (h *PipelineHandler) GetEngine(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-pipelines", h.logger)(w, r)
 }
 
 // ListJobs handles GET /v1/console/pipelines/{engine}/jobs.
@@ -558,7 +558,7 @@ func (h *PipelineHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-pipelines", h.logger)(w, r)
 }
 
 // GetJob handles GET /v1/console/pipelines/{engine}/jobs/{id}.
@@ -566,7 +566,7 @@ func (h *PipelineHandler) GetJob(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-pipelines", h.logger)(w, r)
 }
 
 // Queues handles GET /v1/console/pipelines/queues.
@@ -574,7 +574,7 @@ func (h *PipelineHandler) Queues(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-pipelines", h.logger)(w, r)
 }
 
 // Workers handles GET /v1/console/pipelines/workers.
@@ -582,7 +582,7 @@ func (h *PipelineHandler) Workers(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-pipelines", h.logger)(w, r)
 }
 
 // Templates handles GET /v1/console/pipelines/templates.
@@ -590,7 +590,7 @@ func (h *PipelineHandler) Templates(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-pipelines", h.logger)(w, r)
 }
 
 // ──── T20: Infrastructure Handler (FEAT-016) ───────────────────
@@ -610,7 +610,7 @@ func (h *InfraHandler) Topology(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-infra", h.logger)(w, r)
 }
 
 // ListServices handles GET /v1/console/infra/services.
@@ -618,7 +618,7 @@ func (h *InfraHandler) ListServices(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-infra", h.logger)(w, r)
 }
 
 // GetService handles GET /v1/console/infra/services/{name}.
@@ -626,7 +626,7 @@ func (h *InfraHandler) GetService(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-infra", h.logger)(w, r)
 }
 
 // Databases handles GET /v1/console/infra/databases — DB health.
@@ -634,7 +634,7 @@ func (h *InfraHandler) Databases(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-infra", h.logger)(w, r)
 }
 
 // Resources handles GET /v1/console/infra/resources — resource usage.
@@ -642,7 +642,7 @@ func (h *InfraHandler) Resources(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-infra", h.logger)(w, r)
 }
 
 // Deployments handles GET /v1/console/infra/deployments — deployment timeline.
@@ -650,7 +650,7 @@ func (h *InfraHandler) Deployments(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-infra", h.logger)(w, r)
 }
 
 // ──── T21: Observability Handler (FEAT-017) ────────────────────
@@ -670,7 +670,7 @@ func (h *ObservabilityHandler) Metrics(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-observability", h.logger)(w, r)
 }
 
 // ListTraces handles GET /v1/console/observability/traces.
@@ -678,7 +678,7 @@ func (h *ObservabilityHandler) ListTraces(w http.ResponseWriter, r *http.Request
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-observability", h.logger)(w, r)
 }
 
 // GetTrace handles GET /v1/console/observability/traces/{id}.
@@ -686,7 +686,7 @@ func (h *ObservabilityHandler) GetTrace(w http.ResponseWriter, r *http.Request) 
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-observability", h.logger)(w, r)
 }
 
 // Errors handles GET /v1/console/observability/errors.
@@ -694,7 +694,7 @@ func (h *ObservabilityHandler) Errors(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-observability", h.logger)(w, r)
 }
 
 // Costs handles GET /v1/console/observability/costs — cost analytics.
@@ -702,5 +702,5 @@ func (h *ObservabilityHandler) Costs(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
-	ForwardToService(h.registry, "vnp-platform", h.logger)(w, r)
+	ForwardToService(h.registry, "vnp-observability", h.logger)(w, r)
 }

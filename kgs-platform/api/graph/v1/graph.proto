@@ -214,6 +214,21 @@ service Graph {
       delete: "/v1/graph/views/{view_id}"
     };
   }
+
+  // Get nodes by label (entity type) with pagination
+  rpc GetNodesByLabel (GetNodesByLabelRequest) returns (GetNodesByLabelReply) {
+    option (google.api.http) = {
+      get: "/v1/graph/nodes/by-label/{label}"
+    };
+  }
+
+  // Update a node's properties (partial merge patch)
+  rpc UpdateNode (UpdateNodeRequest) returns (UpdateNodeReply) {
+    option (google.api.http) = {
+      patch: "/v1/graph/nodes/{node_id}"
+      body: "*"
+    };
+  }
 }
 
 message CreateNodeRequest {
@@ -595,4 +610,28 @@ message DeleteViewDefinitionRequest {
 
 message DeleteViewDefinitionReply {
   string view_id = 1;
+}
+
+message GetNodesByLabelRequest {
+  string label = 1;        // entity_type / label to filter by
+  int32 page_size = 2;     // max nodes per page (default 100, max 1000)
+  string page_token = 3;   // opaque cursor for pagination
+}
+
+message GetNodesByLabelReply {
+  repeated GraphNode nodes = 1;
+  int32 total = 2;
+  string next_page_token = 3;
+}
+
+message UpdateNodeRequest {
+  string node_id = 1;
+  string properties_json = 2;    // partial update — MERGE into existing properties
+  string label = 3;              // optional: update label/entity_type
+}
+
+message UpdateNodeReply {
+  string node_id = 1;
+  string label = 2;
+  string properties_json = 3;
 }

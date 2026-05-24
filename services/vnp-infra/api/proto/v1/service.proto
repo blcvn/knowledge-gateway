@@ -1,0 +1,83 @@
+syntax = "proto3";
+package vnp.memory.vnpinfra.v1;
+option go_package = "vnp-memory/services/vnp-infra/api/proto/v1;vnpinfrav1";
+
+// VnpInfraService provides infrastructure monitoring.
+// Split from vnp-platform (FEAT-016).
+service VnpInfraService {
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc GetTopology(GetTopologyRequest) returns (GetTopologyResponse);
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  rpc GetService(GetServiceRequest) returns (ServiceInfo);
+  rpc GetDatabases(GetDatabasesRequest) returns (GetDatabasesResponse);
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesResponse);
+  rpc GetDeployments(GetDeploymentsRequest) returns (GetDeploymentsResponse);
+}
+
+message PingRequest {}
+message PingResponse { string status = 1; }
+
+message GetTopologyRequest {}
+message GetTopologyResponse {
+  int32 total_services = 1;
+  int32 healthy_services = 2;
+  repeated ServiceNode nodes = 3;
+  repeated ServiceEdge connections = 4;
+  string timestamp = 5;
+}
+message ServiceNode {
+  string name = 1;
+  string status = 2;
+}
+message ServiceEdge {
+  string from = 1;
+  string to = 2;
+  string protocol = 3;
+}
+
+message ListServicesRequest {}
+message ListServicesResponse {
+  repeated ServiceInfo services = 1;
+}
+message ServiceInfo {
+  string name = 1;
+  string version = 2;
+  string status = 3;
+  int64 uptime = 4;
+}
+
+message GetServiceRequest { string name = 1; }
+
+message GetDatabasesRequest {}
+message GetDatabasesResponse {
+  repeated DatabaseHealth databases = 1;
+}
+message DatabaseHealth {
+  string name = 1;
+  string type = 2;
+  string status = 3;
+  double latency_ms = 4;
+}
+
+message GetResourcesRequest {}
+message GetResourcesResponse {
+  repeated ResourceMetrics resources = 1;
+}
+message ResourceMetrics {
+  string service = 1;
+  double cpu_usage_pct = 2;
+  double memory_usage_mb = 3;
+  double disk_usage_pct = 4;
+}
+
+message GetDeploymentsRequest {}
+message GetDeploymentsResponse {
+  repeated Deployment deployments = 1;
+}
+message Deployment {
+  string service = 1;
+  string version = 2;
+  string status = 3;
+  string deployed_at = 4;
+  string deployed_by = 5;
+}

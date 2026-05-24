@@ -21,7 +21,7 @@ import (
 
 func TestConsole_Routes_Dashboard(t *testing.T) {
 	srv, reg := setupTestServer(t)
-	reg.services["vnp-platform"] = &domain.RouteTarget{Service: "vnp-platform", Address: "localhost:9043"}
+	reg.services["vnp-dashboard"] = &domain.RouteTarget{Service: "vnp-dashboard", Address: "localhost:9043"}
 
 	routes := []struct {
 		method string
@@ -181,7 +181,7 @@ func TestConsole_Routes_Governance(t *testing.T) {
 
 func TestConsole_Routes_Pipelines(t *testing.T) {
 	srv, reg := setupTestServer(t)
-	reg.services["vnp-platform"] = &domain.RouteTarget{Service: "vnp-platform", Address: "localhost:9043"}
+	reg.services["vnp-pipelines"] = &domain.RouteTarget{Service: "vnp-pipelines", Address: "localhost:9044"}
 
 	routes := []string{
 		"/v1/console/pipelines/status",
@@ -201,7 +201,7 @@ func TestConsole_Routes_Pipelines(t *testing.T) {
 
 func TestConsole_Routes_Infra(t *testing.T) {
 	srv, reg := setupTestServer(t)
-	reg.services["vnp-platform"] = &domain.RouteTarget{Service: "vnp-platform", Address: "localhost:9043"}
+	reg.services["vnp-infra"] = &domain.RouteTarget{Service: "vnp-infra", Address: "localhost:9045"}
 
 	routes := []string{
 		"/v1/console/infra/topology",
@@ -221,7 +221,7 @@ func TestConsole_Routes_Infra(t *testing.T) {
 
 func TestConsole_Routes_Observability(t *testing.T) {
 	srv, reg := setupTestServer(t)
-	reg.services["vnp-platform"] = &domain.RouteTarget{Service: "vnp-platform", Address: "localhost:9043"}
+	reg.services["vnp-observability"] = &domain.RouteTarget{Service: "vnp-observability", Address: "localhost:9046"}
 
 	routes := []string{
 		"/v1/console/observability/metrics",

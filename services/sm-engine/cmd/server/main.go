@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,18 +16,17 @@ import (
 
 	"vnp-memory/pkg/telemetry"
 	"vnp-memory/pkg/tenant"
+	consoleHandler "vnp-memory/services/sm-engine/internal/adapter/grpc"
+	"vnp-memory/services/pkg/forward"
 )
 
-// Enterprise-grade bootstrap for sm-engine
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 1. Initialize Structured Logging
 	telemetry.InitLogger("info")
-	slog.Info("Initializing sm-engine at enterprise-grade...")
+	slog.Info("Initializing sm-engine...")
 
-	// 2. Initialize OpenTelemetry Distributed Tracing
 	shutdownTracer, err := telemetry.InitProvider(ctx, "sm-engine")
 	if err != nil {
 		slog.Error("failed to initialize OTel provider", slog.String("error", err.Error()))
@@ -38,36 +38,39 @@ func main() {
 		}
 	}()
 
-	// 3. Setup gRPC Server with Interceptors (Tenant isolation & OTel traces)
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(tenant.UnaryServerInterceptor()),
 	)
 
-	// 4. Setup Health Probes
+	// Register ForwardService with console routes
+	handler := consoleHandler.NewSmEngineHandler()
+	router := forward.NewRouter(slog.Default())
+	router.Handle("GET", "/v1/console/adaptive/analytics", wrapHandler(handler.GetAnalytics))
+	router.Handle("GET", "/v1/console/adaptive/forget-rules", wrapHandler(handler.GetForgetRules))
+	router.Handle("PUT", "/v1/console/adaptive/forget-rules", wrapUpdateHandler(handler.UpdateForgetRules))
+	forward.RegisterForwardService(grpcServer, router)
+
 	healthCheck := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthCheck)
 
-	// 5. Start HTTP Health/Metrics Server
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))
 		})
-		slog.Info("Starting HTTP probe server on :9199")
 		if err := http.ListenAndServe(":9199", mux); err != nil {
 			slog.Error("HTTP probe server failed", slog.String("error", err.Error()))
 		}
 	}()
 
-	// 6. Start gRPC Server
 	lis, err := net.Listen("tcp", ":9090")
 	if err != nil {
 		slog.Error("failed to listen", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 	healthCheck.SetServingStatus("sm-engine", grpc_health_v1.HealthCheckResponse_SERVING)
-	
+
 	go func() {
 		slog.Info("Starting gRPC server on :9090")
 		if err := grpcServer.Serve(lis); err != nil {
@@ -75,11 +78,27 @@ func main() {
 		}
 	}()
 
-	// 7. Graceful Shutdown Management
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	slog.Info("Shutting down gracefully...")
 	grpcServer.GracefulStop()
 	slog.Info("Server exited properly")
+}
+
+func wrapHandler(fn func(ctx context.Context) ([]byte, error)) forward.HandlerFunc {
+	return func(ctx context.Context, body []byte, params map[string]string) ([]byte, error) {
+		return fn(ctx)
+	}
+}
+
+func wrapUpdateHandler(fn func(ctx context.Context, rules []consoleHandler.ForgetRule) ([]byte, error)) forward.HandlerFunc {
+	return func(ctx context.Context, body []byte, params map[string]string) ([]byte, error) {
+		// Parse rules from body
+		var rules []consoleHandler.ForgetRule
+		if len(body) > 0 {
+			_ = json.Unmarshal(body, &rules)
+		}
+		return fn(ctx, rules)
+	}
 }
