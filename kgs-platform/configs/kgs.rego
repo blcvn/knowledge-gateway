@@ -5,7 +5,12 @@ import rego.v1
 # Default deny
 default allow := false
 
-# Allow if app_id is "demo-app" (for testing)
+# Allow any registered app (dev mode - no app_id restriction)
+allow if {
+	input.app_id != ""
+}
+
+# Fallback: allow demo-app explicitly for backwards-compat
 allow if {
 	input.app_id == "demo-app"
 }

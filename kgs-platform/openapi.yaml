@@ -157,52 +157,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/api.graph.v1.GetNodeReply'
-        put:
-            tags:
-                - Graph
-            description: Update a node's properties
-            operationId: Graph_UpdateNode
-            parameters:
-                - name: nodeId
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/api.graph.v1.UpdateNodeRequest'
-                required: true
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/api.graph.v1.UpdateNodeReply'
-        delete:
-            tags:
-                - Graph
-            description: Delete a node
-            operationId: Graph_DeleteNode
-            parameters:
-                - name: nodeId
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-                - name: appId
-                  in: query
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/api.graph.v1.DeleteNodeReply'
     /v1/graph/nodes/{nodeId}/context:
         get:
             tags:
@@ -550,11 +504,6 @@ components:
                     type: string
                 propertiesJson:
                     type: string
-        api.graph.v1.DeleteNodeReply:
-            type: object
-            properties:
-                success:
-                    type: boolean
         api.graph.v1.GetNodeReply:
             type: object
             properties:
@@ -604,22 +553,6 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/api.graph.v1.GraphEdge'
-        api.graph.v1.UpdateNodeReply:
-            type: object
-            properties:
-                node:
-                    $ref: '#/components/schemas/api.graph.v1.GraphNode'
-        api.graph.v1.UpdateNodeRequest:
-            type: object
-            properties:
-                appId:
-                    type: string
-                nodeId:
-                    type: string
-                properties:
-                    type: object
-                    additionalProperties:
-                        type: string
         api.ontology.v1.CreateEntityTypeReply:
             type: object
             properties:

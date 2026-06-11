@@ -4,7 +4,7 @@ package api.ontology.v1;
 
 import "google/api/annotations.proto";
 
-option go_package = "kgs-platform/api/ontology/v1;v1";
+option go_package = "github.com/blcvn/knowledge-gateway/kgs-platform/api/ontology/v1;v1";
 
 service Ontology {
   // Define a new EntityType in the Knowledge Graph

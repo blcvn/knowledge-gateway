@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 
-	"kgs-platform/internal/biz"
-	"kgs-platform/internal/kafka"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/biz"
+	"github.com/blcvn/knowledge-gateway/kgs-platform/internal/overlay"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/transport"
@@ -12,20 +12,26 @@ import (
 
 // WorkerServer implements transport.Server for background workers in Kratos
 type WorkerServer struct {
-	scheduler  *biz.RuleRunner
-	events     *biz.EventRunner
-	policySync *biz.PolicySyncRunner
-	kafka      *kafka.Consumer
-	log        *log.Helper
+	scheduler       *biz.RuleRunner
+	events          *biz.EventRunner
+	policySync      *biz.PolicySyncRunner
+	overlayListener *overlay.SessionCloseListener
+	log             *log.Helper
 }
 
-func NewWorkerServer(scheduler *biz.RuleRunner, events *biz.EventRunner, policySync *biz.PolicySyncRunner, kafka *kafka.Consumer, logger log.Logger) *WorkerServer {
+func NewWorkerServer(
+	scheduler *biz.RuleRunner,
+	events *biz.EventRunner,
+	policySync *biz.PolicySyncRunner,
+	overlayListener *overlay.SessionCloseListener,
+	logger log.Logger,
+) *WorkerServer {
 	return &WorkerServer{
-		scheduler:  scheduler,
-		events:     events,
-		policySync: policySync,
-		kafka:      kafka,
-		log:        log.NewHelper(logger),
+		scheduler:       scheduler,
+		events:          events,
+		policySync:      policySync,
+		overlayListener: overlayListener,
+		log:             log.NewHelper(logger),
 	}
 }
 
@@ -41,9 +47,10 @@ func (s *WorkerServer) Start(ctx context.Context) error {
 	if err := s.policySync.Start(ctx); err != nil {
 		return err
 	}
-	if s.kafka != nil {
-		s.kafka.Start(ctx)
-		s.log.Info("[WorkerServer] kafka consumer started")
+	if s.overlayListener != nil {
+		if err := s.overlayListener.Start(ctx); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -51,13 +58,13 @@ func (s *WorkerServer) Start(ctx context.Context) error {
 // Stop shuts down the background worker
 func (s *WorkerServer) Stop(ctx context.Context) error {
 	s.log.Info("[WorkerServer] stopping...")
-	if s.kafka != nil {
-		if err := s.kafka.Close(); err != nil {
-			s.log.Errorf("failed to stop kafka consumer: %v", err)
-		}
-	}
 	if err := s.policySync.Stop(ctx); err != nil {
 		s.log.Errorf("failed to stop policy sync runner: %v", err)
+	}
+	if s.overlayListener != nil {
+		if err := s.overlayListener.Stop(ctx); err != nil {
+			s.log.Errorf("failed to stop overlay listener: %v", err)
+		}
 	}
 	if err := s.events.Stop(ctx); err != nil {
 		s.log.Errorf("failed to stop event runner: %v", err)

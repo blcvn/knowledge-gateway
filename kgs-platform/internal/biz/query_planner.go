@@ -1,29 +1,21 @@
 package biz
 
 import (
+	"encoding/base64"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
-// QueryPlanner is responsible for generating safe, namespaced Cypher queries.
-// It ensures that all queries are scoped to the specific AppID (Namespace)
-// and handles dynamic depth/filter construction safely.
-// Note: Since Neo4j parameters cannot be used for Labels or Relationship Types,
-// we safely interpolate them via string formatting while using parameters for values.
-type QueryPlanner struct {
-}
+// QueryPlanner generates safe, namespaced Cypher queries.
+type QueryPlanner struct{}
 
-// NewQueryPlanner creates a new QueryPlanner instance.
 func NewQueryPlanner() *QueryPlanner {
 	return &QueryPlanner{}
 }
 
-// BuildContextQuery generates a query to fetch the immediate context (neighbors) of a node.
 func (qp *QueryPlanner) BuildContextQuery(label string, direction string) string {
-	lbl := ""
-	if label != "" {
-		lbl = ":" + label
-	}
-
+	lbl := toLabel(label)
 	dirPattern := "-[r]-"
 	if direction == "INCOMING" {
 		dirPattern = "<-[r]-"
@@ -31,45 +23,111 @@ func (qp *QueryPlanner) BuildContextQuery(label string, direction string) string
 		dirPattern = "-[r]->"
 	}
 
-	// Uses parameters $app_id and $node_id
 	return fmt.Sprintf(`
-		MATCH (n%s {app_id: $app_id, id: $node_id})%s(m {app_id: $app_id})
+		MATCH (n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})%s(m%s {app_id: $app_id, tenant_id: $tenant_id})
 		RETURN n, r, m
-	`, lbl, dirPattern)
+	`, dirPattern, lbl)
 }
 
-// BuildImpactQuery generates a query to find downstream nodes up to a certain depth.
 func (qp *QueryPlanner) BuildImpactQuery(label string, maxDepth int) string {
-	lbl := ""
-	if label != "" {
-		lbl = ":" + label
-	}
-	// Uses parameters $app_id and $node_id
+	lbl := toLabel(label)
 	return fmt.Sprintf(`
-		MATCH p=(n%s {app_id: $app_id, id: $node_id})-[*1..%d]->(m {app_id: $app_id})
+		MATCH p=(n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})-[*1..%d]->(m%s {app_id: $app_id, tenant_id: $tenant_id})
 		RETURN nodes(p) AS nodes, relationships(p) AS rels
-	`, lbl, maxDepth)
+	`, maxDepth, lbl)
 }
 
-// BuildCoverageQuery generates a query to find upstream nodes up to a certain depth.
 func (qp *QueryPlanner) BuildCoverageQuery(label string, maxDepth int) string {
-	lbl := ""
-	if label != "" {
-		lbl = ":" + label
-	}
-	// Uses parameters $app_id and $node_id
+	lbl := toLabel(label)
 	return fmt.Sprintf(`
-		MATCH p=(n%s {app_id: $app_id, id: $node_id})<-[*1..%d]-(m {app_id: $app_id})
+		MATCH p=(n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})<-[*1..%d]-(m%s {app_id: $app_id, tenant_id: $tenant_id})
 		RETURN nodes(p) AS nodes, relationships(p) AS rels
-	`, lbl, maxDepth)
+	`, maxDepth, lbl)
 }
 
-// BuildSubgraphQuery generates a query to fetch the subgraph formed by a given list of node IDs.
 func (qp *QueryPlanner) BuildSubgraphQuery() string {
-	// Uses parameters $app_id and $node_ids
 	return `
-		MATCH (n {app_id: $app_id})-[r]->(m {app_id: $app_id})
+		MATCH (n {app_id: $app_id, tenant_id: $tenant_id})-[r]->(m {app_id: $app_id, tenant_id: $tenant_id})
 		WHERE n.id IN $node_ids AND m.id IN $node_ids
 		RETURN n, r, m
 	`
+}
+
+// BuildBatchedTraversalQueries creates depth-windowed queries for depth > 3 traversal.
+func (qp *QueryPlanner) BuildBatchedTraversalQueries(kind, label, direction string, depth, batchWindow int) []string {
+	if depth <= 0 {
+		return nil
+	}
+	if batchWindow <= 0 {
+		batchWindow = 3
+	}
+	queries := make([]string, 0, (depth+batchWindow-1)/batchWindow)
+	for start := 1; start <= depth; start += batchWindow {
+		end := start + batchWindow - 1
+		if end > depth {
+			end = depth
+		}
+		switch kind {
+		case "impact":
+			queries = append(queries, qp.buildImpactDepthRange(label, start, end))
+		case "coverage":
+			queries = append(queries, qp.buildCoverageDepthRange(label, start, end))
+		default:
+			queries = append(queries, qp.buildContextDepthRange(label, direction, start, end))
+		}
+	}
+	return queries
+}
+
+func (qp *QueryPlanner) buildContextDepthRange(label, direction string, minDepth, maxDepth int) string {
+	lbl := toLabel(label)
+	pattern := "-[*%d..%d]-"
+	if direction == "INCOMING" {
+		pattern = "<-[*%d..%d]-"
+	} else if direction == "OUTGOING" {
+		pattern = "-[*%d..%d]->"
+	}
+	return fmt.Sprintf(`
+		MATCH p=(n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})`+pattern+`(m%s {app_id: $app_id, tenant_id: $tenant_id})
+		RETURN nodes(p) AS nodes, relationships(p) AS rels
+	`, minDepth, maxDepth, lbl)
+}
+
+func (qp *QueryPlanner) buildImpactDepthRange(label string, minDepth, maxDepth int) string {
+	lbl := toLabel(label)
+	return fmt.Sprintf(`
+		MATCH p=(n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})-[*%d..%d]->(m%s {app_id: $app_id, tenant_id: $tenant_id})
+		RETURN nodes(p) AS nodes, relationships(p) AS rels
+	`, minDepth, maxDepth, lbl)
+}
+
+func (qp *QueryPlanner) buildCoverageDepthRange(label string, minDepth, maxDepth int) string {
+	lbl := toLabel(label)
+	return fmt.Sprintf(`
+		MATCH p=(n {app_id: $app_id, tenant_id: $tenant_id, id: $node_id})<-[*%d..%d]-(m%s {app_id: $app_id, tenant_id: $tenant_id})
+		RETURN nodes(p) AS nodes, relationships(p) AS rels
+	`, minDepth, maxDepth, lbl)
+}
+
+func EncodePageToken(offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
+}
+
+func DecodePageToken(token string) (int, error) {
+	if strings.TrimSpace(token) == "" {
+		return 0, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(string(decoded))
+}
+
+func toLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return ""
+	}
+	return ":" + label
 }
