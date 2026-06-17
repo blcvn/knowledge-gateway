@@ -1,0 +1,6 @@
+version: 1
+project:
+  name: kg-service
+  description: OpenSpec workspace for KG Service design and implementation changes.
+specs:
+  root: openspec/changes

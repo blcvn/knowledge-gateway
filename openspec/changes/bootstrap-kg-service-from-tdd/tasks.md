@@ -1,0 +1,229 @@
+# Tasks
+
+## Milestone: `migrations/`
+
+### Phase A Foundation
+
+- [x] Create migration for table `tenants` with platform sentinel seed support.
+- [x] Create migration for table `apps` with API key hash/prefix indexes.
+- [x] Create migration for table `access_grants` with scope, permission, status, and expiration constraints.
+- [x] Create migration for table `access_audit_log` with monthly partitioning strategy.
+- [x] Create migration for table `domains`.
+- [x] Create migration for table `ontology_versions`.
+- [x] Create migration for table `node_type_schemas`.
+- [x] Create migration for table `rel_type_schemas`.
+- [x] Create migration for table `cross_domain_rel_rules`.
+- [x] Create migration for table `domain_query_templates`.
+- [x] Create migration for table `domain_status_field_configs`.
+- [x] Create migration for table `kg_nodes`.
+- [x] Create migration for table `kg_relationships`.
+- [x] Create migration for table `kg_outbox_events`.
+- [x] Enable row-level security on `kg_nodes`.
+- [x] Enable row-level security on `kg_relationships`.
+- [x] Seed the platform sentinel tenant row and baseline tenant/app fixtures for integration tests.
+
+## Milestone: `internal/access`
+
+### Phase A Foundation (`specs/identity-access`)
+
+- [x] Implement `IdentityResolver` credential lookup against `apps`.
+- [x] Implement Redis cache for `apikey:{hash}` with short TTL and revoke invalidation.
+- [x] Implement `AccessResolver` visibility calculation for self, tenant-wide, platform, and grant-derived visibility.
+- [x] Implement Redis cache for `acl:{tenant_id}:{app_id}` with targeted invalidation on grant changes.
+- [x] Implement request-context identity model shared by HTTP, workers, and audit flows.
+- [x] Implement auth middleware helpers that ignore caller-supplied `tenant_id` and `app_id` body fields.
+
+### Phase C Sharing And Auditability (`specs/admin-mcp-observability`)
+
+- [ ] Implement access-grant creation service with scope validation and `expires_at` enforcement for cross-tenant `write` and `admin` grants.
+- [ ] Implement access-grant listing service for grantor/grantee filters.
+- [ ] Implement access-grant revoke service with immediate cache invalidation hooks.
+- [ ] Implement audit log writer for read, search, write, grant-create, and grant-revoke actions.
+- [ ] Implement audit retrieval service for owner-scoped history.
+
+## Milestone: `internal/ontology`
+
+### Phase A Foundation (`specs/ontology-plane`)
+
+- [ ] Implement domain repository for registration, lookup, visibility, and version retrieval.
+- [ ] Implement effective ontology resolution across platform-owned, tenant-owned, and shared domains.
+- [ ] Implement node-type schema lookup and property validation.
+- [ ] Implement relationship-type schema lookup and direction/type validation.
+- [ ] Implement cross-domain bridge validation and rule expansion.
+- [ ] Implement Query Pattern DSL validator for shape, params, hop count, and allowed filter constructs.
+- [ ] Implement status-field configuration repository and reader APIs for lifecycle and ranking metadata.
+
+### Phase B Legal Seed Onboarding
+
+- [ ] Prepare bootstrap flow for seeding legal domains via ontology APIs.
+- [ ] Prepare bootstrap flow for seeding legal node types and relationship types.
+- [ ] Register the five initial legal query templates through ontology APIs.
+- [ ] Activate the legal query templates through the template activation API.
+- [ ] Validate that each legal template executes successfully through the generic read route.
+
+## Milestone: `internal/write`
+
+### Phase A Foundation (`specs/write-path`)
+
+- [ ] Implement transaction-scoped `SET LOCAL app.tenant_id` and `SET LOCAL app.app_id` handling.
+- [ ] Implement `WriteService` node create flow with domain validation, ownership metadata, visibility, status extraction, and outbox emission.
+- [ ] Implement `WriteService` node update flow with domain revalidation and outbox emission.
+- [ ] Implement `WriteService` node delete flow with soft-delete semantics and outbox emission.
+- [ ] Implement `WriteService` relationship create flow with schema validation and outbox emission.
+- [ ] Implement rule-driven bridge relationship creation during node writes.
+- [ ] Implement external-ref persistence and uniqueness handling.
+
+## Milestone: `internal/read`
+
+### Phase B Read Templates (`specs/read-templates`)
+
+- [ ] Implement `QueryTemplateCompiler` runtime compilation from stored DSL to graph queries.
+- [ ] Inject ACL predicates at the start node match.
+- [ ] Inject ACL predicates at every traversal hop.
+- [ ] Implement parameter schema validation for required and typed read parameters.
+- [ ] Implement lifecycle-aware hop filtering from `domain_status_field_configs`.
+- [ ] Implement graph timeout and max-row safeguards.
+- [ ] Implement `ReadService` execution against the selected graph backend.
+- [ ] Implement read audit logging for allow and deny outcomes.
+
+## Milestone: `internal/search`
+
+### Phase B Semantic Search (`specs/semantic-search`)
+
+- [ ] Create and document vector projection schema for collection `kg_vectors`.
+- [ ] Implement payload mapping for `node_id`, `node_type`, `domain_id`, `owner_tenant_id`, `owner_app_id`, `acl_visible_to`, `is_deleted`, `status_value`, `authority_score`, and `domain_props`.
+- [ ] Implement embedding generation for projected searchable content.
+- [ ] Implement `SearchService` ACL filtering.
+- [ ] Implement `SearchService` deletion-state filtering.
+- [ ] Implement `SearchService` explicit domain filtering.
+- [ ] Implement lifecycle-aware search filtering only when all targeted domains are configured.
+- [ ] Implement authority-score return path for downstream reranking.
+
+## Milestone: `internal/workers`
+
+### Phase B Sync And Consistency (`specs/sync-consistency`)
+
+- [ ] Implement outbox polling or stream publisher for pending `kg_outbox_events`.
+- [ ] Implement shared worker runtime with retry and dead-letter/error status handling.
+- [ ] Implement `GraphSyncWorker` node upsert handler.
+- [ ] Implement `GraphSyncWorker` relationship upsert handler.
+- [ ] Implement `GraphSyncWorker` ACL recomputation handler for grant changes.
+- [ ] Implement `GraphSyncWorker` status cascade handler from configured cascade rules.
+- [ ] Implement `VectorSyncWorker` embedding upsert handler.
+- [ ] Implement `VectorSyncWorker` ACL payload update handler.
+- [ ] Implement `VectorSyncWorker` status and authority payload mapping.
+- [ ] Implement `AccessSyncWorker` Redis cache invalidation for grant create/revoke.
+- [ ] Implement `AccessSyncWorker` graph fanout orchestration for ACL refresh.
+- [ ] Implement `AccessSyncWorker` vector fanout orchestration for ACL refresh.
+- [ ] Validate that seeded legal content still respects ACL constraints after graph/vector projection.
+
+### Phase D Hardening (`specs/sync-consistency`)
+
+- [ ] Implement scheduled reconciliation job comparing PostgreSQL `kg_nodes` and `kg_relationships` against graph projections.
+- [ ] Implement scheduled reconciliation job comparing PostgreSQL `kg_nodes` against Qdrant payloads.
+- [ ] Implement reconciliation result persistence or reporting surface for drift metrics.
+
+## Milestone: `internal/http`
+
+### Phase A Foundation
+
+- [x] Initialize the Go service workspace, configuration model, environment loading, and bootstrap wiring for PostgreSQL and Redis.
+- [x] Define shared HTTP success envelope types and serializers aligned with `specs/api-conventions`.
+- [x] Define shared HTTP error envelope types with stable `code`, `message`, and `details` fields.
+- [x] Define shared status-code mapping rules for `400`, `401`, `403`, `404`, `422`, timeout-class errors, and documented `5xx` responses.
+- [x] Implement `POST /v1/tenants`.
+- [x] Implement `GET /v1/tenants/{tenant_id}`.
+- [x] Implement `PUT /v1/tenants/{tenant_id}`.
+- [x] Implement `DELETE /v1/tenants/{tenant_id}`.
+- [x] Implement `POST /v1/tenants/{tenant_id}/apps`.
+- [x] Implement `POST /v1/tenants/{tenant_id}/apps/{app_id}/rotate-key`.
+- [x] Implement `GET /v1/tenants/{tenant_id}/apps`.
+- [x] Implement `DELETE /v1/tenants/{tenant_id}/apps/{app_id}` with immediate API-key cache invalidation.
+- [x] Implement `GET /v1/access/resolve`.
+- [ ] Implement `POST /v1/tenants/{tenant_id}/ontology/domains`.
+- [ ] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/node-types`.
+- [ ] Implement `GET /v1/tenants/{tenant_id}/ontology/effective`.
+- [ ] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates`.
+- [ ] Implement `PUT /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates/{name}/activate`.
+- [ ] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/status-field-config`.
+- [ ] Implement `GET /v1/ontology/domains/{domain_id}`.
+- [ ] Implement `POST /v1/kg/write/nodes`.
+- [ ] Implement `PUT /v1/kg/write/nodes/{id}`.
+- [ ] Implement `DELETE /v1/kg/write/nodes/{id}`.
+- [ ] Implement `POST /v1/kg/write/relationships`.
+- [ ] Implement `POST /v1/kg/write/ingest/document`.
+- [ ] Implement `GET /v1/kg/write/ingest/jobs/{job_id}`.
+
+### Phase B Read And Search
+
+- [ ] Implement `POST /v1/kg/read/template/{domain_id}/{template_name}`.
+- [ ] Implement `GET /v1/kg/read/templates?domain_id=...`.
+- [ ] Implement `GET /v1/kg/read/nodes/{id}`.
+- [ ] Implement `POST /v1/kg/search/semantic`.
+- [ ] Implement `POST /v1/kg/search/rag`.
+- [ ] Normalize list-response envelopes and pagination/filter parsing for read-template, grant-list, app-list, and audit-list endpoints.
+
+### Phase C Sharing, Integrity, And MCP
+
+- [ ] Implement `POST /v1/access/grants`.
+- [ ] Implement `GET /v1/access/grants?grantor_tenant_id=...&grantee_tenant_id=...`.
+- [ ] Implement `DELETE /v1/access/grants/{id}`.
+- [ ] Implement `GET /v1/access/audit?resource_owner_tenant_id=...`.
+- [ ] Implement `GET /v1/kg/integrity/tenant/{tenant_id}`.
+- [ ] Implement `GET /v1/kg/integrity/missing-bridges?tenant_id=...`.
+- [ ] Implement MCP transport over HTTP+SSE.
+- [ ] Implement MCP capability `kg_list_templates`.
+- [ ] Implement MCP capability for template execution.
+- [ ] Implement MCP capability for semantic search.
+- [ ] Implement MCP capability for graph-RAG retrieval.
+- [ ] Implement MCP capability for ontology inspection.
+- [ ] Implement MCP capability for access-resolution or visibility introspection.
+- [ ] Implement MCP capability for integrity or health inspection as defined by the TDD tool set.
+- [ ] Normalize MCP tool success and validation-error mapping to match `specs/api-conventions`.
+
+### Phase D Hardening
+
+- [ ] Implement rate limiting for REST endpoints by tenant tier.
+- [ ] Implement rate limiting for MCP operations by tenant tier.
+
+## Milestone: `tests/integration`
+
+### Phase A Foundation
+
+- [ ] Add integration tests for active key resolution, revoked key rejection, own-data visibility, platform-visible data, expired grants, and request-context isolation.
+- [ ] Add tests for effective ontology composition, unknown domain rejection, template registration, raw-Cypher rejection, traversal-depth enforcement, and missing bridge validation.
+- [ ] Add integration tests for write authorization, schema validation rejection, atomic outbox creation, bridge relationship creation, soft delete handling, and external-ref persistence behavior.
+- [ ] Add contract tests for shared success envelope shape and shared error envelope shape across representative endpoints.
+
+### Phase B Read, Search, And Sync
+
+- [ ] Add tests for inactive template rejection, inaccessible start-node filtering, inaccessible hop filtering, missing parameter rejection, type mismatch rejection, lifecycle-filter no-op behavior, and timeout/row-cap enforcement.
+- [ ] Add tests for ACL filtering, deleted-node filtering, domain scoping, mixed-domain lifecycle handling, authority metadata return, and search over all visible domains when no filter is supplied.
+- [ ] Add tests for successful projection, retry behavior, status cascade execution, grant-create visibility propagation, revoke enforcement, and ACL fanout consistency across Redis/graph/vector stores.
+- [ ] Add contract tests for pagination/filter semantics on list-style endpoints and validation error mapping for malformed filters.
+
+### Phase C Sharing, MCP, And Auditability
+
+- [ ] Add end-to-end tests for grant creation, grant expiry, revoke propagation under the target SLA, integrity endpoint behavior, MCP parity with REST ACL behavior, and audit trail generation.
+
+### Phase D Hardening
+
+- [ ] Run performance validation for `POST /v1/kg/read/template/{domain_id}/{template_name}` against the TDD latency objective.
+- [ ] Run performance validation for `POST /v1/kg/search/semantic` against the TDD latency objective.
+- [ ] Run performance validation for write-to-sync visibility latency across PostgreSQL to graph/vector replicas.
+- [ ] Run performance validation for the GraphRAG pipeline against the TDD latency objective.
+- [ ] Execute security validation for raw-query prevention on ontology and read APIs.
+- [ ] Execute security validation for RLS isolation across concurrent tenant requests.
+- [ ] Execute security validation for ACL propagation and revoke enforcement timing.
+- [ ] Execute security validation for cross-tenant privilege-escalation attempts on grant and write flows.
+- [ ] Onboard at least one non-legal sample domain using ontology APIs only, without core service code changes.
+
+## Milestone: `docs/operations`
+
+### Phase D Hardening (`specs/sync-consistency`, `specs/admin-mcp-observability`)
+
+- [ ] Document runbook for replica recovery.
+- [ ] Document runbook for reconciliation incident handling.
+- [ ] Document runbook for grant incident response.
+- [ ] Document runbook for ontology rollout and version rollback.
+- [ ] Document runbook for API key revocation response.

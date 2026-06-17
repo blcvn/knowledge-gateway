@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS access_audit_log;
+DROP TABLE IF EXISTS access_grants;
+DROP TABLE IF EXISTS apps;
+DROP TABLE IF EXISTS tenants;
