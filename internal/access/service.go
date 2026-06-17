@@ -15,6 +15,7 @@ var (
 	ErrForbidden        = errors.New("forbidden")
 	ErrNotFound         = errors.New("not found")
 	ErrValidation       = errors.New("validation")
+	ErrBadRequest       = errors.New("bad request")
 	ErrRequestMalformed = errors.New("request malformed")
 )
 
@@ -27,6 +28,7 @@ type Service struct {
 type TenantAppStore interface {
 	TenantStore
 	AppStore
+	GrantStore
 }
 
 func NewService(store TenantAppStore, cache *rediscache.Client) *Service {
@@ -215,6 +217,182 @@ func (s *Service) RevokeApp(actor Identity, tenantID, appID string) (AppResponse
 	return appToResponse(updated, ""), nil
 }
 
+func (s *Service) CreateGrant(actor Identity, req GrantCreateRequest) (GrantResponse, error) {
+	if !canManageTenant(actor, actor.TenantID) {
+		s.recordAudit(actor, AuditLogEntry{
+			ResourceOwnerTenantID: actor.TenantID,
+			ResourceOwnerAppID:    actor.AppID,
+			Action:                "grant.create",
+			ResourceType:          "access_grant",
+			Outcome:               "deny",
+			Reason:                "requester_cannot_manage_tenant",
+		})
+		return GrantResponse{}, ErrForbidden
+	}
+	if err := validateGrantCreateRequest(actor, req); err != nil {
+		s.recordAudit(actor, AuditLogEntry{
+			ResourceOwnerTenantID: fallback(req.GranteeTenantID, actor.TenantID),
+			Action:                "grant.create",
+			ResourceType:          "access_grant",
+			Outcome:               "deny",
+			Reason:                err.Error(),
+			ScopeType:             req.ScopeType,
+			ScopeValue:            strings.TrimSpace(req.ScopeValue),
+		})
+		return GrantResponse{}, err
+	}
+	if _, ok := s.store.GetTenant(req.GranteeTenantID); !ok {
+		return GrantResponse{}, ErrNotFound
+	}
+	if req.GranteeAppID != "" {
+		app, ok := s.store.GetAppByID(req.GranteeAppID)
+		if !ok || app.TenantID != req.GranteeTenantID {
+			return GrantResponse{}, ErrNotFound
+		}
+	}
+	if req.GrantorAppID != "" {
+		app, ok := s.store.GetAppByID(req.GrantorAppID)
+		if !ok || app.TenantID != actor.TenantID {
+			return GrantResponse{}, ErrNotFound
+		}
+	}
+
+	now := s.now()
+	grant := AccessGrant{
+		ID:              newID("grant"),
+		GrantorTenantID: actor.TenantID,
+		GrantorAppID:    strings.TrimSpace(req.GrantorAppID),
+		GranteeTenantID: req.GranteeTenantID,
+		GranteeAppID:    strings.TrimSpace(req.GranteeAppID),
+		ScopeType:       req.ScopeType,
+		ScopeValue:      strings.TrimSpace(req.ScopeValue),
+		Permission:      req.Permission,
+		Status:          "active",
+		ExpiresAt:       req.ExpiresAt,
+		CreatedAt:       now,
+	}
+	created := s.store.CreateGrant(grant)
+	s.invalidateGrantCaches(created)
+	s.recordAudit(actor, AuditLogEntry{
+		ResourceOwnerTenantID: created.GrantorTenantID,
+		ResourceOwnerAppID:    created.GrantorAppID,
+		Action:                "grant.create",
+		ResourceType:          "access_grant",
+		ResourceID:            created.ID,
+		Outcome:               "allow",
+		ScopeType:             created.ScopeType,
+		ScopeValue:            created.ScopeValue,
+		Metadata: map[string]any{
+			"grantee_tenant_id": created.GranteeTenantID,
+			"grantee_app_id":    created.GranteeAppID,
+			"permission":        created.Permission,
+		},
+	})
+	return grantToResponse(created), nil
+}
+
+func (s *Service) ListGrants(actor Identity, filter GrantListFilter) ([]GrantResponse, error) {
+	targetTenant := filter.GrantorTenantID
+	if targetTenant == "" {
+		targetTenant = filter.GranteeTenantID
+	}
+	if targetTenant == "" {
+		targetTenant = actor.TenantID
+	}
+	if !canManageTenant(actor, targetTenant) {
+		return nil, ErrForbidden
+	}
+
+	grants := s.store.ListGrants(filter)
+	result := make([]GrantResponse, 0, len(grants))
+	for _, grant := range grants {
+		result = append(result, grantToResponse(grant))
+	}
+	return result, nil
+}
+
+func (s *Service) RevokeGrant(actor Identity, grantID string) (GrantResponse, error) {
+	grant, ok := s.store.GetGrantByID(grantID)
+	if !ok {
+		return GrantResponse{}, ErrNotFound
+	}
+	if !canManageTenant(actor, grant.GrantorTenantID) {
+		s.recordAudit(actor, AuditLogEntry{
+			ResourceOwnerTenantID: grant.GrantorTenantID,
+			ResourceOwnerAppID:    grant.GrantorAppID,
+			Action:                "grant.revoke",
+			ResourceType:          "access_grant",
+			ResourceID:            grant.ID,
+			Outcome:               "deny",
+			Reason:                "requester_cannot_manage_tenant",
+			ScopeType:             grant.ScopeType,
+			ScopeValue:            grant.ScopeValue,
+		})
+		return GrantResponse{}, ErrForbidden
+	}
+
+	now := s.now()
+	grant.Status = "revoked"
+	grant.RevokedAt = &now
+	updated, ok := s.store.UpdateGrant(grant)
+	if !ok {
+		return GrantResponse{}, ErrNotFound
+	}
+	s.invalidateGrantCaches(updated)
+	s.recordAudit(actor, AuditLogEntry{
+		ResourceOwnerTenantID: updated.GrantorTenantID,
+		ResourceOwnerAppID:    updated.GrantorAppID,
+		Action:                "grant.revoke",
+		ResourceType:          "access_grant",
+		ResourceID:            updated.ID,
+		Outcome:               "allow",
+		ScopeType:             updated.ScopeType,
+		ScopeValue:            updated.ScopeValue,
+		Metadata: map[string]any{
+			"grantee_tenant_id": updated.GranteeTenantID,
+			"grantee_app_id":    updated.GranteeAppID,
+			"permission":        updated.Permission,
+		},
+	})
+	return grantToResponse(updated), nil
+}
+
+func (s *Service) ListAuditLogs(actor Identity, filter AuditFilter) ([]AuditLogEntry, error) {
+	if strings.TrimSpace(filter.ResourceOwnerTenantID) == "" {
+		return nil, ErrBadRequest
+	}
+	if !canManageTenant(actor, filter.ResourceOwnerTenantID) {
+		return nil, ErrForbidden
+	}
+	return s.store.ListAuditLogs(filter), nil
+}
+
+func (s *Service) RecordWriteAudit(actor Identity, ownerTenantID, ownerAppID, action, resourceType, resourceID, outcome, reason string, metadata map[string]any) {
+	s.recordAudit(actor, AuditLogEntry{
+		ResourceOwnerTenantID: ownerTenantID,
+		ResourceOwnerAppID:    ownerAppID,
+		Action:                action,
+		ResourceType:          resourceType,
+		ResourceID:            resourceID,
+		Outcome:               outcome,
+		Reason:                reason,
+		Metadata:              metadata,
+	})
+}
+
+func (s *Service) RecordReadAudit(actor Identity, action, resourceType, resourceID, outcome, reason string, metadata map[string]any) {
+	s.recordAudit(actor, AuditLogEntry{
+		ResourceOwnerTenantID: actor.TenantID,
+		ResourceOwnerAppID:    actor.AppID,
+		Action:                action,
+		ResourceType:          resourceType,
+		ResourceID:            resourceID,
+		Outcome:               outcome,
+		Reason:                reason,
+		Metadata:              metadata,
+	})
+}
+
 func validateTenantCreateRequest(req TenantCreateRequest) error {
 	if strings.TrimSpace(req.Slug) == "" || strings.TrimSpace(req.Name) == "" {
 		return errors.New("slug and name are required")
@@ -245,6 +423,28 @@ func validateAppCreateRequest(req AppCreateRequest) error {
 	return nil
 }
 
+func validateGrantCreateRequest(actor Identity, req GrantCreateRequest) error {
+	if strings.TrimSpace(req.GranteeTenantID) == "" {
+		return errors.Join(ErrValidation, errors.New("grantee_tenant_id is required"))
+	}
+	if !isAllowed(req.ScopeType, []string{"domain", "node_type", "dataset_tag", "all"}) {
+		return errors.Join(ErrValidation, fmt.Errorf("invalid scope_type: %s", req.ScopeType))
+	}
+	if req.ScopeType != "all" && strings.TrimSpace(req.ScopeValue) == "" {
+		return errors.Join(ErrValidation, errors.New("scope_value is required"))
+	}
+	if req.ScopeType == "all" {
+		req.ScopeValue = ""
+	}
+	if !isAllowed(req.Permission, []string{"read", "search", "write", "admin"}) {
+		return errors.Join(ErrValidation, fmt.Errorf("invalid permission: %s", req.Permission))
+	}
+	if req.GranteeTenantID != actor.TenantID && (req.Permission == "write" || req.Permission == "admin") && req.ExpiresAt == nil {
+		return errors.Join(ErrBadRequest, errors.New("cross-tenant write/admin grants require expires_at"))
+	}
+	return nil
+}
+
 func isPlatformAdmin(actor Identity) bool {
 	return actor.TenantID == PlatformTenantID && (actor.AppType == "admin_tool" || actor.AppType == "hybrid")
 }
@@ -254,6 +454,32 @@ func canManageTenant(actor Identity, tenantID string) bool {
 		return true
 	}
 	return actor.TenantID == tenantID && (actor.AppType == "admin_tool" || actor.AppType == "hybrid")
+}
+
+func grantToResponse(grant AccessGrant) GrantResponse {
+	return GrantResponse{
+		ID:              grant.ID,
+		GrantorTenantID: grant.GrantorTenantID,
+		GrantorAppID:    grant.GrantorAppID,
+		GranteeTenantID: grant.GranteeTenantID,
+		GranteeAppID:    grant.GranteeAppID,
+		ScopeType:       grant.ScopeType,
+		ScopeValue:      grant.ScopeValue,
+		Permission:      grant.Permission,
+		Status:          grant.Status,
+		ExpiresAt:       grant.ExpiresAt,
+		CreatedAt:       grant.CreatedAt,
+		RevokedAt:       grant.RevokedAt,
+	}
+}
+
+func (s *Service) invalidateGrantCaches(grant AccessGrant) {
+	s.cache.Delete("acl:" + grant.GranteeTenantID + ":" + grant.GranteeAppID)
+	if grant.GranteeAppID == "" {
+		for _, app := range s.store.ListAppsByTenant(grant.GranteeTenantID) {
+			s.cache.Delete("acl:" + grant.GranteeTenantID + ":" + app.ID)
+		}
+	}
 }
 
 func tenantToResponse(tenant Tenant) TenantResponse {
@@ -285,6 +511,25 @@ func appToResponse(app App, apiKey string) AppResponse {
 
 func newID(prefix string) string {
 	return prefix + "_" + time.Now().UTC().Format("20060102150405.000000000")
+}
+
+func (s *Service) recordAudit(actor Identity, entry AuditLogEntry) {
+	now := s.now()
+	if entry.ID == "" {
+		entry.ID = newID("audit")
+	}
+	entry.RequesterTenantID = actor.TenantID
+	entry.RequesterAppID = actor.AppID
+	if entry.ResourceOwnerTenantID == "" {
+		entry.ResourceOwnerTenantID = actor.TenantID
+	}
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = now
+	}
+	if entry.Metadata == nil {
+		entry.Metadata = map[string]any{}
+	}
+	s.store.CreateAuditLog(entry)
 }
 
 func newAPIKey() (string, string, error) {

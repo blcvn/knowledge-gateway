@@ -149,6 +149,61 @@ func (h Handler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h Handler) CreateGrant(w http.ResponseWriter, r *http.Request) {
+	var req GrantCreateRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	identity, _ := IdentityFromContext(r.Context())
+	grant, err := h.service.CreateGrant(identity, req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.Created(w, grant)
+}
+
+func (h Handler) ListGrants(w http.ResponseWriter, r *http.Request) {
+	identity, _ := IdentityFromContext(r.Context())
+	grants, err := h.service.ListGrants(identity, GrantListFilter{
+		GrantorTenantID: r.URL.Query().Get("grantor_tenant_id"),
+		GranteeTenantID: r.URL.Query().Get("grantee_tenant_id"),
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, respond.ListEnvelope[GrantResponse]{Data: grants, HasMore: false})
+}
+
+func (h Handler) DeleteGrant(w http.ResponseWriter, r *http.Request) {
+	identity, _ := IdentityFromContext(r.Context())
+	grant, err := h.service.RevokeGrant(identity, r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, map[string]any{
+		"id":         grant.ID,
+		"status":     grant.Status,
+		"revoked_at": grant.RevokedAt,
+	})
+}
+
+func (h Handler) ListAudit(w http.ResponseWriter, r *http.Request) {
+	identity, _ := IdentityFromContext(r.Context())
+	entries, err := h.service.ListAuditLogs(identity, AuditFilter{
+		ResourceOwnerTenantID: r.URL.Query().Get("resource_owner_tenant_id"),
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, respond.ListEnvelope[AuditLogEntry]{Data: entries, HasMore: false})
+}
+
 func decodeJSON(r *http.Request, target any) error {
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(target); err != nil {
@@ -161,6 +216,8 @@ func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrForbidden):
 		respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
+	case errors.Is(err, ErrBadRequest):
+		respond.Error(w, respond.StatusFor(respond.CodeBadRequest), respond.CodeBadRequest, err.Error(), nil)
 	case errors.Is(err, ErrNotFound):
 		respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
 	case errors.Is(err, ErrValidation):

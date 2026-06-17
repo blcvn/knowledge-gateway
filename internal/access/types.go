@@ -39,6 +39,8 @@ type AccessGrant struct {
 	Permission      string
 	Status          string
 	ExpiresAt       *time.Time
+	CreatedAt       time.Time
+	RevokedAt       *time.Time
 }
 
 type Identity struct {
@@ -105,4 +107,55 @@ type AppResponse struct {
 type RotateKeyResponse struct {
 	APIKey    string    `json:"api_key"`
 	RotatedAt time.Time `json:"rotated_at"`
+}
+
+type GrantCreateRequest struct {
+	GrantorAppID    string     `json:"grantor_app_id"`
+	GranteeTenantID string     `json:"grantee_tenant_id"`
+	GranteeAppID    string     `json:"grantee_app_id"`
+	ScopeType       string     `json:"scope_type"`
+	ScopeValue      string     `json:"scope_value"`
+	Permission      string     `json:"permission"`
+	ExpiresAt       *time.Time `json:"expires_at"`
+}
+
+type GrantListFilter struct {
+	GrantorTenantID string
+	GranteeTenantID string
+}
+
+type GrantResponse struct {
+	ID              string     `json:"id"`
+	GrantorTenantID string     `json:"grantor_tenant_id"`
+	GrantorAppID    string     `json:"grantor_app_id,omitempty"`
+	GranteeTenantID string     `json:"grantee_tenant_id"`
+	GranteeAppID    string     `json:"grantee_app_id,omitempty"`
+	ScopeType       string     `json:"scope_type"`
+	ScopeValue      string     `json:"scope_value,omitempty"`
+	Permission      string     `json:"permission"`
+	Status          string     `json:"status"`
+	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
+}
+
+type AuditLogEntry struct {
+	ID                    string         `json:"id"`
+	ResourceOwnerTenantID string         `json:"resource_owner_tenant_id"`
+	ResourceOwnerAppID    string         `json:"resource_owner_app_id,omitempty"`
+	RequesterTenantID     string         `json:"requester_tenant_id"`
+	RequesterAppID        string         `json:"requester_app_id"`
+	Action                string         `json:"action"`
+	ResourceType          string         `json:"resource_type"`
+	ResourceID            string         `json:"resource_id,omitempty"`
+	Outcome               string         `json:"outcome"`
+	Reason                string         `json:"reason,omitempty"`
+	ScopeType             string         `json:"scope_type,omitempty"`
+	ScopeValue            string         `json:"scope_value,omitempty"`
+	Metadata              map[string]any `json:"metadata,omitempty"`
+	CreatedAt             time.Time      `json:"created_at"`
+}
+
+type AuditFilter struct {
+	ResourceOwnerTenantID string
 }

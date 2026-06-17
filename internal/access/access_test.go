@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"kg-service/internal/config"
 	"kg-service/internal/platform/rediscache"
@@ -204,6 +205,186 @@ func TestServiceCreateAppListRotateAndRevoke(t *testing.T) {
 	}
 	if revoked.RevokedAt == nil {
 		t.Fatal("RevokeApp() revoked_at is nil")
+	}
+}
+
+func TestServiceCreateListAndRevokeGrant(t *testing.T) {
+	cache := mustNewCache(t)
+	store := NewMemoryStore()
+	store.Seed(SeedTenants(), SeedApps(), SeedGrants())
+	service := NewService(store, cache)
+	actor := Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}
+
+	if err := cache.SetJSON("acl:22222222-2222-2222-2222-222222222222:22222222-bbbb-2222-bbbb-222222222222", map[string]string{"cached": "yes"}, time.Minute); err != nil {
+		t.Fatalf("SetJSON() error = %v", err)
+	}
+
+	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+	created, err := service.CreateGrant(actor, GrantCreateRequest{
+		GranteeTenantID: "22222222-2222-2222-2222-222222222222",
+		GranteeAppID:    "22222222-bbbb-2222-bbbb-222222222222",
+		ScopeType:       "domain",
+		ScopeValue:      "noi_bo_hop_dong",
+		Permission:      "write",
+		ExpiresAt:       &expiresAt,
+	})
+	if err != nil {
+		t.Fatalf("CreateGrant() error = %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("grant id is empty")
+	}
+
+	var cached map[string]string
+	if ok, _ := cache.GetJSON("acl:22222222-2222-2222-2222-222222222222:22222222-bbbb-2222-bbbb-222222222222", &cached); ok {
+		t.Fatal("expected grant cache invalidation after create")
+	}
+
+	grants, err := service.ListGrants(actor, GrantListFilter{GrantorTenantID: actor.TenantID})
+	if err != nil {
+		t.Fatalf("ListGrants() error = %v", err)
+	}
+	if len(grants) < 1 {
+		t.Fatalf("ListGrants() len = %d, want at least 1", len(grants))
+	}
+
+	revoked, err := service.RevokeGrant(actor, created.ID)
+	if err != nil {
+		t.Fatalf("RevokeGrant() error = %v", err)
+	}
+	if revoked.Status != "revoked" {
+		t.Fatalf("RevokeGrant() status = %q", revoked.Status)
+	}
+	if revoked.RevokedAt == nil {
+		t.Fatal("RevokeGrant() revoked_at is nil")
+	}
+
+	auditEntries, err := service.ListAuditLogs(actor, AuditFilter{
+		ResourceOwnerTenantID: actor.TenantID,
+	})
+	if err != nil {
+		t.Fatalf("ListAuditLogs() error = %v", err)
+	}
+	if len(auditEntries) < 2 {
+		t.Fatalf("audit len = %d, want at least 2", len(auditEntries))
+	}
+	if auditEntries[0].Action != "grant.create" {
+		t.Fatalf("first audit action = %q", auditEntries[0].Action)
+	}
+	if auditEntries[1].Action != "grant.revoke" {
+		t.Fatalf("second audit action = %q", auditEntries[1].Action)
+	}
+}
+
+func TestServiceRejectsCrossTenantWriteGrantWithoutExpiry(t *testing.T) {
+	cache := mustNewCache(t)
+	store := NewMemoryStore()
+	store.Seed(SeedTenants(), SeedApps(), SeedGrants())
+	service := NewService(store, cache)
+
+	_, err := service.CreateGrant(Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}, GrantCreateRequest{
+		GranteeTenantID: "22222222-2222-2222-2222-222222222222",
+		ScopeType:       "domain",
+		ScopeValue:      "noi_bo_hop_dong",
+		Permission:      "write",
+	})
+	if err == nil {
+		t.Fatal("CreateGrant() error = nil, want bad request")
+	}
+}
+
+func TestCreateGrantHandlerReturnsCreated(t *testing.T) {
+	cache := mustNewCache(t)
+	store := NewMemoryStore()
+	store.Seed(SeedTenants(), SeedApps(), SeedGrants())
+	handler := NewHandler(NewAccessResolver(store, store, cache), NewService(store, cache))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/access/grants", strings.NewReader(`{"grantee_tenant_id":"22222222-2222-2222-2222-222222222222","grantee_app_id":"22222222-bbbb-2222-bbbb-222222222222","scope_type":"domain","scope_value":"noi_bo_hop_dong","permission":"read"}`))
+	req = req.WithContext(ContextWithIdentity(req.Context(), Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}))
+	rec := httptest.NewRecorder()
+
+	handler.CreateGrant(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListAuditRequiresOwnerScopedAdminAccess(t *testing.T) {
+	cache := mustNewCache(t)
+	store := NewMemoryStore()
+	store.Seed(SeedTenants(), SeedApps(), SeedGrants())
+	service := NewService(store, cache)
+	adminActor := Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}
+	service.RecordWriteAudit(adminActor, adminActor.TenantID, adminActor.AppID, "kg.node.create", "kg_node", "node_1", "allow", "", map[string]any{
+		"domain_id": "noi_bo_hop_dong",
+	})
+
+	entries, err := service.ListAuditLogs(adminActor, AuditFilter{
+		ResourceOwnerTenantID: adminActor.TenantID,
+	})
+	if err != nil {
+		t.Fatalf("ListAuditLogs() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries len = %d, want 1", len(entries))
+	}
+
+	_, err = service.ListAuditLogs(Identity{
+		TenantID: "22222222-2222-2222-2222-222222222222",
+		AppID:    "22222222-bbbb-2222-bbbb-222222222222",
+		AppType:  "agent_consumer",
+	}, AuditFilter{
+		ResourceOwnerTenantID: adminActor.TenantID,
+	})
+	if err == nil {
+		t.Fatal("ListAuditLogs() error = nil, want forbidden")
+	}
+}
+
+func TestListAuditHandlerReturnsListEnvelope(t *testing.T) {
+	cache := mustNewCache(t)
+	store := NewMemoryStore()
+	store.Seed(SeedTenants(), SeedApps(), SeedGrants())
+	service := NewService(store, cache)
+	service.RecordWriteAudit(Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}, "11111111-1111-1111-1111-111111111111", "11111111-admin-1111-admin-111111111111", "kg.node.create", "kg_node", "node_1", "allow", "", nil)
+
+	handler := NewHandler(NewAccessResolver(store, store, cache), service)
+	req := httptest.NewRequest(http.MethodGet, "/v1/access/audit?resource_owner_tenant_id=11111111-1111-1111-1111-111111111111", nil)
+	req = req.WithContext(ContextWithIdentity(req.Context(), Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}))
+	rec := httptest.NewRecorder()
+
+	handler.ListAudit(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"kg.node.create"`) {
+		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
 

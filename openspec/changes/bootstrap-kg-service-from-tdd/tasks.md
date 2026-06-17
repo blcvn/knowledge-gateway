@@ -35,28 +35,28 @@
 
 ### Phase C Sharing And Auditability (`specs/admin-mcp-observability`)
 
-- [ ] Implement access-grant creation service with scope validation and `expires_at` enforcement for cross-tenant `write` and `admin` grants.
-- [ ] Implement access-grant listing service for grantor/grantee filters.
-- [ ] Implement access-grant revoke service with immediate cache invalidation hooks.
+- [x] Implement access-grant creation service with scope validation and `expires_at` enforcement for cross-tenant `write` and `admin` grants.
+- [x] Implement access-grant listing service for grantor/grantee filters.
+- [x] Implement access-grant revoke service with immediate cache invalidation hooks.
 - [ ] Implement audit log writer for read, search, write, grant-create, and grant-revoke actions.
-- [ ] Implement audit retrieval service for owner-scoped history.
+- [x] Implement audit retrieval service for owner-scoped history.
 
 ## Milestone: `internal/ontology`
 
 ### Phase A Foundation (`specs/ontology-plane`)
 
-- [ ] Implement domain repository for registration, lookup, visibility, and version retrieval.
-- [ ] Implement effective ontology resolution across platform-owned, tenant-owned, and shared domains.
-- [ ] Implement node-type schema lookup and property validation.
-- [ ] Implement relationship-type schema lookup and direction/type validation.
-- [ ] Implement cross-domain bridge validation and rule expansion.
-- [ ] Implement Query Pattern DSL validator for shape, params, hop count, and allowed filter constructs.
-- [ ] Implement status-field configuration repository and reader APIs for lifecycle and ranking metadata.
+- [x] Implement domain repository for registration, lookup, visibility, and version retrieval.
+- [x] Implement effective ontology resolution across platform-owned, tenant-owned, and shared domains.
+- [x] Implement node-type schema lookup and property validation.
+- [x] Implement relationship-type schema lookup and direction/type validation.
+- [x] Implement cross-domain bridge validation and rule expansion.
+- [x] Implement Query Pattern DSL validator for shape, params, hop count, and allowed filter constructs.
+- [x] Implement status-field configuration repository and reader APIs for lifecycle and ranking metadata.
 
 ### Phase B Legal Seed Onboarding
 
-- [ ] Prepare bootstrap flow for seeding legal domains via ontology APIs.
-- [ ] Prepare bootstrap flow for seeding legal node types and relationship types.
+- [x] Prepare bootstrap flow for seeding legal domains via ontology APIs.
+- [x] Prepare bootstrap flow for seeding legal node types and relationship types.
 - [ ] Register the five initial legal query templates through ontology APIs.
 - [ ] Activate the legal query templates through the template activation API.
 - [ ] Validate that each legal template executes successfully through the generic read route.
@@ -65,26 +65,26 @@
 
 ### Phase A Foundation (`specs/write-path`)
 
-- [ ] Implement transaction-scoped `SET LOCAL app.tenant_id` and `SET LOCAL app.app_id` handling.
-- [ ] Implement `WriteService` node create flow with domain validation, ownership metadata, visibility, status extraction, and outbox emission.
-- [ ] Implement `WriteService` node update flow with domain revalidation and outbox emission.
-- [ ] Implement `WriteService` node delete flow with soft-delete semantics and outbox emission.
-- [ ] Implement `WriteService` relationship create flow with schema validation and outbox emission.
-- [ ] Implement rule-driven bridge relationship creation during node writes.
-- [ ] Implement external-ref persistence and uniqueness handling.
+- [x] Implement transaction-scoped `SET LOCAL app.tenant_id` and `SET LOCAL app.app_id` handling.
+- [x] Implement `WriteService` node create flow with domain validation, ownership metadata, visibility, status extraction, and outbox emission.
+- [x] Implement `WriteService` node update flow with domain revalidation and outbox emission.
+- [x] Implement `WriteService` node delete flow with soft-delete semantics and outbox emission.
+- [x] Implement `WriteService` relationship create flow with schema validation and outbox emission.
+- [x] Implement rule-driven bridge relationship creation during node writes.
+- [x] Implement external-ref persistence and uniqueness handling.
 
 ## Milestone: `internal/read`
 
 ### Phase B Read Templates (`specs/read-templates`)
 
-- [ ] Implement `QueryTemplateCompiler` runtime compilation from stored DSL to graph queries.
+- [x] Implement `QueryTemplateCompiler` runtime compilation from stored DSL to graph queries.
 - [ ] Inject ACL predicates at the start node match.
 - [ ] Inject ACL predicates at every traversal hop.
 - [ ] Implement parameter schema validation for required and typed read parameters.
 - [ ] Implement lifecycle-aware hop filtering from `domain_status_field_configs`.
 - [ ] Implement graph timeout and max-row safeguards.
 - [ ] Implement `ReadService` execution against the selected graph backend.
-- [ ] Implement read audit logging for allow and deny outcomes.
+- [x] Implement read audit logging for allow and deny outcomes.
 
 ## Milestone: `internal/search`
 
@@ -140,35 +140,35 @@
 - [x] Implement `GET /v1/tenants/{tenant_id}/apps`.
 - [x] Implement `DELETE /v1/tenants/{tenant_id}/apps/{app_id}` with immediate API-key cache invalidation.
 - [x] Implement `GET /v1/access/resolve`.
-- [ ] Implement `POST /v1/tenants/{tenant_id}/ontology/domains`.
-- [ ] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/node-types`.
-- [ ] Implement `GET /v1/tenants/{tenant_id}/ontology/effective`.
-- [ ] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates`.
-- [ ] Implement `PUT /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates/{name}/activate`.
-- [ ] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/status-field-config`.
-- [ ] Implement `GET /v1/ontology/domains/{domain_id}`.
-- [ ] Implement `POST /v1/kg/write/nodes`.
-- [ ] Implement `PUT /v1/kg/write/nodes/{id}`.
-- [ ] Implement `DELETE /v1/kg/write/nodes/{id}`.
-- [ ] Implement `POST /v1/kg/write/relationships`.
+- [x] Implement `POST /v1/tenants/{tenant_id}/ontology/domains`.
+- [x] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/node-types`.
+- [x] Implement `GET /v1/tenants/{tenant_id}/ontology/effective`.
+- [x] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates`.
+- [x] Implement `PUT /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates/{name}/activate`.
+- [x] Implement `POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/status-field-config`.
+- [x] Implement `GET /v1/ontology/domains/{domain_id}`.
+- [x] Implement `POST /v1/kg/write/nodes`.
+- [x] Implement `PUT /v1/kg/write/nodes/{id}`.
+- [x] Implement `DELETE /v1/kg/write/nodes/{id}`.
+- [x] Implement `POST /v1/kg/write/relationships`.
 - [ ] Implement `POST /v1/kg/write/ingest/document`.
 - [ ] Implement `GET /v1/kg/write/ingest/jobs/{job_id}`.
 
 ### Phase B Read And Search
 
-- [ ] Implement `POST /v1/kg/read/template/{domain_id}/{template_name}`.
-- [ ] Implement `GET /v1/kg/read/templates?domain_id=...`.
-- [ ] Implement `GET /v1/kg/read/nodes/{id}`.
+- [x] Implement `POST /v1/kg/read/template/{domain_id}/{template_name}`.
+- [x] Implement `GET /v1/kg/read/templates?domain_id=...`.
+- [x] Implement `GET /v1/kg/read/nodes/{id}`.
 - [ ] Implement `POST /v1/kg/search/semantic`.
 - [ ] Implement `POST /v1/kg/search/rag`.
 - [ ] Normalize list-response envelopes and pagination/filter parsing for read-template, grant-list, app-list, and audit-list endpoints.
 
 ### Phase C Sharing, Integrity, And MCP
 
-- [ ] Implement `POST /v1/access/grants`.
-- [ ] Implement `GET /v1/access/grants?grantor_tenant_id=...&grantee_tenant_id=...`.
-- [ ] Implement `DELETE /v1/access/grants/{id}`.
-- [ ] Implement `GET /v1/access/audit?resource_owner_tenant_id=...`.
+- [x] Implement `POST /v1/access/grants`.
+- [x] Implement `GET /v1/access/grants?grantor_tenant_id=...&grantee_tenant_id=...`.
+- [x] Implement `DELETE /v1/access/grants/{id}`.
+- [x] Implement `GET /v1/access/audit?resource_owner_tenant_id=...`.
 - [ ] Implement `GET /v1/kg/integrity/tenant/{tenant_id}`.
 - [ ] Implement `GET /v1/kg/integrity/missing-bridges?tenant_id=...`.
 - [ ] Implement MCP transport over HTTP+SSE.

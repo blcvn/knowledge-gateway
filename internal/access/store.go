@@ -22,6 +22,12 @@ type AppStore interface {
 
 type GrantStore interface {
 	ListGrantsForGrantee(tenantID, appID string) []AccessGrant
+	CreateGrant(grant AccessGrant) AccessGrant
+	ListGrants(filter GrantListFilter) []AccessGrant
+	GetGrantByID(id string) (AccessGrant, bool)
+	UpdateGrant(grant AccessGrant) (AccessGrant, bool)
+	CreateAuditLog(entry AuditLogEntry) AuditLogEntry
+	ListAuditLogs(filter AuditFilter) []AuditLogEntry
 }
 
 type MemoryStore struct {
@@ -30,6 +36,7 @@ type MemoryStore struct {
 	apps    map[string]App
 	appIDs  map[string]string
 	grants  []AccessGrant
+	audit   []AuditLogEntry
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -38,6 +45,7 @@ func NewMemoryStore() *MemoryStore {
 		apps:    map[string]App{},
 		appIDs:  map[string]string{},
 		grants:  []AccessGrant{},
+		audit:   []AuditLogEntry{},
 	}
 }
 
@@ -164,4 +172,102 @@ func (s *MemoryStore) ListGrantsForGrantee(tenantID, appID string) []AccessGrant
 	}
 
 	return grants
+}
+
+func (s *MemoryStore) CreateGrant(grant AccessGrant) AccessGrant {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.grants = append(s.grants, grant)
+	return grant
+}
+
+func (s *MemoryStore) ListGrants(filter GrantListFilter) []AccessGrant {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var grants []AccessGrant
+	for _, grant := range s.grants {
+		if filter.GrantorTenantID != "" && grant.GrantorTenantID != filter.GrantorTenantID {
+			continue
+		}
+		if filter.GranteeTenantID != "" && grant.GranteeTenantID != filter.GranteeTenantID {
+			continue
+		}
+		grants = append(grants, grant)
+	}
+	slices.SortFunc(grants, func(a, b AccessGrant) int {
+		if a.CreatedAt.Before(b.CreatedAt) {
+			return -1
+		}
+		if a.CreatedAt.After(b.CreatedAt) {
+			return 1
+		}
+		if a.ID < b.ID {
+			return -1
+		}
+		if a.ID > b.ID {
+			return 1
+		}
+		return 0
+	})
+	return grants
+}
+
+func (s *MemoryStore) GetGrantByID(id string) (AccessGrant, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, grant := range s.grants {
+		if grant.ID == id {
+			return grant, true
+		}
+	}
+	return AccessGrant{}, false
+}
+
+func (s *MemoryStore) UpdateGrant(grant AccessGrant) (AccessGrant, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.grants {
+		if s.grants[i].ID == grant.ID {
+			s.grants[i] = grant
+			return grant, true
+		}
+	}
+	return AccessGrant{}, false
+}
+
+func (s *MemoryStore) CreateAuditLog(entry AuditLogEntry) AuditLogEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.audit = append(s.audit, entry)
+	return entry
+}
+
+func (s *MemoryStore) ListAuditLogs(filter AuditFilter) []AuditLogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var entries []AuditLogEntry
+	for _, entry := range s.audit {
+		if filter.ResourceOwnerTenantID != "" && entry.ResourceOwnerTenantID != filter.ResourceOwnerTenantID {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	slices.SortFunc(entries, func(a, b AuditLogEntry) int {
+		if a.CreatedAt.Before(b.CreatedAt) {
+			return -1
+		}
+		if a.CreatedAt.After(b.CreatedAt) {
+			return 1
+		}
+		if a.ID < b.ID {
+			return -1
+		}
+		if a.ID > b.ID {
+			return 1
+		}
+		return 0
+	})
+	return entries
 }
