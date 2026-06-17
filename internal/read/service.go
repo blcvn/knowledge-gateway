@@ -16,6 +16,7 @@ var (
 	ErrForbidden  = errors.New("forbidden")
 	ErrNotFound   = errors.New("not found")
 	ErrValidation = errors.New("validation")
+	ErrTimeout    = errors.New("timeout")
 )
 
 type WriteProjectionStore interface {
@@ -44,6 +45,8 @@ type Service struct {
 	accessResolver AccessResolver
 	auditLogger    AuditLogger
 	compiler       QueryTemplateCompiler
+	maxRows        int
+	queryTimeout   time.Duration
 	now            func() time.Time
 }
 
@@ -54,6 +57,8 @@ func NewService(store WriteProjectionStore, ontology OntologyResolver, accessRes
 		accessResolver: accessResolver,
 		auditLogger:    auditLogger,
 		compiler:       NewQueryTemplateCompiler(),
+		maxRows:        100,
+		queryTimeout:   50 * time.Millisecond,
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -133,7 +138,15 @@ func (s *Service) ExecuteTemplate(actor access.Identity, domainID, templateName 
 	}
 
 	results := []map[string]any{}
+	started := s.now()
 	for _, node := range nodes {
+		if s.queryTimeout > 0 && s.now().Sub(started) > s.queryTimeout {
+			s.recordAudit(actor, "read", "query_template", domainID+"."+templateName, "deny", "query_timeout", nil)
+			return TemplateExecutionResponse{}, ErrTimeout
+		}
+		if s.maxRows > 0 && len(results) >= s.maxRows {
+			break
+		}
 		if node.IsDeleted || node.DomainID != domainID || node.NodeType != compiled.StartType {
 			continue
 		}

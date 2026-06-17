@@ -1,6 +1,7 @@
 package read
 
 import (
+	"strings"
 	"testing"
 
 	"kg-service/internal/ontology"
@@ -34,6 +35,9 @@ func TestQueryTemplateCompilerCompilesDSL(t *testing.T) {
 	}
 	if compiled.Query == "" {
 		t.Fatal("Query is empty")
+	}
+	if !strings.Contains(compiled.Query, "acl_visible_to") {
+		t.Fatalf("Query = %q, want ACL predicate", compiled.Query)
 	}
 }
 

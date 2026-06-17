@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"kg-service/internal/access"
 	"kg-service/internal/httpapi/respond"
@@ -24,7 +25,9 @@ func (h Handler) ListTemplates(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	respond.OK(w, respond.ListEnvelope[TemplateListItem]{Data: templates, HasMore: false})
+	page := parsePage(r)
+	templates, nextCursor, hasMore := paginateTemplates(templates, page)
+	respond.OK(w, respond.ListEnvelope[TemplateListItem]{Data: templates, NextCursor: nextCursor, HasMore: hasMore})
 }
 
 func (h Handler) ExecuteTemplate(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +65,47 @@ func writeError(w http.ResponseWriter, err error) {
 		respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
 	case errors.Is(err, ErrValidation):
 		respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+	case errors.Is(err, ErrTimeout):
+		respond.Error(w, respond.StatusFor(respond.CodeRequestTimedOut), respond.CodeRequestTimedOut, "Read timed out", nil)
 	default:
 		respond.Error(w, respond.StatusFor(respond.CodeInternal), respond.CodeInternal, "Internal server error", nil)
 	}
+}
+
+func parsePage(r *http.Request) respond.Page {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	return respond.NormalizePage(limit, r.URL.Query().Get("cursor"), 20, 100)
+}
+
+func paginateTemplates(items []TemplateListItem, page respond.Page) ([]TemplateListItem, string, bool) {
+	return paginateBy(items, page, func(item TemplateListItem) string { return item.TemplateName })
+}
+
+func paginateBy[T any](items []T, page respond.Page, keyFn func(T) string) ([]T, string, bool) {
+	if len(items) == 0 {
+		return []T{}, "", false
+	}
+	start := 0
+	if page.Cursor != "" {
+		for i, item := range items {
+			if keyFn(item) == page.Cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+	end := start + page.Limit
+	if end > len(items) {
+		end = len(items)
+	}
+	if start > len(items) {
+		return []T{}, "", false
+	}
+	slice := append([]T(nil), items[start:end]...)
+	hasMore := end < len(items)
+	nextCursor := ""
+	if hasMore && len(slice) > 0 {
+		nextCursor = keyFn(slice[len(slice)-1])
+	}
+	return slice, nextCursor, hasMore
 }

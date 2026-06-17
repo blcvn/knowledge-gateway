@@ -27,7 +27,7 @@ type GrantStore interface {
 	GetGrantByID(id string) (AccessGrant, bool)
 	UpdateGrant(grant AccessGrant) (AccessGrant, bool)
 	CreateAuditLog(entry AuditLogEntry) AuditLogEntry
-	ListAuditLogs(filter AuditFilter) []AuditLogEntry
+	ListAuditLogs(filter AuditListFilter) []AuditLogEntry
 }
 
 type MemoryStore struct {
@@ -243,7 +243,7 @@ func (s *MemoryStore) CreateAuditLog(entry AuditLogEntry) AuditLogEntry {
 	return entry
 }
 
-func (s *MemoryStore) ListAuditLogs(filter AuditFilter) []AuditLogEntry {
+func (s *MemoryStore) ListAuditLogs(filter AuditListFilter) []AuditLogEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -269,5 +269,32 @@ func (s *MemoryStore) ListAuditLogs(filter AuditFilter) []AuditLogEntry {
 		}
 		return 0
 	})
-	return entries
+	return paginateAudit(entries, filter.Limit, filter.Cursor)
+}
+
+func paginateAudit(entries []AuditLogEntry, limit int, cursor string) []AuditLogEntry {
+	return paginateAuditByID(entries, limit, cursor)
+}
+
+func paginateAuditByID(entries []AuditLogEntry, limit int, cursor string) []AuditLogEntry {
+	if limit <= 0 || limit > len(entries) {
+		limit = len(entries)
+	}
+	start := 0
+	if cursor != "" {
+		for i, item := range entries {
+			if item.ID == cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+	end := start + limit
+	if end > len(entries) {
+		end = len(entries)
+	}
+	if start > len(entries) {
+		return []AuditLogEntry{}
+	}
+	return append([]AuditLogEntry(nil), entries[start:end]...)
 }

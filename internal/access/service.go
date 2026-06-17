@@ -357,7 +357,7 @@ func (s *Service) RevokeGrant(actor Identity, grantID string) (GrantResponse, er
 	return grantToResponse(updated), nil
 }
 
-func (s *Service) ListAuditLogs(actor Identity, filter AuditFilter) ([]AuditLogEntry, error) {
+func (s *Service) ListAuditLogs(actor Identity, filter AuditListFilter) ([]AuditLogEntry, error) {
 	if strings.TrimSpace(filter.ResourceOwnerTenantID) == "" {
 		return nil, ErrBadRequest
 	}

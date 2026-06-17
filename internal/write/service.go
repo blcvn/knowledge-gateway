@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"kg-service/internal/access"
@@ -46,6 +47,8 @@ type Service struct {
 	accessResolver AccessResolver
 	sessionManager SessionManager
 	auditLogger    AuditLogger
+	ingestMu       sync.RWMutex
+	ingestJobs     map[string]IngestJobResponse
 	now            func() time.Time
 }
 
@@ -56,10 +59,54 @@ func NewService(store Store, ontology OntologyResolver, accessResolver AccessRes
 		accessResolver: accessResolver,
 		sessionManager: sessionManager,
 		auditLogger:    auditLogger,
+		ingestJobs:     map[string]IngestJobResponse{},
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (s *Service) IngestDocument(actor access.Identity, req IngestDocumentRequest) (IngestJobResponse, error) {
+	if !canRunIngest(actor) {
+		return IngestJobResponse{}, ErrForbidden
+	}
+	if err := validateIngestDocumentRequest(req); err != nil {
+		return IngestJobResponse{}, errors.Join(ErrValidation, err)
+	}
+	if _, err := s.ontology.GetVisibleDomain(actor, req.DomainID); err != nil {
+		if errors.Is(err, ontology.ErrForbidden) || errors.Is(err, ontology.ErrNotFound) {
+			return IngestJobResponse{}, ErrForbidden
+		}
+		return IngestJobResponse{}, err
+	}
+
+	job := IngestJobResponse{
+		JobID:        newID("job"),
+		Status:       "completed",
+		NodesCreated: 0,
+		Errors:       []string{},
+	}
+	s.ingestMu.Lock()
+	s.ingestJobs[job.JobID] = job
+	s.ingestMu.Unlock()
+
+	return IngestJobResponse{
+		JobID:  job.JobID,
+		Status: "queued",
+	}, nil
+}
+
+func (s *Service) GetIngestJob(actor access.Identity, jobID string) (IngestJobResponse, error) {
+	if !canRunIngest(actor) {
+		return IngestJobResponse{}, ErrForbidden
+	}
+	s.ingestMu.RLock()
+	job, ok := s.ingestJobs[jobID]
+	s.ingestMu.RUnlock()
+	if !ok {
+		return IngestJobResponse{}, ErrNotFound
+	}
+	return job, nil
 }
 
 func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (NodeCreateResponse, error) {
@@ -117,6 +164,7 @@ func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (Node
 		DomainID:      req.DomainID,
 		OwnerTenantID: actor.TenantID,
 		OwnerAppID:    actor.AppID,
+		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
 		Visibility:    fallback(req.Visibility, "private"),
 		Properties:    req.Properties,
 		DomainVersion: version.Version,
@@ -228,6 +276,9 @@ func (s *Service) UpdateNode(actor access.Identity, nodeID string, req NodeUpdat
 	updated := node
 	updated.Properties = mergedProperties
 	updated.Visibility = fallback(req.Visibility, node.Visibility)
+	if len(updated.ACLVisibleTo) == 0 {
+		updated.ACLVisibleTo = []string{node.OwnerTenantID + ":" + node.OwnerAppID}
+	}
 	if strings.TrimSpace(req.ExternalRef) != "" || node.ExternalRef == "" {
 		updated.ExternalRef = strings.TrimSpace(req.ExternalRef)
 	}
@@ -435,6 +486,15 @@ func (s *Service) recordWriteAudit(actor access.Identity, ownerTenantID, ownerAp
 	s.auditLogger.RecordWriteAudit(actor, ownerTenantID, ownerAppID, action, resourceType, resourceID, outcome, reason, metadata)
 }
 
+func canRunIngest(actor access.Identity) bool {
+	switch actor.AppType {
+	case "ingestion_producer", "admin_tool", "hybrid":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Service) ensureWritePermission(actor access.Identity, domain ontology.Domain, domainID string) error {
 	if domain.OwnerTenantID == actor.TenantID {
 		return nil
@@ -556,6 +616,19 @@ func validateRelationshipCreateRequest(req RelationshipCreateRequest) error {
 	}
 	if req.Properties == nil {
 		req.Properties = map[string]any{}
+	}
+	return nil
+}
+
+func validateIngestDocumentRequest(req IngestDocumentRequest) error {
+	if strings.TrimSpace(req.FileURL) == "" {
+		return errors.New("file_url is required")
+	}
+	if strings.TrimSpace(req.DomainID) == "" {
+		return errors.New("domain_id is required")
+	}
+	if strings.TrimSpace(req.LoaiVanBan) == "" {
+		return errors.New("loai_van_ban is required")
 	}
 	return nil
 }

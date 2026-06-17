@@ -6,10 +6,13 @@ import (
 	"kg-service/internal/access"
 	"kg-service/internal/config"
 	"kg-service/internal/httpapi/respond"
+	"kg-service/internal/integrity"
+	"kg-service/internal/mcp"
 	"kg-service/internal/ontology"
 	"kg-service/internal/platform/postgres"
 	"kg-service/internal/platform/rediscache"
 	"kg-service/internal/read"
+	"kg-service/internal/search"
 	"kg-service/internal/write"
 )
 
@@ -22,8 +25,11 @@ type App struct {
 	accessHandler    access.Handler
 	accessMiddleware access.Middleware
 	accessStore      *access.MemoryStore
+	integrityHandler integrity.Handler
+	mcpHandler       mcp.Handler
 	ontologyHandler  ontology.Handler
 	readHandler      read.Handler
+	searchHandler    search.Handler
 	writeHandler     write.Handler
 }
 
@@ -68,6 +74,10 @@ func (a *App) routes() {
 	a.httpMux.Handle("GET /v1/access/grants", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.accessHandler.ListGrants)))
 	a.httpMux.Handle("DELETE /v1/access/grants/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.accessHandler.DeleteGrant)))
 	a.httpMux.Handle("GET /v1/access/audit", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.accessHandler.ListAudit)))
+	a.httpMux.Handle("GET /v1/kg/integrity/tenant/{tenant_id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.integrityHandler.TenantIntegrity)))
+	a.httpMux.Handle("GET /v1/kg/integrity/missing-bridges", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.integrityHandler.MissingBridges)))
+	a.httpMux.Handle("GET /v1/mcp/connect", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.mcpHandler.Connect)))
+	a.httpMux.Handle("POST /v1/mcp/messages/{session_id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.mcpHandler.Message)))
 	a.httpMux.Handle("POST /v1/tenants/{tenant_id}/ontology/domains", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.CreateDomain)))
 	a.httpMux.Handle("POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/node-types", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.CreateNodeType)))
 	a.httpMux.Handle("POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/rel-types", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.CreateRelType)))
@@ -79,10 +89,14 @@ func (a *App) routes() {
 	a.httpMux.Handle("GET /v1/kg/read/templates", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.readHandler.ListTemplates)))
 	a.httpMux.Handle("POST /v1/kg/read/template/{domain_id}/{template_name}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.readHandler.ExecuteTemplate)))
 	a.httpMux.Handle("GET /v1/kg/read/nodes/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.readHandler.GetNode)))
+	a.httpMux.Handle("POST /v1/kg/search/semantic", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.SemanticSearch)))
+	a.httpMux.Handle("POST /v1/kg/search/rag", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.RagSearch)))
 	a.httpMux.Handle("POST /v1/kg/write/nodes", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.CreateNode)))
 	a.httpMux.Handle("PUT /v1/kg/write/nodes/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.UpdateNode)))
 	a.httpMux.Handle("DELETE /v1/kg/write/nodes/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.DeleteNode)))
 	a.httpMux.Handle("POST /v1/kg/write/relationships", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.CreateRelationship)))
+	a.httpMux.Handle("POST /v1/kg/write/ingest/document", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.IngestDocument)))
+	a.httpMux.Handle("GET /v1/kg/write/ingest/jobs/{job_id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.GetIngestJob)))
 	a.httpMux.Handle("GET /v1/access/resolve", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.accessHandler.GetResolve)))
 }
 
@@ -109,6 +123,7 @@ func (a *App) initAccess() {
 	identityResolver := access.NewIdentityResolver(store, &a.redis)
 	accessResolver := access.NewAccessResolver(store, store, &a.redis)
 	service := access.NewService(store, &a.redis)
+	rateLimiter := access.NewRateLimiter(store)
 	ontologyStore := ontology.NewMemoryStore()
 	ontologyService := ontology.NewService(ontologyStore, accessResolver)
 	bootstrapIdentity := access.Identity{
@@ -122,10 +137,16 @@ func (a *App) initAccess() {
 	sessionManager := &postgres.SessionManager{}
 	writeService := write.NewService(writeStore, ontologyService, accessResolver, sessionManager, service)
 	readService := read.NewService(writeStore, ontologyService, accessResolver, service)
+	searchService := search.NewService(writeStore, ontologyService, accessResolver, service)
+	integrityService := integrity.NewService(writeStore, ontologyStore)
+	mcpService := mcp.NewService(readService, searchService, writeService, ontologyService, accessResolver, integrityService)
 
-	a.accessMiddleware = access.NewMiddleware(identityResolver)
+	a.accessMiddleware = access.NewMiddleware(identityResolver, rateLimiter)
 	a.accessHandler = access.NewHandler(accessResolver, service)
+	a.integrityHandler = integrity.NewHandler(integrityService)
+	a.mcpHandler = mcp.NewHandler(mcpService, rateLimiter)
 	a.ontologyHandler = ontology.NewHandler(ontologyService)
 	a.readHandler = read.NewHandler(readService)
+	a.searchHandler = search.NewHandler(searchService)
 	a.writeHandler = write.NewHandler(writeService)
 }

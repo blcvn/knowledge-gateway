@@ -47,6 +47,7 @@ func (c QueryTemplateCompiler) Compile(domainID string, template ontology.QueryT
 	hops := make([]CompiledHop, 0, len(hopsRaw))
 	var query strings.Builder
 	query.WriteString(fmt.Sprintf("MATCH (n0:%s)", startType))
+	query.WriteString(" WHERE ANY(tok IN n0.acl_visible_to WHERE tok IN $acl_tokens)")
 	for i, hopRaw := range hopsRaw {
 		hop, ok := hopRaw.(map[string]any)
 		if !ok {
@@ -64,7 +65,7 @@ func (c QueryTemplateCompiler) Compile(domainID string, template ontology.QueryT
 			Filter:       filter,
 			FilterStatus: filterStatus,
 		})
-		query.WriteString(fmt.Sprintf(" -[:%s]-> (n%d:%s)", relType, i+1, toNodeType))
+		query.WriteString(fmt.Sprintf(" -[:%s]-> (n%d:%s) WHERE ANY(tok IN n%d.acl_visible_to WHERE tok IN $acl_tokens)", relType, i+1, toNodeType, i+1))
 	}
 
 	return CompiledTemplate{

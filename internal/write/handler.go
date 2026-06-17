@@ -113,3 +113,46 @@ func (h Handler) CreateRelationship(w http.ResponseWriter, r *http.Request) {
 
 	respond.Created(w, result)
 }
+
+func (h Handler) IngestDocument(w http.ResponseWriter, r *http.Request) {
+	var req IngestDocumentRequest
+	defer r.Body.Close()
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, respond.StatusFor(respond.CodeBadRequest), respond.CodeBadRequest, "Malformed JSON body", nil)
+		return
+	}
+
+	identity, _ := access.IdentityFromContext(r.Context())
+	result, err := h.service.IngestDocument(identity, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrForbidden):
+			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
+		case errors.Is(err, ErrValidation):
+			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		default:
+			respond.Error(w, respond.StatusFor(respond.CodeInternal), respond.CodeInternal, "Internal server error", nil)
+		}
+		return
+	}
+
+	respond.Accepted(w, result)
+}
+
+func (h Handler) GetIngestJob(w http.ResponseWriter, r *http.Request) {
+	identity, _ := access.IdentityFromContext(r.Context())
+	result, err := h.service.GetIngestJob(identity, r.PathValue("job_id"))
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrForbidden):
+			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
+		case errors.Is(err, ErrNotFound):
+			respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
+		default:
+			respond.Error(w, respond.StatusFor(respond.CodeInternal), respond.CodeInternal, "Internal server error", nil)
+		}
+		return
+	}
+
+	respond.OK(w, result)
+}

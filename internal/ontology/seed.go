@@ -169,6 +169,86 @@ func SeedQueryTemplates() []QueryTemplate {
 			Version:      1,
 			CreatedAt:    now,
 		},
+		{
+			ID:           "luat_thue_hkd.tax-routing",
+			DomainID:     "luat_thue_hkd",
+			TemplateName: "tax-routing",
+			PatternSpec: map[string]any{
+				"start": map[string]any{
+					"node_type": "NhomDoanhThu",
+					"match": map[string]any{
+						"doanh_thu": "$doanh_thu",
+					},
+				},
+			},
+			ParamSchema: []ParameterSchema{
+				{Name: "doanh_thu", Type: "number", Required: true},
+			},
+			ReturnFields: []string{"NhomDoanhThu.ma_nhom", "NhomDoanhThu.phuong_phap_tinh"},
+			Status:       "active",
+			Version:      1,
+			CreatedAt:    now,
+		},
+		{
+			ID:           "luat_thue_hkd.citation-check",
+			DomainID:     "luat_thue_hkd",
+			TemplateName: "citation-check",
+			PatternSpec: map[string]any{
+				"start": map[string]any{
+					"node_type": "VanBanPhapLuat",
+					"match": map[string]any{
+						"chunk_ref": "$chunk_ref",
+					},
+				},
+			},
+			ParamSchema: []ParameterSchema{
+				{Name: "chunk_ref", Type: "string", Required: true},
+			},
+			ReturnFields: []string{"VanBanPhapLuat.so_hieu", "VanBanPhapLuat.status_value"},
+			Status:       "active",
+			Version:      1,
+			CreatedAt:    now,
+		},
+		{
+			ID:           "luat_thue_hkd.obligation-summary",
+			DomainID:     "luat_thue_hkd",
+			TemplateName: "obligation-summary",
+			PatternSpec: map[string]any{
+				"start": map[string]any{
+					"node_type": "NghiaVu",
+					"match": map[string]any{
+						"ma_nhom": "$ma_nhom",
+					},
+				},
+			},
+			ParamSchema: []ParameterSchema{
+				{Name: "ma_nhom", Type: "string", Required: true},
+			},
+			ReturnFields: []string{"NghiaVu.ten", "NghiaVu.mo_ta"},
+			Status:       "active",
+			Version:      1,
+			CreatedAt:    now,
+		},
+		{
+			ID:           "luat_thue_hkd.deadline-trace",
+			DomainID:     "luat_thue_hkd",
+			TemplateName: "deadline-trace",
+			PatternSpec: map[string]any{
+				"start": map[string]any{
+					"node_type": "ThoiHan",
+					"match": map[string]any{
+						"chunk_ref": "$chunk_ref",
+					},
+				},
+			},
+			ParamSchema: []ParameterSchema{
+				{Name: "chunk_ref", Type: "string", Required: true},
+			},
+			ReturnFields: []string{"ThoiHan.noi_dung", "ThoiHan.ngay_hieu_luc"},
+			Status:       "active",
+			Version:      1,
+			CreatedAt:    now,
+		},
 	}
 }
 

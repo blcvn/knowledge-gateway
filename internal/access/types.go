@@ -122,6 +122,14 @@ type GrantCreateRequest struct {
 type GrantListFilter struct {
 	GrantorTenantID string
 	GranteeTenantID string
+	Limit           int
+	Cursor          string
+}
+
+type AuditListFilter struct {
+	ResourceOwnerTenantID string
+	Limit                 int
+	Cursor                string
 }
 
 type GrantResponse struct {

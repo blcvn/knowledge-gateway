@@ -11,10 +11,15 @@ import (
 
 type Middleware struct {
 	identityResolver *IdentityResolver
+	limiter          Limiter
 }
 
-func NewMiddleware(identityResolver *IdentityResolver) Middleware {
-	return Middleware{identityResolver: identityResolver}
+func NewMiddleware(identityResolver *IdentityResolver, limiter ...Limiter) Middleware {
+	var rateLimiter Limiter
+	if len(limiter) > 0 {
+		rateLimiter = limiter[0]
+	}
+	return Middleware{identityResolver: identityResolver, limiter: rateLimiter}
 }
 
 func (m Middleware) RequireIdentity(next http.Handler) http.Handler {
@@ -22,6 +27,10 @@ func (m Middleware) RequireIdentity(next http.Handler) http.Handler {
 		identity, err := m.identityResolver.Resolve(r.Header.Get("Authorization"))
 		if err != nil {
 			respond.Error(w, respond.StatusFor(respond.CodeUnauthorized), respond.CodeUnauthorized, "Authentication failed", nil)
+			return
+		}
+		if m.limiter != nil && !m.limiter.Allow(identity) {
+			respond.Error(w, respond.StatusFor(respond.CodeTooManyRequests), respond.CodeTooManyRequests, "Rate limit exceeded", map[string]any{"tenant_id": identity.TenantID})
 			return
 		}
 

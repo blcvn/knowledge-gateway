@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"kg-service/internal/httpapi/respond"
 )
@@ -127,10 +129,13 @@ func (h Handler) ListApps(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	page := parsePage(r)
+	apps, nextCursor, hasMore := paginateApps(apps, page)
 
 	respond.OK(w, respond.ListEnvelope[AppResponse]{
-		Data:    apps,
-		HasMore: false,
+		Data:       apps,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
 	})
 }
 
@@ -167,15 +172,27 @@ func (h Handler) CreateGrant(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) ListGrants(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
+	grantorTenantID, err := parseOptionalTenantQuery(r.URL.Query().Get("grantor_tenant_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	granteeTenantID, err := parseOptionalTenantQuery(r.URL.Query().Get("grantee_tenant_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	grants, err := h.service.ListGrants(identity, GrantListFilter{
-		GrantorTenantID: r.URL.Query().Get("grantor_tenant_id"),
-		GranteeTenantID: r.URL.Query().Get("grantee_tenant_id"),
+		GrantorTenantID: grantorTenantID,
+		GranteeTenantID: granteeTenantID,
 	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond.OK(w, respond.ListEnvelope[GrantResponse]{Data: grants, HasMore: false})
+	page := parsePage(r)
+	grants, nextCursor, hasMore := paginateGrants(grants, page)
+	respond.OK(w, respond.ListEnvelope[GrantResponse]{Data: grants, NextCursor: nextCursor, HasMore: hasMore})
 }
 
 func (h Handler) DeleteGrant(w http.ResponseWriter, r *http.Request) {
@@ -194,14 +211,21 @@ func (h Handler) DeleteGrant(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) ListAudit(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	entries, err := h.service.ListAuditLogs(identity, AuditFilter{
-		ResourceOwnerTenantID: r.URL.Query().Get("resource_owner_tenant_id"),
+	resourceOwnerTenantID, err := parseOptionalTenantQuery(r.URL.Query().Get("resource_owner_tenant_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	entries, err := h.service.ListAuditLogs(identity, AuditListFilter{
+		ResourceOwnerTenantID: resourceOwnerTenantID,
 	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond.OK(w, respond.ListEnvelope[AuditLogEntry]{Data: entries, HasMore: false})
+	page := parsePage(r)
+	entries, nextCursor, hasMore := paginateAudits(entries, page)
+	respond.OK(w, respond.ListEnvelope[AuditLogEntry]{Data: entries, NextCursor: nextCursor, HasMore: hasMore})
 }
 
 func decodeJSON(r *http.Request, target any) error {
@@ -227,4 +251,84 @@ func writeError(w http.ResponseWriter, err error) {
 	default:
 		respond.Error(w, respond.StatusFor(respond.CodeInternal), respond.CodeInternal, "Internal server error", nil)
 	}
+}
+
+func parsePage(r *http.Request) respond.Page {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	return respond.NormalizePage(limit, r.URL.Query().Get("cursor"), 20, 100)
+}
+
+func parseOptionalTenantQuery(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if !looksLikeUUID(value) {
+		return "", ErrValidation
+	}
+	return value, nil
+}
+
+func looksLikeUUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for i, r := range value {
+		switch i {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			switch {
+			case r >= '0' && r <= '9':
+			case r >= 'a' && r <= 'f':
+			case r >= 'A' && r <= 'F':
+			default:
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func paginateApps(items []AppResponse, page respond.Page) ([]AppResponse, string, bool) {
+	return paginateBy(items, page, func(item AppResponse) string { return item.ID })
+}
+
+func paginateGrants(items []GrantResponse, page respond.Page) ([]GrantResponse, string, bool) {
+	return paginateBy(items, page, func(item GrantResponse) string { return item.ID })
+}
+
+func paginateAudits(items []AuditLogEntry, page respond.Page) ([]AuditLogEntry, string, bool) {
+	return paginateBy(items, page, func(item AuditLogEntry) string { return item.ID })
+}
+
+func paginateBy[T any](items []T, page respond.Page, keyFn func(T) string) ([]T, string, bool) {
+	if len(items) == 0 {
+		return []T{}, "", false
+	}
+	start := 0
+	if page.Cursor != "" {
+		for i, item := range items {
+			if keyFn(item) == page.Cursor {
+				start = i + 1
+				break
+			}
+		}
+	}
+	end := start + page.Limit
+	if end > len(items) {
+		end = len(items)
+	}
+	if start > len(items) {
+		return []T{}, "", false
+	}
+	slice := append([]T(nil), items[start:end]...)
+	hasMore := end < len(items)
+	nextCursor := ""
+	if hasMore && len(slice) > 0 {
+		nextCursor = keyFn(slice[len(slice)-1])
+	}
+	return slice, nextCursor, hasMore
 }

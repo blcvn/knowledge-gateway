@@ -17,6 +17,7 @@ type NodeRecord struct {
 	DomainID      string         `json:"domain_id"`
 	OwnerTenantID string         `json:"owner_tenant_id"`
 	OwnerAppID    string         `json:"owner_app_id"`
+	ACLVisibleTo  []string       `json:"acl_visible_to,omitempty"`
 	Visibility    string         `json:"visibility"`
 	Properties    map[string]any `json:"properties"`
 	DomainVersion int            `json:"domain_version"`
@@ -85,4 +86,17 @@ type NodeUpdateResponse struct {
 type NodeDeleteResponse struct {
 	NodeID    string `json:"node_id"`
 	IsDeleted bool   `json:"is_deleted"`
+}
+
+type IngestDocumentRequest struct {
+	FileURL    string `json:"file_url"`
+	LoaiVanBan string `json:"loai_van_ban"`
+	DomainID   string `json:"domain_id"`
+}
+
+type IngestJobResponse struct {
+	JobID        string   `json:"job_id"`
+	Status       string   `json:"status"`
+	NodesCreated int      `json:"nodes_created,omitempty"`
+	Errors       []string `json:"errors,omitempty"`
 }

@@ -8,6 +8,7 @@ const (
 	CodeForbidden        = "FORBIDDEN"
 	CodeNotFound         = "NOT_FOUND"
 	CodeValidationFailed = "VALIDATION_FAILED"
+	CodeTooManyRequests  = "TOO_MANY_REQUESTS"
 	CodeRequestTimedOut  = "REQUEST_TIMEOUT"
 	CodeInternal         = "INTERNAL_ERROR"
 )
@@ -24,6 +25,8 @@ func StatusFor(kind string) int {
 		return http.StatusNotFound
 	case CodeValidationFailed:
 		return http.StatusUnprocessableEntity
+	case CodeTooManyRequests:
+		return http.StatusTooManyRequests
 	case CodeRequestTimedOut:
 		return http.StatusGatewayTimeout
 	default:

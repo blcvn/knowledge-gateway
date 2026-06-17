@@ -61,6 +61,39 @@ func TestGetEffectiveDomainsIncludesPlatformOwnedAndGrantedDomains(t *testing.T)
 	}
 }
 
+func TestGetEffectiveDomainsExcludesUnsharedForeignDomains(t *testing.T) {
+	service := newTestService(t)
+	actor := access.Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}
+	platformAdmin := access.Identity{
+		TenantID: access.PlatformTenantID,
+		AppID:    "00000000-admin-0000-admin-000000000000",
+		AppType:  "admin_tool",
+	}
+
+	_, err := service.CreateDomain(platformAdmin, "22222222-2222-2222-2222-222222222222", DomainCreateRequest{
+		ID:         "private-beta-domain",
+		Name:       "Private Beta",
+		Visibility: "private",
+	})
+	if err != nil {
+		t.Fatalf("CreateDomain() error = %v", err)
+	}
+
+	domains, err := service.GetEffectiveDomains(actor, actor.TenantID)
+	if err != nil {
+		t.Fatalf("GetEffectiveDomains() error = %v", err)
+	}
+	for _, domain := range domains {
+		if domain.ID == "private-beta-domain" {
+			t.Fatalf("unexpected foreign domain in effective ontology: %#v", domains)
+		}
+	}
+}
+
 func TestCreateNodeTypeRegistersSchema(t *testing.T) {
 	service := newTestService(t)
 
@@ -159,6 +192,33 @@ func TestCreateQueryTemplateRejectsRawCypher(t *testing.T) {
 	}
 }
 
+func TestCreateQueryTemplateRejectsTooDeepTraversal(t *testing.T) {
+	service := newTestService(t)
+	hops := make([]any, 0, 6)
+	for i := 0; i < 6; i++ {
+		hops = append(hops, map[string]any{
+			"rel_type":     "THAM_CHIEU",
+			"to_node_type": "KhoanMau",
+		})
+	}
+
+	_, err := service.CreateQueryTemplate(access.Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}, "11111111-1111-1111-1111-111111111111", "noi_bo_hop_dong", QueryTemplateCreateRequest{
+		TemplateName: "too_deep",
+		PatternSpec: map[string]any{
+			"start": map[string]any{"node_type": "HopDongMau"},
+			"hops":  hops,
+		},
+		ReturnFields: []string{"HopDongMau.ten"},
+	})
+	if err == nil {
+		t.Fatal("CreateQueryTemplate() error = nil, want validation failure")
+	}
+}
+
 func TestCreateAndActivateQueryTemplate(t *testing.T) {
 	service := newTestService(t)
 
@@ -204,6 +264,101 @@ func TestCreateAndActivateQueryTemplate(t *testing.T) {
 	}
 }
 
+func TestSampleDomainCanBeOnboardedThroughOntologyApis(t *testing.T) {
+	service := newTestService(t)
+	actor := access.Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}
+
+	domain, err := service.CreateDomain(actor, actor.TenantID, DomainCreateRequest{
+		ID:         "sample_finance",
+		Name:       "Sample Finance",
+		Visibility: "public",
+		Status:     "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateDomain() error = %v", err)
+	}
+	if domain.ID != "sample_finance" {
+		t.Fatalf("domain id = %q", domain.ID)
+	}
+	if _, err := service.CreateNodeType(actor, actor.TenantID, "sample_finance", NodeTypeCreateRequest{
+		NodeTypeName: "Invoice",
+		RequiredProps: []PropertySchema{
+			{Name: "invoice_no", Type: "string"},
+		},
+	}); err != nil {
+		t.Fatalf("CreateNodeType() error = %v", err)
+	}
+	if _, err := service.CreateQueryTemplate(actor, actor.TenantID, "sample_finance", QueryTemplateCreateRequest{
+		TemplateName: "invoice_lookup",
+		PatternSpec: map[string]any{
+			"start": map[string]any{
+				"node_type": "Invoice",
+				"match": map[string]any{
+					"invoice_no": "$invoice_no",
+				},
+			},
+		},
+		ParamSchema:  []ParameterSchema{{Name: "invoice_no", Type: "string", Required: true}},
+		ReturnFields: []string{"Invoice.invoice_no"},
+	}); err != nil {
+		t.Fatalf("CreateQueryTemplate() error = %v", err)
+	}
+	if _, err := service.UpsertStatusFieldConfig(actor, actor.TenantID, "sample_finance", StatusFieldConfigRequest{
+		StatusFieldName:   "invoice_status",
+		ValidStatusValues: []string{"open", "paid"},
+	}); err != nil {
+		t.Fatalf("UpsertStatusFieldConfig() error = %v", err)
+	}
+
+	details, err := service.GetDomainDetails(actor, "sample_finance")
+	if err != nil {
+		t.Fatalf("GetDomainDetails() error = %v", err)
+	}
+	if details.Domain.ID != "sample_finance" {
+		t.Fatalf("domain details id = %q", details.Domain.ID)
+	}
+	if len(details.NodeTypes) != 1 || details.NodeTypes[0].NodeTypeName != "Invoice" {
+		t.Fatalf("node types = %#v", details.NodeTypes)
+	}
+	if len(details.QueryTemplates) != 1 || details.QueryTemplates[0].TemplateName != "invoice_lookup" {
+		t.Fatalf("query templates = %#v", details.QueryTemplates)
+	}
+	if details.StatusFieldConfig == nil || details.StatusFieldConfig.StatusFieldName != "invoice_status" {
+		t.Fatalf("status field config = %#v", details.StatusFieldConfig)
+	}
+}
+
+func TestSeedQueryTemplatesIncludesFiveLegalTemplates(t *testing.T) {
+	templates := SeedQueryTemplates()
+	if len(templates) != 5 {
+		t.Fatalf("templates len = %d, want 5", len(templates))
+	}
+	want := map[string]bool{
+		"calculator":         false,
+		"tax-routing":        false,
+		"citation-check":     false,
+		"obligation-summary": false,
+		"deadline-trace":     false,
+	}
+	for _, template := range templates {
+		if template.Status != "active" {
+			t.Fatalf("template %s status = %q, want active", template.TemplateName, template.Status)
+		}
+		if _, ok := want[template.TemplateName]; ok {
+			want[template.TemplateName] = true
+		}
+	}
+	for name, seen := range want {
+		if !seen {
+			t.Fatalf("template %q missing from seed", name)
+		}
+	}
+}
+
 func TestUpsertStatusFieldConfig(t *testing.T) {
 	service := newTestService(t)
 
@@ -240,6 +395,22 @@ func TestResolveCrossDomainRulesFiltersBySourceNodeType(t *testing.T) {
 	}
 }
 
+func TestCreateNodeTypeRejectsUnknownDomain(t *testing.T) {
+	service := newTestService(t)
+
+	_, err := service.CreateNodeType(access.Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}, "11111111-1111-1111-1111-111111111111", "unknown-domain", NodeTypeCreateRequest{
+		NodeTypeName:  "PhuLucHopDong",
+		RequiredProps: []PropertySchema{{Name: "ten", Type: "string"}},
+	})
+	if err == nil {
+		t.Fatal("CreateNodeType() error = nil, want not found")
+	}
+}
+
 func TestValidateCrossDomainTargetRejectsMismatchedDomainAndType(t *testing.T) {
 	service := newTestService(t)
 	rule := service.ResolveCrossDomainRules("noi_bo_hop_dong", "HopDongMau")[0]
@@ -249,5 +420,17 @@ func TestValidateCrossDomainTargetRejectsMismatchedDomainAndType(t *testing.T) {
 	}
 	if err := service.ValidateCrossDomainTarget(rule, "noi_bo_hop_dong", "KhoanMau"); err == nil {
 		t.Fatal("ValidateCrossDomainTarget() error = nil, want node-type validation failure")
+	}
+}
+
+func TestValidateCrossDomainTargetRejectsMissingBridgeTarget(t *testing.T) {
+	service := newTestService(t)
+	rule := service.ResolveCrossDomainRules("noi_bo_hop_dong", "HopDongMau")[0]
+
+	if err := service.ValidateCrossDomainTarget(rule, "", "PhuLucHopDong"); err == nil {
+		t.Fatal("ValidateCrossDomainTarget() error = nil, want missing domain validation failure")
+	}
+	if err := service.ValidateCrossDomainTarget(rule, "noi_bo_hop_dong", ""); err == nil {
+		t.Fatal("ValidateCrossDomainTarget() error = nil, want missing node-type validation failure")
 	}
 }
