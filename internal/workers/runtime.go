@@ -27,6 +27,8 @@ type Repository interface {
 	ListNodes() []write.NodeRecord
 	ListRelationships() []write.RelationshipRecord
 	UpdateOutboxStatus(ctx context.Context, eventID, status string, retryCount int, processedAt *time.Time) error
+	GetProjectionVersion(entityID, entityKind string) (write.ProjectionVersionRecord, bool)
+	ListProjectionVersions() []write.ProjectionVersionRecord
 }
 
 type OntologyResolver interface {
@@ -47,6 +49,10 @@ type Runtime struct {
 	mu            sync.Mutex
 	outbox        map[string]EventEnvelope
 	maxRetries    int
+}
+
+type projectionVersionWriter interface {
+	UpsertProjectionVersion(context.Context, write.ProjectionVersionRecord) error
 }
 
 func NewRuntime(store Repository, ontologyResolver OntologyResolver, cache *rediscache.Client) *Runtime {
@@ -166,6 +172,7 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 					Visibility:    node.Visibility,
 					StatusValue:   node.StatusValue,
 					IsDeleted:     node.IsDeleted,
+					SyncVersion:   node.SyncVersion,
 					Properties:    cloneMap(node.Properties),
 					CreatedAt:     node.CreatedAt,
 					UpdatedAt:     node.UpdatedAt,
@@ -175,45 +182,73 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 		if rels, err := r.graphAdapter.ListRelationships(context.Background()); err == nil {
 			for _, rel := range rels {
 				graphRelationships[rel.ID] = GraphRelationship{
-					ID:         rel.ID,
-					RelType:    rel.RelType,
-					FromNodeID: rel.FromNodeID,
-					ToNodeID:   rel.ToNodeID,
-					DomainID:   rel.DomainID,
-					Properties: cloneMap(rel.Properties),
+					ID:          rel.ID,
+					RelType:     rel.RelType,
+					FromNodeID:  rel.FromNodeID,
+					ToNodeID:    rel.ToNodeID,
+					DomainID:    rel.DomainID,
+					SyncVersion: rel.SyncVersion,
+					Properties:  cloneMap(rel.Properties),
 				}
 			}
 		}
 	}
-	vectorDocs := r.vector.SnapshotDocuments()
-	if snapshotter, ok := any(r.vectorAdapter).(interface {
-		SnapshotDocuments() map[string]vectorstore.VectorDocument
-	}); ok && snapshotter != nil {
-		vectorDocs = snapshotWorkerVectorDocuments(snapshotter.SnapshotDocuments())
+	vectorDocs := map[string]VectorDocument{}
+	if r.vectorAdapter != nil {
+		if docs, err := r.vectorAdapter.Snapshot(context.Background()); err == nil {
+			for _, doc := range docs {
+				vectorDocs[doc.NodeID] = VectorDocument{
+					NodeID:         doc.NodeID,
+					NodeType:       doc.NodeType,
+					DomainID:       doc.DomainID,
+					OwnerTenantID:  doc.OwnerTenantID,
+					OwnerAppID:     doc.OwnerAppID,
+					ACLVisibleTo:   append([]string(nil), doc.ACLVisibleTo...),
+					IsDeleted:      doc.IsDeleted,
+					StatusValue:    doc.StatusValue,
+					AuthorityScore: doc.AuthorityScore,
+					SyncVersion:    doc.SyncVersion,
+					DomainProps:    cloneMap(doc.DomainProps),
+					Embedding:      append([]float64(nil), doc.Embedding...),
+				}
+			}
+		}
 	}
 
 	for id, source := range sourceNodes {
 		graphNode, ok := graphNodes[id]
+		ledger, ledgerOk := r.store.GetProjectionVersion(id, "kg_node")
 		if !ok {
 			report.GraphDriftCount++
 			report.VectorDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "missing_projection", Details: "node missing from graph/vector projections"})
 			continue
 		}
+		expectedVersion := int64(source.DomainVersion)
+		if ledgerOk && ledger.SourceVersion > 0 {
+			expectedVersion = ledger.SourceVersion
+		}
+		if expectedVersion != 0 && graphNode.SyncVersion != expectedVersion {
+			report.GraphDriftCount++
+			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "stale_projection_version", Details: "graph node sync version does not match source version"})
+		}
 		if graphNode.IsDeleted != source.IsDeleted || graphNode.StatusValue != source.StatusValue || graphNode.NodeType != source.NodeType || graphNode.DomainID != source.DomainID {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_mismatch", Details: "graph projection does not match source node"})
 		}
-		if !reflect.DeepEqual(graphNode.Properties, source.Properties) || !reflect.DeepEqual(graphNode.ACLVisibleTo, nodeACLVisibleTo(source)) {
+		if !reflect.DeepEqual(stripSyncVersionMetadata(graphNode.Properties), source.Properties) || !reflect.DeepEqual(graphNode.ACLVisibleTo, nodeACLVisibleTo(source)) {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_payload_mismatch", Details: "graph node payload does not match source node"})
 		}
 		if doc, ok := vectorDocs[id]; !ok || doc.IsDeleted != source.IsDeleted || doc.StatusValue != source.StatusValue || doc.NodeType != source.NodeType || doc.DomainID != source.DomainID {
 			report.VectorDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_mismatch", Details: "vector projection does not match source node"})
-		} else if !reflect.DeepEqual(doc.DomainProps, source.Properties) || !reflect.DeepEqual(doc.ACLVisibleTo, nodeACLVisibleTo(source)) {
+		} else if !reflect.DeepEqual(stripSyncVersionMetadata(doc.DomainProps), source.Properties) || !reflect.DeepEqual(doc.ACLVisibleTo, nodeACLVisibleTo(source)) {
 			report.VectorDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_payload_mismatch", Details: "vector document payload does not match source node"})
+		} else if expectedVersion != 0 && doc.SyncVersion != expectedVersion {
+			report.VectorDriftCount++
+			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "stale_projection_version", Details: "vector document sync version does not match source version"})
 		}
 	}
 	for id := range graphNodes {
@@ -230,14 +265,27 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 	}
 	for id, sourceRel := range sourceRelationships {
 		graphRel, ok := graphRelationships[id]
+		ledger, ledgerOk := r.store.GetProjectionVersion(id, "kg_relationship")
 		if !ok {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "missing_relationship", Details: "relationship missing from graph projection"})
 			continue
 		}
+		expectedVersion := int64(sourceRel.DomainVersion)
+		if ledgerOk && ledger.SourceVersion > 0 {
+			expectedVersion = ledger.SourceVersion
+		}
+		if expectedVersion != 0 && graphRel.SyncVersion != expectedVersion {
+			report.GraphDriftCount++
+			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "stale_projection_version", Details: "graph relationship sync version does not match source version"})
+		}
 		if graphRel.RelType != sourceRel.RelType || graphRel.FromNodeID != sourceRel.FromNodeID || graphRel.ToNodeID != sourceRel.ToNodeID {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "relationship_mismatch", Details: "graph relationship differs from source"})
+		}
+		if !reflect.DeepEqual(stripSyncVersionMetadata(graphRel.Properties), sourceRel.Properties) {
+			report.GraphDriftCount++
+			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "relationship_payload_mismatch", Details: "graph relationship payload does not match source"})
 		}
 	}
 	for id := range graphRelationships {
@@ -246,8 +294,34 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "orphan_graph_relationship", Details: "relationship exists in graph but not source"})
 		}
 	}
+	for _, record := range r.store.ListProjectionVersions() {
+		switch record.EntityKind {
+		case "kg_node":
+			if _, ok := sourceNodes[record.EntityID]; !ok {
+				report.ProjectionVersionDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: record.EntityID, Kind: "orphan_projection_version", Details: "projection ledger contains node entry not present in source"})
+				continue
+			}
+			source := sourceNodes[record.EntityID]
+			if record.SourceVersion != int64(source.DomainVersion) {
+				report.ProjectionVersionDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: record.EntityID, Kind: "stale_projection_version", Details: "projection ledger source version differs from source node"})
+			}
+		case "kg_relationship":
+			if _, ok := sourceRelationships[record.EntityID]; !ok {
+				report.ProjectionVersionDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: record.EntityID, Kind: "orphan_projection_version", Details: "projection ledger contains relationship entry not present in source"})
+				continue
+			}
+			source := sourceRelationships[record.EntityID]
+			if record.SourceVersion != int64(source.DomainVersion) {
+				report.ProjectionVersionDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: record.EntityID, Kind: "stale_projection_version", Details: "projection ledger source version differs from source relationship"})
+			}
+		}
+	}
 
-	if report.GraphDriftCount == 0 && report.VectorDriftCount == 0 {
+	if report.GraphDriftCount == 0 && report.VectorDriftCount == 0 && report.ProjectionVersionDriftCount == 0 {
 		report.Overall = "pass"
 	} else {
 		report.Overall = "fail"
@@ -266,6 +340,7 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 		if err := r.projectNode(node); err != nil {
 			return err
 		}
+		r.updateProjectionVersion(event, node.DomainVersion, node.ID, node.CreatedAt, int64(node.DomainVersion), int64(node.DomainVersion))
 		return r.applyStatusCascade(node.DomainID, node.ID)
 	case "NODE_DELETED":
 		nodeID, _ := event.Payload["node_id"].(string)
@@ -283,36 +358,45 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 		if r.ftsAdapter != nil {
 			_ = r.ftsAdapter.Delete(context.Background(), nodeID)
 		}
-		return r.projectNode(node)
+		if err := r.projectNode(node); err != nil {
+			return err
+		}
+		r.updateProjectionVersion(event, node.DomainVersion, node.ID, node.UpdatedAt, int64(node.DomainVersion), int64(node.DomainVersion))
+		return nil
 	case "RELATIONSHIP_UPSERTED", "RELATIONSHIP_DELETED":
 		relID, _ := event.Payload["relationship_id"].(string)
 		rel, ok := r.store.GetRelationshipByID(relID)
 		if !ok {
 			return errors.New("relationship not found")
 		}
+		sourceVersion := int64(rel.DomainVersion)
 		relPayload := GraphRelationship{
-			ID:         rel.ID,
-			RelType:    rel.RelType,
-			FromNodeID: rel.FromNodeID,
-			ToNodeID:   rel.ToNodeID,
-			DomainID:   rel.DomainID,
-			Properties: cloneMap(rel.Properties),
+			ID:          rel.ID,
+			RelType:     rel.RelType,
+			FromNodeID:  rel.FromNodeID,
+			ToNodeID:    rel.ToNodeID,
+			DomainID:    rel.DomainID,
+			SyncVersion: sourceVersion,
+			Properties:  cloneMap(rel.Properties),
 		}
 		if r.graphAdapter != nil {
 			if event.EventType == "RELATIONSHIP_DELETED" {
 				_ = r.graphAdapter.DeleteRelationship(context.Background(), relID)
 			} else {
 				_ = r.graphAdapter.UpsertRelationship(context.Background(), graphstore.GraphRelationship{
-					ID:         relPayload.ID,
-					RelType:    relPayload.RelType,
-					FromNodeID: relPayload.FromNodeID,
-					ToNodeID:   relPayload.ToNodeID,
-					DomainID:   relPayload.DomainID,
-					Properties: cloneMap(relPayload.Properties),
+					ID:          relPayload.ID,
+					RelType:     relPayload.RelType,
+					FromNodeID:  relPayload.FromNodeID,
+					ToNodeID:    relPayload.ToNodeID,
+					DomainID:    relPayload.DomainID,
+					SyncVersion: sourceVersion,
+					Properties:  cloneMap(relPayload.Properties),
 				})
 			}
 		}
 		r.graph.Rels[rel.ID] = relPayload
+		r.graph.Rels[rel.ID].Properties["_kg_sync_version"] = sourceVersion
+		r.updateProjectionVersion(event, rel.DomainVersion, rel.ID, rel.CreatedAt, int64(rel.DomainVersion), 0)
 		return r.applyStatusCascade(rel.DomainID, rel.FromNodeID)
 	case "ACCESS_GRANT_CHANGED":
 		return r.handleAccessGrantChanged(event.Payload)
@@ -330,10 +414,13 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 		OwnerTenantID: node.OwnerTenantID,
 		OwnerAppID:    node.OwnerAppID,
 		ACLVisibleTo:  append([]string(nil), acl...),
+		Visibility:    node.Visibility,
 		StatusValue:   node.StatusValue,
 		IsDeleted:     node.IsDeleted,
+		SyncVersion:   int64(node.DomainVersion),
 		Properties:    cloneMap(node.Properties),
 	}
+	r.graph.Nodes[node.ID].Properties["_kg_sync_version"] = int64(node.DomainVersion)
 	if r.graphAdapter != nil {
 		_ = r.graphAdapter.UpsertNode(context.Background(), graphstore.GraphNode{
 			ID:            node.ID,
@@ -345,6 +432,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 			Visibility:    node.Visibility,
 			StatusValue:   node.StatusValue,
 			IsDeleted:     node.IsDeleted,
+			SyncVersion:   int64(node.DomainVersion),
 			Properties:    cloneMap(node.Properties),
 			CreatedAt:     node.CreatedAt,
 			UpdatedAt:     node.UpdatedAt,
@@ -378,6 +466,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 		ACLVisibleTo:  append([]string(nil), acl...),
 		IsDeleted:     node.IsDeleted,
 		StatusValue:   node.StatusValue,
+		SyncVersion:   int64(node.DomainVersion),
 		DomainProps:   cloneMap(node.Properties),
 		Embedding:     embedding,
 	}
@@ -399,6 +488,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 			IsDeleted:      doc.IsDeleted,
 			StatusValue:    doc.StatusValue,
 			AuthorityScore: doc.AuthorityScore,
+			SyncVersion:    doc.SyncVersion,
 			DomainProps:    cloneMap(doc.DomainProps),
 			Embedding:      append([]float64(nil), doc.Embedding...),
 		}); err != nil {
@@ -406,6 +496,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 		}
 	}
 	r.vector.Documents[node.ID] = doc
+	r.vector.Documents[node.ID].DomainProps["_kg_sync_version"] = int64(node.DomainVersion)
 	if !node.IsDeleted && r.ftsAdapter != nil {
 		if err := r.ftsAdapter.Index(context.Background(), buildFTSDocument(node, acl, doc.AuthorityScore)); err != nil {
 			return err
@@ -482,24 +573,26 @@ func (r *Runtime) handleAccessGrantChanged(payload map[string]any) error {
 	return nil
 }
 
-func snapshotWorkerVectorDocuments(source map[string]vectorstore.VectorDocument) map[string]VectorDocument {
-	result := make(map[string]VectorDocument, len(source))
-	for id, doc := range source {
-		result[id] = VectorDocument{
-			NodeID:         doc.NodeID,
-			NodeType:       doc.NodeType,
-			DomainID:       doc.DomainID,
-			OwnerTenantID:  doc.OwnerTenantID,
-			OwnerAppID:     doc.OwnerAppID,
-			ACLVisibleTo:   append([]string(nil), doc.ACLVisibleTo...),
-			IsDeleted:      doc.IsDeleted,
-			StatusValue:    doc.StatusValue,
-			AuthorityScore: doc.AuthorityScore,
-			DomainProps:    cloneMap(doc.DomainProps),
-			Embedding:      append([]float64(nil), doc.Embedding...),
-		}
+func (r *Runtime) updateProjectionVersion(event write.OutboxEvent, sourceVersion int, entityID string, sourceUpdatedAt time.Time, graphVersion, vectorVersion int64) {
+	writer, ok := any(r.store).(projectionVersionWriter)
+	if !ok || writer == nil || sourceVersion == 0 {
+		return
 	}
-	return result
+	record := write.ProjectionVersionRecord{
+		EntityID:        entityID,
+		EntityKind:      "kg_node",
+		SourceVersion:   int64(sourceVersion),
+		SourceEventID:   event.ID,
+		SourceUpdatedAt: sourceUpdatedAt,
+		GraphBackend:    "graph",
+		GraphVersion:    graphVersion,
+		VectorBackend:   "vector",
+		VectorVersion:   vectorVersion,
+	}
+	if event.AggregateType == "kg_relationship" {
+		record.EntityKind = "kg_relationship"
+	}
+	_ = writer.UpsertProjectionVersion(context.Background(), record)
 }
 
 func nodeACLVisibleTo(node write.NodeRecord) []string {
@@ -579,6 +672,20 @@ func removeString(values []string, item string) []string {
 	return result
 }
 
+func stripSyncVersionMetadata(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return map[string]any{}
+	}
+	result := make(map[string]any, len(values))
+	for key, value := range values {
+		if key == "_kg_sync_version" {
+			continue
+		}
+		result[key] = value
+	}
+	return result
+}
+
 type runtimeGraphAdapter struct {
 	graph *GraphStore
 }
@@ -597,8 +704,10 @@ func (a runtimeGraphAdapter) UpsertNode(_ context.Context, node graphstore.Graph
 		Visibility:    node.Visibility,
 		StatusValue:   node.StatusValue,
 		IsDeleted:     node.IsDeleted,
+		SyncVersion:   node.SyncVersion,
 		Properties:    cloneMap(node.Properties),
 	}
+	a.graph.Nodes[node.ID].Properties["_kg_sync_version"] = node.SyncVersion
 	return nil
 }
 
@@ -620,13 +729,15 @@ func (a runtimeGraphAdapter) UpsertRelationship(_ context.Context, rel graphstor
 		return nil
 	}
 	a.graph.Rels[rel.ID] = GraphRelationship{
-		ID:         rel.ID,
-		RelType:    rel.RelType,
-		FromNodeID: rel.FromNodeID,
-		ToNodeID:   rel.ToNodeID,
-		DomainID:   rel.DomainID,
-		Properties: cloneMap(rel.Properties),
+		ID:          rel.ID,
+		RelType:     rel.RelType,
+		FromNodeID:  rel.FromNodeID,
+		ToNodeID:    rel.ToNodeID,
+		DomainID:    rel.DomainID,
+		SyncVersion: rel.SyncVersion,
+		Properties:  cloneMap(rel.Properties),
 	}
+	a.graph.Rels[rel.ID].Properties["_kg_sync_version"] = rel.SyncVersion
 	return nil
 }
 
@@ -661,6 +772,7 @@ func (a runtimeGraphAdapter) ListNodes(_ context.Context) ([]graphstore.GraphNod
 			Visibility:    node.Visibility,
 			StatusValue:   node.StatusValue,
 			IsDeleted:     node.IsDeleted,
+			SyncVersion:   node.SyncVersion,
 			Properties:    cloneMap(node.Properties),
 			CreatedAt:     node.CreatedAt,
 			UpdatedAt:     node.UpdatedAt,
@@ -676,15 +788,29 @@ func (a runtimeGraphAdapter) ListRelationships(_ context.Context) ([]graphstore.
 	result := make([]graphstore.GraphRelationship, 0, len(a.graph.Rels))
 	for _, rel := range a.graph.Rels {
 		result = append(result, graphstore.GraphRelationship{
-			ID:         rel.ID,
-			RelType:    rel.RelType,
-			FromNodeID: rel.FromNodeID,
-			ToNodeID:   rel.ToNodeID,
-			DomainID:   rel.DomainID,
-			Properties: cloneMap(rel.Properties),
+			ID:          rel.ID,
+			RelType:     rel.RelType,
+			FromNodeID:  rel.FromNodeID,
+			ToNodeID:    rel.ToNodeID,
+			DomainID:    rel.DomainID,
+			SyncVersion: rel.SyncVersion,
+			Properties:  cloneMap(rel.Properties),
 		})
 	}
 	return result, nil
+}
+
+func (a runtimeGraphAdapter) ReadSyncVersion(_ context.Context, entityID string) (int64, error) {
+	if a.graph == nil {
+		return 0, nil
+	}
+	if node, ok := a.graph.Nodes[entityID]; ok {
+		return node.SyncVersion, nil
+	}
+	if rel, ok := a.graph.Rels[entityID]; ok {
+		return rel.SyncVersion, nil
+	}
+	return 0, nil
 }
 
 func runtimeGraphQuery(nodes map[string]GraphNode, rels map[string]GraphRelationship, query graphstore.GraphQuery, params map[string]any) []map[string]any {
@@ -708,6 +834,7 @@ func runtimeGraphQuery(nodes map[string]GraphNode, rels map[string]GraphRelation
 		payload["id"] = node.ID
 		payload["node_type"] = node.NodeType
 		payload["domain_id"] = node.DomainID
+		payload["_kg_sync_version"] = node.SyncVersion
 		current := node
 		ok := true
 		for idx, hop := range query.Hops {

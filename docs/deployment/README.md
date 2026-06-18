@@ -8,14 +8,17 @@ This section is for operators who need to deploy and verify `kg-service` in supp
 - [Kubernetes](./kubernetes.md) for cluster deployments that point at reachable Postgres and Redis services.
 - [VM](./vm.md) for standalone host deployment with a built binary and your own process supervisor.
 - [Integration Validation](./integration-test.md) for the repeatable post-deploy smoke and integration check.
+- [User Deployment Guide](../guides/deployment.md) for task-oriented deployment and validation steps.
 
 ## What Is Shared
 
 - The HTTP service listens on `KG_HTTP_HOST:KG_HTTP_PORT`, with `0.0.0.0:8082` as the bootstrap default.
 - The service always needs reachable Postgres and Redis endpoints because bootstrap opens both on startup.
-- The current runtime keeps access and ontology bootstrap layers in memory, while the deployment docs focus on the runtime and connectivity pieces.
+- The runtime profile is selected with `KG_RUNTIME_PROFILE`, with supported profiles such as `pgvector-memgraph`, `pgvector-neo4j`, `qdrant-memgraph`, `qdrant-neo4j`, `milvus-neo4j`, and `qdrant-nebula`.
+- `scripts/validate-runtime-profile.sh` is the post-deploy smoke entrypoint for write, read, search, integrity, and reconcile checks.
 - `GET /healthz` is public; protected routes still require `Authorization: Bearer <api_key>`.
 - The repository includes a `Makefile` with repeatable build, run, deploy, and validation targets.
+- The repository also includes `docs/requirements/` for PRD, URD, and SRS references.
 
 ## What To Read Next
 

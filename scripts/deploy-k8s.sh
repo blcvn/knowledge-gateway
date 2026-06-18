@@ -7,6 +7,18 @@ k8s_dir="${repo_root}/deploy/k8s"
 namespace="${KG_NAMESPACE:-kg-service}"
 image="${KG_IMAGE:-kg-service:local}"
 
+# shellcheck source=runtime-profile.sh
+source "${repo_root}/scripts/runtime-profile.sh"
+
+if [[ -z "${KG_RUNTIME_PROFILE:-}" ]]; then
+  echo "KG_RUNTIME_PROFILE is required for the Kubernetes deployment path" >&2
+  exit 1
+fi
+
+if ! kg_runtime_profile_defaults "${KG_RUNTIME_PROFILE}"; then
+  exit 1
+fi
+
 required_vars=(
   KG_POSTGRES_HOST
   KG_POSTGRES_PASSWORD
@@ -57,6 +69,14 @@ sed \
   -e "s|__KG_REDIS_HOST__|$(escape_sed_replacement "${KG_REDIS_HOST}")|g" \
   -e "s|__KG_REDIS_PORT__|$(escape_sed_replacement "${kg_redis_port}")|g" \
   -e "s|__KG_REDIS_DB__|$(escape_sed_replacement "${kg_redis_db}")|g" \
+  -e "s|__KG_RUNTIME_PROFILE__|$(escape_sed_replacement "${KG_RUNTIME_PROFILE}")|g" \
+  -e "s|__KG_GRAPH_ADAPTER__|$(escape_sed_replacement "${GRAPH_ADAPTER}")|g" \
+  -e "s|__KG_GRAPH_ENDPOINT__|$(escape_sed_replacement "${KG_GRAPH_ENDPOINT:-}")|g" \
+  -e "s|__KG_VECTOR_ADAPTER__|$(escape_sed_replacement "${VECTOR_ADAPTER}")|g" \
+  -e "s|__KG_VECTOR_ENDPOINT__|$(escape_sed_replacement "${KG_VECTOR_ENDPOINT:-}")|g" \
+  -e "s|__KG_VECTOR_COLLECTION__|$(escape_sed_replacement "${KG_VECTOR_COLLECTION:-kg_vectors}")|g" \
+  -e "s|__KG_FTS_ADAPTER__|$(escape_sed_replacement "${FTS_ADAPTER}")|g" \
+  -e "s|__KG_EMBEDDING_PROVIDER__|$(escape_sed_replacement "${EMBEDDING_PROVIDER}")|g" \
   "${k8s_dir}/deployment.yaml" > "${rendered}"
 
 sed \

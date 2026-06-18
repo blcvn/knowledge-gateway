@@ -475,6 +475,10 @@ func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor acces
 		return RelationshipCreateResponse{}, errors.Join(ErrValidation, err)
 	}
 
+	version, err := s.ontology.GetCurrentVersion(req.DomainID)
+	if err != nil {
+		return RelationshipCreateResponse{}, err
+	}
 	now := s.now()
 	relID := newID("rel")
 	rel := RelationshipRecord{
@@ -485,6 +489,7 @@ func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor acces
 		DomainID:      req.DomainID,
 		OwnerTenantID: actor.TenantID,
 		OwnerAppID:    actor.AppID,
+		DomainVersion: version.Version,
 		Properties:    req.Properties,
 		CreatedAt:     now,
 	}
@@ -503,6 +508,7 @@ func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor acces
 				"from_node_id":    req.FromNodeID,
 				"to_node_id":      req.ToNodeID,
 				"rel_type":        req.RelType,
+				"domain_version":  version.Version,
 				"tx_scope":        scope.Statements,
 			},
 			Status:     "PENDING",

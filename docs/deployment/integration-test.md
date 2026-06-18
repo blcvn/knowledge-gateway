@@ -2,6 +2,10 @@
 
 Use this script after a deployment to verify the current service health and a core authenticated read path.
 
+For the full profile-aware smoke flow, including write, search, integrity, and reconcile checks, use `scripts/validate-runtime-profile.sh`.
+
+For a local Compose-backed smoke environment, use `make deploy-compose-integration` first.
+
 ## Required Inputs
 
 - `KG_BASE_URL` for the deployed service, such as `http://127.0.0.1:8082`

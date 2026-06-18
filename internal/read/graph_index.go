@@ -13,6 +13,8 @@ import (
 )
 
 type ProjectionStore interface {
+	GetNodeByID(id string) (write.NodeRecord, bool)
+	GetRelationshipByID(id string) (write.RelationshipRecord, bool)
 	ListNodes() []write.NodeRecord
 	ListRelationships() []write.RelationshipRecord
 }
@@ -76,6 +78,7 @@ func (i ProjectionGraphIndex) GetNode(actor access.Identity, nodeID string, visi
 			OwnerTenantID: node.OwnerTenantID,
 			OwnerAppID:    node.OwnerAppID,
 			Visibility:    node.Visibility,
+			SyncVersion:   node.SyncVersion,
 			Properties:    node.Properties,
 			Relationships: relationships,
 			CreatedAt:     node.CreatedAt,
@@ -154,6 +157,7 @@ func (p projectionGraphAdapter) ExecuteQuery(_ context.Context, query graphstore
 		payload["id"] = node.ID
 		payload["node_type"] = node.NodeType
 		payload["domain_id"] = node.DomainID
+		payload["_kg_sync_version"] = node.DomainVersion
 		current := node
 		ok := true
 		for idx, hop := range query.Hops {
@@ -197,6 +201,7 @@ func (p projectionGraphAdapter) ListNodes(context.Context) ([]graphstore.GraphNo
 			Visibility:    node.Visibility,
 			StatusValue:   node.StatusValue,
 			IsDeleted:     node.IsDeleted,
+			SyncVersion:   int64(node.DomainVersion),
 			Properties:    cloneMap(node.Properties),
 			CreatedAt:     node.CreatedAt,
 			UpdatedAt:     node.UpdatedAt,
@@ -246,15 +251,26 @@ func (p projectionGraphAdapter) ListRelationships(context.Context) ([]graphstore
 	result := make([]graphstore.GraphRelationship, 0, len(rels))
 	for _, rel := range rels {
 		result = append(result, graphstore.GraphRelationship{
-			ID:         rel.ID,
-			RelType:    rel.RelType,
-			FromNodeID: rel.FromNodeID,
-			ToNodeID:   rel.ToNodeID,
-			DomainID:   rel.DomainID,
-			Properties: cloneMap(rel.Properties),
+			ID:          rel.ID,
+			RelType:     rel.RelType,
+			FromNodeID:  rel.FromNodeID,
+			ToNodeID:    rel.ToNodeID,
+			DomainID:    rel.DomainID,
+			SyncVersion: int64(rel.DomainVersion),
+			Properties:  cloneMap(rel.Properties),
 		})
 	}
 	return result, nil
+}
+
+func (p projectionGraphAdapter) ReadSyncVersion(_ context.Context, entityID string) (int64, error) {
+	if node, ok := p.store.GetNodeByID(entityID); ok {
+		return int64(node.DomainVersion), nil
+	}
+	if rel, ok := p.store.GetRelationshipByID(entityID); ok {
+		return int64(rel.DomainVersion), nil
+	}
+	return 0, nil
 }
 
 func visibilityFromParams(params map[string]any, key string) map[string]struct{} {

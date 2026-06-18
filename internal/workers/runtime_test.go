@@ -10,6 +10,7 @@ import (
 	"kg-service/internal/config"
 	"kg-service/internal/ontology"
 	"kg-service/internal/platform/fts"
+	"kg-service/internal/platform/graphstore"
 	"kg-service/internal/platform/rediscache"
 	"kg-service/internal/platform/session"
 	"kg-service/internal/platform/vectorstore"
@@ -272,6 +273,75 @@ func TestRuntimeReconcileReportsReplicaDrift(t *testing.T) {
 	}
 }
 
+func TestRuntimeReconcileReportsStaleProjectionVersion(t *testing.T) {
+	store := &versionFixtureStore{
+		nodes: []write.NodeRecord{
+			{
+				ID:            "node-1",
+				NodeType:      "Doc",
+				DomainID:      "d1",
+				OwnerTenantID: "tenant-a",
+				OwnerAppID:    "app-a",
+				ACLVisibleTo:  []string{"tenant-a:app-a"},
+				Properties:    map[string]any{"title": "alpha"},
+				DomainVersion: 42,
+			},
+		},
+		rels: []write.RelationshipRecord{
+			{
+				ID:            "rel-1",
+				RelType:       "LINKS",
+				FromNodeID:    "node-1",
+				ToNodeID:      "node-1",
+				DomainID:      "d1",
+				OwnerTenantID: "tenant-a",
+				OwnerAppID:    "app-a",
+				DomainVersion: 42,
+			},
+		},
+		projectionVersions: []write.ProjectionVersionRecord{
+			{
+				EntityID:      "node-1",
+				EntityKind:    "kg_node",
+				SourceVersion: 42,
+				SourceEventID: "evt-node-1",
+			},
+			{
+				EntityID:      "orphan-ledger-node",
+				EntityKind:    "kg_node",
+				SourceVersion: 11,
+				SourceEventID: "evt-orphan",
+			},
+		},
+	}
+	runtime := &Runtime{
+		store: store,
+		graphAdapter: staleVersionGraphAdapter{
+			nodes: []graphstore.GraphNode{{ID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, Properties: map[string]any{"title": "alpha"}, SyncVersion: 41}},
+			rels:  []graphstore.GraphRelationship{{ID: "rel-1", RelType: "LINKS", FromNodeID: "node-1", ToNodeID: "node-1", DomainID: "d1", SyncVersion: 41}},
+		},
+		vectorAdapter: staleVersionVectorAdapter{
+			docs: []vectorstore.VectorDocument{{NodeID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, DomainProps: map[string]any{"title": "alpha"}, SyncVersion: 41}},
+		},
+		graph:  &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
+		vector: &VectorStore{Documents: map[string]VectorDocument{}},
+	}
+
+	report := runtime.Reconcile()
+	if report.Overall != "fail" {
+		t.Fatalf("overall = %q, want fail", report.Overall)
+	}
+	if !containsIssueKind(report.Issues, "stale_projection_version") {
+		t.Fatalf("issues = %#v, want stale_projection_version", report.Issues)
+	}
+	if report.ProjectionVersionDriftCount == 0 {
+		t.Fatal("projection_version_drift_count = 0, want ledger drift")
+	}
+	if !containsIssueKind(report.Issues, "orphan_projection_version") {
+		t.Fatalf("issues = %#v, want orphan_projection_version", report.Issues)
+	}
+}
+
 type noopOntology struct{}
 
 func (noopOntology) GetStatusFieldConfig(domainID string) (*ontology.StatusFieldConfig, error) {
@@ -291,6 +361,10 @@ func (f *failingStore) GetRelationshipByID(id string) (write.RelationshipRecord,
 }
 func (f *failingStore) ListNodes() []write.NodeRecord                 { return nil }
 func (f *failingStore) ListRelationships() []write.RelationshipRecord { return nil }
+func (f *failingStore) GetProjectionVersion(entityID, entityKind string) (write.ProjectionVersionRecord, bool) {
+	return write.ProjectionVersionRecord{}, false
+}
+func (f *failingStore) ListProjectionVersions() []write.ProjectionVersionRecord { return nil }
 func (f *failingStore) UpdateOutboxStatus(ctx context.Context, eventID, status string, retryCount int, processedAt *time.Time) error {
 	for i := range f.events {
 		if f.events[i].ID != eventID {
@@ -302,6 +376,96 @@ func (f *failingStore) UpdateOutboxStatus(ctx context.Context, eventID, status s
 		return nil
 	}
 	return nil
+}
+
+type versionFixtureStore struct {
+	nodes              []write.NodeRecord
+	rels               []write.RelationshipRecord
+	projectionVersions []write.ProjectionVersionRecord
+}
+
+func (s *versionFixtureStore) ListOutboxEvents() []write.OutboxEvent { return nil }
+func (s *versionFixtureStore) GetNodeByID(id string) (write.NodeRecord, bool) {
+	for _, node := range s.nodes {
+		if node.ID == id {
+			return node, true
+		}
+	}
+	return write.NodeRecord{}, false
+}
+func (s *versionFixtureStore) GetRelationshipByID(id string) (write.RelationshipRecord, bool) {
+	for _, rel := range s.rels {
+		if rel.ID == id {
+			return rel, true
+		}
+	}
+	return write.RelationshipRecord{}, false
+}
+func (s *versionFixtureStore) ListNodes() []write.NodeRecord {
+	return append([]write.NodeRecord(nil), s.nodes...)
+}
+func (s *versionFixtureStore) ListRelationships() []write.RelationshipRecord {
+	return append([]write.RelationshipRecord(nil), s.rels...)
+}
+func (s *versionFixtureStore) GetProjectionVersion(entityID, entityKind string) (write.ProjectionVersionRecord, bool) {
+	for _, record := range s.projectionVersions {
+		if record.EntityID == entityID && record.EntityKind == entityKind {
+			return record, true
+		}
+	}
+	return write.ProjectionVersionRecord{}, false
+}
+func (s *versionFixtureStore) ListProjectionVersions() []write.ProjectionVersionRecord {
+	return append([]write.ProjectionVersionRecord(nil), s.projectionVersions...)
+}
+func (s *versionFixtureStore) UpdateOutboxStatus(ctx context.Context, eventID, status string, retryCount int, processedAt *time.Time) error {
+	return nil
+}
+
+type staleVersionGraphAdapter struct {
+	nodes []graphstore.GraphNode
+	rels  []graphstore.GraphRelationship
+}
+
+func (a staleVersionGraphAdapter) UpsertNode(ctx context.Context, node graphstore.GraphNode) error {
+	return nil
+}
+func (a staleVersionGraphAdapter) DeleteNode(ctx context.Context, nodeID string) error { return nil }
+func (a staleVersionGraphAdapter) UpsertRelationship(ctx context.Context, rel graphstore.GraphRelationship) error {
+	return nil
+}
+func (a staleVersionGraphAdapter) DeleteRelationship(ctx context.Context, relID string) error {
+	return nil
+}
+func (a staleVersionGraphAdapter) ExecuteQuery(ctx context.Context, query graphstore.GraphQuery, params map[string]any) ([]map[string]any, error) {
+	return nil, nil
+}
+func (a staleVersionGraphAdapter) ListNodes(ctx context.Context) ([]graphstore.GraphNode, error) {
+	return append([]graphstore.GraphNode(nil), a.nodes...), nil
+}
+func (a staleVersionGraphAdapter) ListRelationships(ctx context.Context) ([]graphstore.GraphRelationship, error) {
+	return append([]graphstore.GraphRelationship(nil), a.rels...), nil
+}
+func (a staleVersionGraphAdapter) ReadSyncVersion(ctx context.Context, entityID string) (int64, error) {
+	return 41, nil
+}
+
+type staleVersionVectorAdapter struct {
+	docs []vectorstore.VectorDocument
+}
+
+func (a staleVersionVectorAdapter) Upsert(ctx context.Context, doc vectorstore.VectorDocument) error {
+	return nil
+}
+func (a staleVersionVectorAdapter) Delete(ctx context.Context, nodeID string) error { return nil }
+func (a staleVersionVectorAdapter) ANN(ctx context.Context, query []float64, filter vectorstore.VectorFilter, opts vectorstore.ANNOptions) ([]vectorstore.VectorResult, error) {
+	return nil, nil
+}
+func (a staleVersionVectorAdapter) Snapshot(ctx context.Context) ([]vectorstore.VectorDocument, error) {
+	return append([]vectorstore.VectorDocument(nil), a.docs...), nil
+}
+func (a staleVersionVectorAdapter) ReadSyncVersion(ctx context.Context, entityID string) (int64, error) {
+	return 41, nil
 }
 
 type workerFixture struct {

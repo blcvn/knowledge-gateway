@@ -43,14 +43,22 @@ spec:
               value: "__KG_REDIS_PORT__"
             - name: KG_REDIS_DB
               value: "__KG_REDIS_DB__"
+            - name: KG_RUNTIME_PROFILE
+              value: __KG_RUNTIME_PROFILE__
             - name: EMBEDDING_PROVIDER
-              value: deterministic
+              value: __KG_EMBEDDING_PROVIDER__
             - name: VECTOR_ADAPTER
-              value: memory
+              value: __KG_VECTOR_ADAPTER__
+            - name: KG_VECTOR_ENDPOINT
+              value: __KG_VECTOR_ENDPOINT__
+            - name: KG_VECTOR_COLLECTION
+              value: __KG_VECTOR_COLLECTION__
             - name: GRAPH_ADAPTER
-              value: memory
+              value: __KG_GRAPH_ADAPTER__
+            - name: KG_GRAPH_ENDPOINT
+              value: __KG_GRAPH_ENDPOINT__
             - name: FTS_ADAPTER
-              value: memory
+              value: __KG_FTS_ADAPTER__
           readinessProbe:
             httpGet:
               path: /healthz

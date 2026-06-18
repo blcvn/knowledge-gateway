@@ -7,6 +7,7 @@ Use the VM path when you want to run `kg-service` on a standalone host under you
 - a locally built `kg-service` binary
 - the HTTP listener on `KG_HTTP_HOST:KG_HTTP_PORT`
 - connectivity to reachable Postgres and Redis endpoints
+- a runtime profile selected from `KG_RUNTIME_PROFILE`
 
 ## Prerequisites
 
@@ -22,6 +23,8 @@ make deploy-vm
 ```
 
 The script builds the binary when needed and starts it with the current environment.
+
+Set `KG_RUNTIME_PROFILE` before starting the service to choose the graph and vector adapter pair.
 
 ## Apply Schema
 
@@ -39,6 +42,8 @@ KG_BASE_URL=http://127.0.0.1:8082 \
 KG_API_KEY=... \
 make integration-test
 ```
+
+For the full runtime profile validation flow, run `scripts/validate-runtime-profile.sh` after the service is reachable.
 
 ## Notes
 

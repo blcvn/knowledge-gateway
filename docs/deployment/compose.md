@@ -8,6 +8,12 @@ Use Docker Compose when you want the fastest self-contained deployment path for 
 - Redis for the current bootstrap runtime
 - `kg-service` built from the repository Dockerfile
 - a one-shot migration container that applies the SQL schema before the app starts
+- a selected runtime profile via `KG_RUNTIME_PROFILE`, defaulting to `pgvector-memgraph`
+
+There are now two dedicated Compose entrypoints:
+
+- `deploy/compose/integration-test/docker-compose.yml` for the repeatable smoke path behind `make deploy-compose-integration`
+- `deploy/compose/runtime-validation/docker-compose.yml` for the multi-backend validation path behind `make deploy-compose-runtime-validation`
 
 ## Prerequisites
 
@@ -22,6 +28,12 @@ make deploy-compose
 
 The script runs the Compose file under `deploy/compose/` and waits for the application stack to come up.
 
+To switch runtime profiles, set `KG_RUNTIME_PROFILE` before running the script. Supported profiles are documented in `docs/deployment/README.md`.
+
+For the integration smoke stack, run `make deploy-compose-integration`.
+
+For the runtime validation stack with Neo4j, Memgraph, Nebula, Qdrant, Milvus, and Postgres available together, run `make deploy-compose-runtime-validation`.
+
 ## Verify The Deployment
 
 ```bash
@@ -30,8 +42,9 @@ make integration-test
 
 For the default bootstrap smoke path, keep the sample environment variables described in the integration validation guide.
 
+To validate a deployed profile end to end, use `scripts/validate-runtime-profile.sh` with `KG_BASE_URL` and `KG_API_KEY`.
+
 ## Notes
 
-- The Compose path is the only supported path in this change that provisions Postgres and Redis together with the app.
+- The Compose path now selects a named runtime profile instead of silently booting memory adapters.
 - The migration container applies the repository SQL schema before the service starts.
-- The app still uses the current bootstrap defaults for memory-backed access and ontology slices.

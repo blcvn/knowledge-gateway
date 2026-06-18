@@ -57,25 +57,48 @@ func embeddingChain(cfg config.Config) []string {
 	return labels
 }
 
-func buildVectorAdapter(kind string, db *sql.DB) (vectorstore.VectorAdapter, error) {
-	switch kind {
+func buildVectorAdapter(cfg config.Config, db *sql.DB) (vectorstore.VectorAdapter, error) {
+	switch cfg.Vector.Kind {
 	case "", "memory":
 		return vectorstore.NewInMemoryVectorAdapter(), nil
 	case "pgvector":
 		return vectorstore.NewPgVectorAdapter(db), nil
+	case "qdrant":
+		return vectorstore.NewQdrantVectorAdapter(vectorstore.QdrantConfig{
+			Endpoint:   cfg.Vector.Endpoint,
+			Collection: cfg.Vector.Collection,
+		}), nil
+	case "milvus":
+		return vectorstore.NewMilvusVectorAdapter(vectorstore.MilvusConfig{
+			Endpoint:   cfg.Vector.Endpoint,
+			Collection: cfg.Vector.Collection,
+		}), nil
 	default:
-		return nil, fmt.Errorf("unsupported vector adapter: %s", kind)
+		return nil, fmt.Errorf("unsupported vector adapter: %s", cfg.Vector.Kind)
 	}
 }
 
-func buildGraphAdapter(kind string) (graphstore.GraphAdapter, error) {
-	switch kind {
+func buildGraphAdapter(cfg config.Config) (graphstore.GraphAdapter, error) {
+	switch cfg.Graph.Kind {
 	case "", "memory":
 		return graphstore.NewInMemoryGraphAdapter(), nil
 	case "neo4j":
-		return nil, fmt.Errorf("graph adapter neo4j is not wired in bootstrap yet")
+		return graphstore.NewNeo4jGraphAdapter(graphstore.CypherConfig{
+			Endpoint: cfg.Graph.Endpoint,
+			Database: cfg.Graph.Database,
+		}), nil
+	case "memgraph":
+		return graphstore.NewMemgraphGraphAdapter(graphstore.CypherConfig{
+			Endpoint: cfg.Graph.Endpoint,
+			Database: cfg.Graph.Database,
+		}), nil
+	case "nebula":
+		return graphstore.NewNebulaGraphAdapter(graphstore.CypherConfig{
+			Endpoint: cfg.Graph.Endpoint,
+			Database: cfg.Graph.Database,
+		}), nil
 	default:
-		return nil, fmt.Errorf("unsupported graph adapter: %s", kind)
+		return nil, fmt.Errorf("unsupported graph adapter: %s", cfg.Graph.Kind)
 	}
 }
 

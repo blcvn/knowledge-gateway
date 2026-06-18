@@ -146,7 +146,7 @@ func (r *Repository) ListNodes() []write.NodeRecord {
 
 func (r *Repository) GetRelationshipByID(id string) (write.RelationshipRecord, bool) {
 	row := r.queryRow(context.Background(), `
-		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, properties, created_at
+		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, created_at
 		FROM kg_relationships
 		WHERE id = $1
 	`, id)
@@ -159,7 +159,7 @@ func (r *Repository) GetRelationshipByID(id string) (write.RelationshipRecord, b
 
 func (r *Repository) ListRelationships() []write.RelationshipRecord {
 	rows, err := r.query(context.Background(), `
-		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, properties, created_at
+		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, created_at
 		FROM kg_relationships
 		ORDER BY created_at, id
 	`)
@@ -211,9 +211,9 @@ func (r *Repository) insertNode(ctx context.Context, node write.NodeRecord) erro
 func (r *Repository) insertRelationship(ctx context.Context, rel write.RelationshipRecord) error {
 	_, err := r.exec(ctx, `
 		INSERT INTO kg_relationships (
-			id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, properties, is_deleted, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, $9)
-	`, rel.ID, rel.RelType, rel.FromNodeID, rel.ToNodeID, rel.DomainID, rel.OwnerTenantID, nullString(rel.OwnerAppID), rel.Properties, rel.CreatedAt)
+			id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, is_deleted, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10)
+	`, rel.ID, rel.RelType, rel.FromNodeID, rel.ToNodeID, rel.DomainID, rel.OwnerTenantID, nullString(rel.OwnerAppID), rel.DomainVersion, rel.Properties, rel.CreatedAt)
 	return err
 }
 
@@ -239,6 +239,89 @@ func (r *Repository) UpdateOutboxStatus(ctx context.Context, eventID, status str
 		WHERE id = $1
 	`, eventID, status, retryCount, processedAt)
 	return err
+}
+
+func (r *Repository) UpsertProjectionVersion(ctx context.Context, record write.ProjectionVersionRecord) error {
+	_, err := r.exec(ctx, `
+		INSERT INTO kg_projection_versions (
+			entity_id, entity_kind, source_version, source_event_id, source_updated_at,
+			graph_backend, graph_version, graph_synced_at,
+			vector_backend, vector_version, vector_synced_at
+		) VALUES (
+			$1, $2, $3, $4, $5,
+			$6, $7, NOW(),
+			$8, $9, NOW()
+		)
+		ON CONFLICT (entity_id, entity_kind) DO UPDATE SET
+			source_version = EXCLUDED.source_version,
+			source_event_id = EXCLUDED.source_event_id,
+			source_updated_at = EXCLUDED.source_updated_at,
+			graph_backend = EXCLUDED.graph_backend,
+			graph_version = EXCLUDED.graph_version,
+			graph_synced_at = EXCLUDED.graph_synced_at,
+			vector_backend = EXCLUDED.vector_backend,
+			vector_version = EXCLUDED.vector_version,
+			vector_synced_at = EXCLUDED.vector_synced_at
+	`, record.EntityID, record.EntityKind, record.SourceVersion, record.SourceEventID, record.SourceUpdatedAt, record.GraphBackend, nullInt64(record.GraphVersion), record.VectorBackend, nullInt64(record.VectorVersion))
+	return err
+}
+
+func (r *Repository) GetProjectionVersion(entityID, entityKind string) (write.ProjectionVersionRecord, bool) {
+	row := r.queryRow(context.Background(), `
+		SELECT entity_id, entity_kind, source_version, source_event_id, source_updated_at,
+		       COALESCE(graph_backend, ''), COALESCE(graph_version, 0),
+		       COALESCE(vector_backend, ''), COALESCE(vector_version, 0)
+		FROM kg_projection_versions
+		WHERE entity_id = $1 AND entity_kind = $2
+	`, entityID, entityKind)
+	var record write.ProjectionVersionRecord
+	if err := row.Scan(
+		&record.EntityID,
+		&record.EntityKind,
+		&record.SourceVersion,
+		&record.SourceEventID,
+		&record.SourceUpdatedAt,
+		&record.GraphBackend,
+		&record.GraphVersion,
+		&record.VectorBackend,
+		&record.VectorVersion,
+	); err != nil {
+		return write.ProjectionVersionRecord{}, false
+	}
+	return record, true
+}
+
+func (r *Repository) ListProjectionVersions() []write.ProjectionVersionRecord {
+	rows, err := r.query(context.Background(), `
+		SELECT entity_id, entity_kind, source_version, source_event_id, source_updated_at,
+		       COALESCE(graph_backend, ''), COALESCE(graph_version, 0),
+		       COALESCE(vector_backend, ''), COALESCE(vector_version, 0)
+		FROM kg_projection_versions
+		ORDER BY entity_kind, entity_id
+	`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	result := make([]write.ProjectionVersionRecord, 0)
+	for rows.Next() {
+		var record write.ProjectionVersionRecord
+		if err := rows.Scan(
+			&record.EntityID,
+			&record.EntityKind,
+			&record.SourceVersion,
+			&record.SourceEventID,
+			&record.SourceUpdatedAt,
+			&record.GraphBackend,
+			&record.GraphVersion,
+			&record.VectorBackend,
+			&record.VectorVersion,
+		); err != nil {
+			continue
+		}
+		result = append(result, record)
+	}
+	return result
 }
 
 func (r *Repository) exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
@@ -315,6 +398,7 @@ func scanRelationship(row rowScanner) (write.RelationshipRecord, error) {
 		&rel.DomainID,
 		&rel.OwnerTenantID,
 		&ownerApp,
+		&rel.DomainVersion,
 		&properties,
 		&rel.CreatedAt,
 	); err != nil {
@@ -376,6 +460,13 @@ func normalizeWriteError(err error) error {
 
 func nullString(value string) any {
 	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func nullInt64(value int64) any {
+	if value == 0 {
 		return nil
 	}
 	return value

@@ -38,12 +38,13 @@ INSERT INTO kg_vector_documents (
     is_deleted,
     status_value,
     authority_score,
+    sync_version,
     domain_props,
     embedding,
     created_at,
     updated_at
 ) VALUES (
-    $1, $2, $3, $4, NULLIF($5, ''), $6, $7, NULLIF($8, ''), $9, $10::jsonb, $11::vector, NOW(), NOW()
+    $1, $2, $3, $4, NULLIF($5, ''), $6, $7, NULLIF($8, ''), $9, $10, $11::jsonb, $12::vector, NOW(), NOW()
 )
 ON CONFLICT (node_id) DO UPDATE SET
     node_type = EXCLUDED.node_type,
@@ -54,10 +55,11 @@ ON CONFLICT (node_id) DO UPDATE SET
     is_deleted = EXCLUDED.is_deleted,
     status_value = EXCLUDED.status_value,
     authority_score = EXCLUDED.authority_score,
+    sync_version = EXCLUDED.sync_version,
     domain_props = EXCLUDED.domain_props,
     embedding = EXCLUDED.embedding,
     updated_at = NOW()
-`, doc.NodeID, doc.NodeType, doc.DomainID, doc.OwnerTenantID, doc.OwnerAppID, doc.ACLVisibleTo, doc.IsDeleted, doc.StatusValue, doc.AuthorityScore, payload, vectorLiteral(doc.Embedding))
+`, doc.NodeID, doc.NodeType, doc.DomainID, doc.OwnerTenantID, doc.OwnerAppID, doc.ACLVisibleTo, doc.IsDeleted, doc.StatusValue, doc.AuthorityScore, doc.SyncVersion, payload, vectorLiteral(doc.Embedding))
 	return err
 }
 
@@ -97,6 +99,7 @@ func (a *PgVectorAdapter) ANN(ctx context.Context, query []float64, filter Vecto
 			&doc.IsDeleted,
 			&doc.StatusValue,
 			&doc.AuthorityScore,
+			&doc.SyncVersion,
 			&propsRaw,
 			&updatedAt,
 			&score,
@@ -115,6 +118,80 @@ func (a *PgVectorAdapter) ANN(ctx context.Context, query []float64, filter Vecto
 		return nil, err
 	}
 	return results, nil
+}
+
+func (a *PgVectorAdapter) Snapshot(ctx context.Context) ([]VectorDocument, error) {
+	if a == nil || a.db == nil {
+		return nil, errors.New("pgvector adapter is not configured")
+	}
+	rows, err := a.db.QueryContext(ctx, `
+SELECT
+    node_id,
+    node_type,
+    domain_id,
+    owner_tenant_id,
+    COALESCE(owner_app_id::text, '') AS owner_app_id,
+    COALESCE(to_jsonb(acl_visible_to), '[]'::jsonb) AS acl_visible_to,
+    is_deleted,
+    COALESCE(status_value, '') AS status_value,
+    authority_score,
+    sync_version,
+    domain_props,
+    updated_at
+FROM kg_vector_documents
+ORDER BY created_at, node_id
+`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]VectorDocument, 0)
+	for rows.Next() {
+		var doc VectorDocument
+		var propsRaw []byte
+		var aclRaw []byte
+		var updatedAt time.Time
+		if err := rows.Scan(
+			&doc.NodeID,
+			&doc.NodeType,
+			&doc.DomainID,
+			&doc.OwnerTenantID,
+			&doc.OwnerAppID,
+			&aclRaw,
+			&doc.IsDeleted,
+			&doc.StatusValue,
+			&doc.AuthorityScore,
+			&doc.SyncVersion,
+			&propsRaw,
+			&updatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if len(aclRaw) > 0 {
+			_ = json.Unmarshal(aclRaw, &doc.ACLVisibleTo)
+		}
+		if len(propsRaw) > 0 {
+			_ = json.Unmarshal(propsRaw, &doc.DomainProps)
+		}
+		doc.Embedding = nil
+		result = append(result, doc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (a *PgVectorAdapter) ReadSyncVersion(ctx context.Context, entityID string) (int64, error) {
+	if a == nil || a.db == nil {
+		return 0, errors.New("pgvector adapter is not configured")
+	}
+	row := a.db.QueryRowContext(ctx, `SELECT COALESCE(sync_version, 0) FROM kg_vector_documents WHERE node_id = $1`, entityID)
+	var version int64
+	if err := row.Scan(&version); err != nil {
+		return 0, err
+	}
+	return version, nil
 }
 
 func (a *PgVectorAdapter) buildANNStatement(query []float64, filter VectorFilter, opts ANNOptions) (string, []any) {
@@ -168,6 +245,7 @@ WITH ranked AS (
         is_deleted,
         COALESCE(status_value, '') AS status_value,
         authority_score,
+        sync_version,
         domain_props,
         updated_at,
         1 - (%s) AS score
@@ -186,6 +264,7 @@ SELECT
     is_deleted,
     status_value,
     authority_score,
+    sync_version,
     domain_props,
     updated_at,
     score

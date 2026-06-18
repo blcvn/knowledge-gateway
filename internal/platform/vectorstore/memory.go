@@ -20,6 +20,10 @@ func NewInMemoryVectorAdapter() *InMemoryVectorAdapter {
 func (a *InMemoryVectorAdapter) Upsert(_ context.Context, doc VectorDocument) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if doc.DomainProps == nil {
+		doc.DomainProps = map[string]any{}
+	}
+	doc.DomainProps["_kg_sync_version"] = doc.SyncVersion
 	a.docs[doc.NodeID] = doc
 	return nil
 }
@@ -39,6 +43,25 @@ func (a *InMemoryVectorAdapter) SnapshotDocuments() map[string]VectorDocument {
 		result[id] = doc
 	}
 	return result
+}
+
+func (a *InMemoryVectorAdapter) Snapshot(_ context.Context) ([]VectorDocument, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	result := make([]VectorDocument, 0, len(a.docs))
+	for _, doc := range a.docs {
+		result = append(result, doc)
+	}
+	return result, nil
+}
+
+func (a *InMemoryVectorAdapter) ReadSyncVersion(_ context.Context, entityID string) (int64, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if doc, ok := a.docs[entityID]; ok {
+		return doc.SyncVersion, nil
+	}
+	return 0, nil
 }
 
 func (a *InMemoryVectorAdapter) ANN(_ context.Context, query []float64, filter VectorFilter, opts ANNOptions) ([]VectorResult, error) {

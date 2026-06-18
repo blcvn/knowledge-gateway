@@ -24,6 +24,8 @@ func NewInMemoryGraphAdapter() *InMemoryGraphAdapter {
 func (a *InMemoryGraphAdapter) UpsertNode(_ context.Context, node GraphNode) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	node.Properties = clone(node.Properties)
+	node.Properties["_kg_sync_version"] = node.SyncVersion
 	a.nodes[node.ID] = node
 	return nil
 }
@@ -43,6 +45,8 @@ func (a *InMemoryGraphAdapter) DeleteNode(_ context.Context, nodeID string) erro
 func (a *InMemoryGraphAdapter) UpsertRelationship(_ context.Context, rel GraphRelationship) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	rel.Properties = clone(rel.Properties)
+	rel.Properties["_kg_sync_version"] = rel.SyncVersion
 	a.rels[rel.ID] = rel
 	return nil
 }
@@ -86,6 +90,7 @@ func (a *InMemoryGraphAdapter) ExecuteQuery(_ context.Context, query GraphQuery,
 		payload["id"] = node.ID
 		payload["node_type"] = node.NodeType
 		payload["domain_id"] = node.DomainID
+		payload["_kg_sync_version"] = node.SyncVersion
 		current := node
 		ok := true
 		for idx, hop := range query.Hops {
@@ -135,6 +140,18 @@ func (a *InMemoryGraphAdapter) ListRelationships(_ context.Context) ([]GraphRela
 		result = append(result, rel)
 	}
 	return result, nil
+}
+
+func (a *InMemoryGraphAdapter) ReadSyncVersion(_ context.Context, entityID string) (int64, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if node, ok := a.nodes[entityID]; ok {
+		return node.SyncVersion, nil
+	}
+	if rel, ok := a.rels[entityID]; ok {
+		return rel.SyncVersion, nil
+	}
+	return 0, nil
 }
 
 func clone(in map[string]any) map[string]any {

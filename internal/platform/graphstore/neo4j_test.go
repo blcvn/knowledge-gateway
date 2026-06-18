@@ -85,7 +85,8 @@ func TestGraphQueryToCypherPreservesCustomParams(t *testing.T) {
 
 func TestNeo4jGraphAdapterExecuteQuery(t *testing.T) {
 	runner := &recordingCypherRunner{result: []map[string]any{{"id": "node-a"}}}
-	adapter := NewNeo4jGraphAdapter(runner)
+	adapter := NewNeo4jGraphAdapter(CypherConfig{})
+	adapter.Runner = runner
 
 	results, err := adapter.ExecuteQuery(context.Background(), GraphQuery{
 		StartNodeType: "Doc",

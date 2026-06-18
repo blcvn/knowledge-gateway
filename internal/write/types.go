@@ -56,8 +56,21 @@ type RelationshipRecord struct {
 	DomainID      string         `json:"domain_id"`
 	OwnerTenantID string         `json:"owner_tenant_id"`
 	OwnerAppID    string         `json:"owner_app_id"`
+	DomainVersion int            `json:"domain_version"`
 	Properties    map[string]any `json:"properties"`
 	CreatedAt     time.Time      `json:"created_at"`
+}
+
+type ProjectionVersionRecord struct {
+	EntityID        string    `json:"entity_id"`
+	EntityKind      string    `json:"entity_kind"`
+	SourceVersion   int64     `json:"source_version"`
+	SourceEventID   string    `json:"source_event_id"`
+	SourceUpdatedAt time.Time `json:"source_updated_at"`
+	GraphBackend    string    `json:"graph_backend"`
+	GraphVersion    int64     `json:"graph_version"`
+	VectorBackend   string    `json:"vector_backend"`
+	VectorVersion   int64     `json:"vector_version"`
 }
 
 type RelationshipCreateResponse struct {

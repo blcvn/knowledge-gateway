@@ -25,6 +25,9 @@ type Writer interface {
 	SoftDeleteNodeWithOutbox(ctx context.Context, node NodeRecord, event OutboxEvent) error
 	CreateRelationshipWithOutbox(ctx context.Context, rel RelationshipRecord, event OutboxEvent) error
 	UpdateOutboxStatus(ctx context.Context, eventID, status string, retryCount int, processedAt *time.Time) error
+	UpsertProjectionVersion(ctx context.Context, record ProjectionVersionRecord) error
+	GetProjectionVersion(entityID, entityKind string) (ProjectionVersionRecord, bool)
+	ListProjectionVersions() []ProjectionVersionRecord
 }
 
 // Repository combines the source-of-truth read/write and outbox boundaries.
