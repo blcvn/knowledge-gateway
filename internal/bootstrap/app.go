@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"database/sql"
 	"net/http"
 
 	"kg-service/internal/access"
@@ -19,6 +20,7 @@ import (
 type App struct {
 	config  config.Config
 	pg      postgres.Client
+	pgDB    *sql.DB
 	redis   rediscache.Client
 	httpMux *http.ServeMux
 
@@ -38,6 +40,10 @@ func New(cfg config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	db, err := pg.Open()
+	if err != nil {
+		return nil, err
+	}
 
 	redisClient, err := rediscache.New(cfg.Redis)
 	if err != nil {
@@ -47,6 +53,7 @@ func New(cfg config.Config) (*App, error) {
 	app := &App{
 		config:  cfg,
 		pg:      pg,
+		pgDB:    db,
 		redis:   redisClient,
 		httpMux: http.NewServeMux(),
 	}
@@ -133,12 +140,12 @@ func (a *App) initAccess() {
 	}
 	bootstrapSampleOntology(ontologyService, bootstrapIdentity)
 	ontologyStore.Seed(nil, nil, nil, nil, ontology.SeedCrossDomainRules(), nil, nil)
-	writeStore := write.NewMemoryStore()
-	sessionManager := &postgres.SessionManager{}
-	writeService := write.NewService(writeStore, ontologyService, accessResolver, sessionManager, service)
-	readService := read.NewService(writeStore, ontologyService, accessResolver, service)
-	searchService := search.NewService(writeStore, ontologyService, accessResolver, service)
-	integrityService := integrity.NewService(writeStore, ontologyStore)
+	writeRepo := postgres.NewRepository(a.pgDB)
+	sessionManager := postgres.NewSessionManager(a.pgDB)
+	writeService := write.NewService(writeRepo, ontologyService, accessResolver, sessionManager, service)
+	readService := read.NewService(writeRepo, ontologyService, accessResolver, service)
+	searchService := search.NewService(writeRepo, ontologyService, accessResolver, service)
+	integrityService := integrity.NewService(writeRepo, ontologyStore)
 	mcpService := mcp.NewService(readService, searchService, writeService, ontologyService, accessResolver, integrityService)
 
 	a.accessMiddleware = access.NewMiddleware(identityResolver, rateLimiter)

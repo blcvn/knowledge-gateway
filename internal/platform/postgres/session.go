@@ -4,30 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"kg-service/internal/platform/session"
 )
-
-type WriteIdentity struct {
-	TenantID string
-	AppID    string
-}
-
-type SessionScope struct {
-	Identity      WriteIdentity
-	Statements    []string
-	Transactional bool
-}
 
 type SessionManager struct {
 	DB        *sql.DB
-	LastScope SessionScope
+	LastScope session.SessionScope
 }
 
 func NewSessionManager(db *sql.DB) *SessionManager {
 	return &SessionManager{DB: db}
 }
 
-func (m *SessionManager) Within(ctx context.Context, identity WriteIdentity, fn func(SessionScope) error) (SessionScope, error) {
-	scope := SessionScope{
+func (m *SessionManager) Within(ctx context.Context, identity session.WriteIdentity, fn func(session.SessionScope) error) (session.SessionScope, error) {
+	scope := session.SessionScope{
 		Identity: identity,
 		Statements: []string{
 			"BEGIN",
@@ -53,6 +44,7 @@ func (m *SessionManager) Within(ctx context.Context, identity WriteIdentity, fn 
 			_ = tx.Rollback()
 		}
 	}()
+	scope.Tx = tx
 
 	for _, stmt := range scope.Statements[1:3] {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {

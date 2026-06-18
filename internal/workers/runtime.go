@@ -1,11 +1,13 @@
 package workers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"kg-service/internal/ontology"
 	"kg-service/internal/platform/rediscache"
@@ -19,6 +21,7 @@ type Repository interface {
 	write.OutboxReader
 	ListNodes() []write.NodeRecord
 	ListRelationships() []write.RelationshipRecord
+	UpdateOutboxStatus(ctx context.Context, eventID, status string, retryCount int, processedAt *time.Time) error
 }
 
 type OntologyResolver interface {
@@ -64,13 +67,18 @@ func (r *Runtime) PollOnce() WorkerReport {
 	for _, event := range r.store.ListOutboxEvents() {
 		env, ok := r.outbox[event.ID]
 		if !ok {
-			env = EventEnvelope{Event: event, Status: EventPending, RetryCount: event.RetryCount}
+			status := EventStatus(event.Status)
+			if status == "" {
+				status = EventPending
+			}
+			env = EventEnvelope{Event: event, Status: status, RetryCount: event.RetryCount}
 		}
 		if env.Status == EventDone || env.Status == EventDeadLetter {
 			continue
 		}
 
 		env.Status = EventProcessing
+		_ = r.store.UpdateOutboxStatus(context.Background(), event.ID, string(EventProcessing), env.RetryCount, nil)
 		if err := r.handleEvent(env.Event); err != nil {
 			env.RetryCount++
 			env.Error = err.Error()
@@ -81,11 +89,15 @@ func (r *Runtime) PollOnce() WorkerReport {
 				env.Status = EventFailed
 				report.Failed++
 			}
+			_ = r.store.UpdateOutboxStatus(context.Background(), event.ID, string(env.Status), env.RetryCount, nil)
 			r.outbox[event.ID] = env
 			continue
 		}
 		env.Status = EventDone
 		env.Error = ""
+		now := time.Now().UTC()
+		env.Event.ProcessedAt = &now
+		_ = r.store.UpdateOutboxStatus(context.Background(), event.ID, string(EventDone), env.RetryCount, &now)
 		r.outbox[event.ID] = env
 		report.Processed++
 	}
@@ -112,9 +124,12 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 	for _, rel := range r.store.ListRelationships() {
 		sourceRelationships[rel.ID] = rel
 	}
+	graphNodes := r.graph.SnapshotNodes()
+	graphRelationships := r.graph.SnapshotRelationships()
+	vectorDocs := r.vector.SnapshotDocuments()
 
 	for id, source := range sourceNodes {
-		graphNode, ok := r.graph.Nodes[id]
+		graphNode, ok := graphNodes[id]
 		if !ok {
 			report.GraphDriftCount++
 			report.VectorDriftCount++
@@ -129,7 +144,7 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_payload_mismatch", Details: "graph node payload does not match source node"})
 		}
-		if doc, ok := r.vector.Documents[id]; !ok || doc.IsDeleted != source.IsDeleted || doc.StatusValue != source.StatusValue || doc.NodeType != source.NodeType || doc.DomainID != source.DomainID {
+		if doc, ok := vectorDocs[id]; !ok || doc.IsDeleted != source.IsDeleted || doc.StatusValue != source.StatusValue || doc.NodeType != source.NodeType || doc.DomainID != source.DomainID {
 			report.VectorDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_mismatch", Details: "vector projection does not match source node"})
 		} else if !reflect.DeepEqual(doc.DomainProps, source.Properties) || !reflect.DeepEqual(doc.ACLVisibleTo, nodeACLVisibleTo(source)) {
@@ -137,20 +152,20 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_payload_mismatch", Details: "vector document payload does not match source node"})
 		}
 	}
-	for id := range r.graph.Nodes {
+	for id := range graphNodes {
 		if _, ok := sourceNodes[id]; !ok {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "orphan_graph_node", Details: "node exists in graph but not source"})
 		}
 	}
-	for id := range r.vector.Documents {
+	for id := range vectorDocs {
 		if _, ok := sourceNodes[id]; !ok {
 			report.VectorDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "orphan_vector_doc", Details: "node exists in vector but not source"})
 		}
 	}
 	for id, sourceRel := range sourceRelationships {
-		graphRel, ok := r.graph.Rels[id]
+		graphRel, ok := graphRelationships[id]
 		if !ok {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "missing_relationship", Details: "relationship missing from graph projection"})
@@ -161,7 +176,7 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "relationship_mismatch", Details: "graph relationship differs from source"})
 		}
 	}
-	for id := range r.graph.Rels {
+	for id := range graphRelationships {
 		if _, ok := sourceRelationships[id]; !ok {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "orphan_graph_relationship", Details: "relationship exists in graph but not source"})

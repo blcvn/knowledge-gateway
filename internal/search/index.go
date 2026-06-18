@@ -53,7 +53,6 @@ func (i ProjectionVectorIndex) execute(actor access.Identity, req SemanticSearch
 		i.provider = vector.NewDeterministicProvider(8)
 	}
 	queryEmbedding := i.provider.Embed(req.Query)
-	queryTokens := strings.Fields(strings.ToLower(strings.TrimSpace(req.Query)))
 	results := make([]SearchResult, 0)
 	for _, node := range i.store.ListNodes() {
 		if node.IsDeleted {
@@ -76,14 +75,8 @@ func (i ProjectionVectorIndex) execute(actor access.Identity, req SemanticSearch
 		}
 
 		content := nodeContent(node)
-		if !matchesQuery(node, req.Query) {
-			if rag {
-				if !matchesAnyToken(content, queryTokens) {
-					continue
-				}
-			} else {
-				continue
-			}
+		if !rag && !matchesQuery(node, req.Query) {
+			continue
 		}
 
 		score := scoreNodeWithEmbedding(content, queryEmbedding, req.Query, rag)
@@ -172,19 +165,6 @@ func cosineSimilarity(a, b []float64) float64 {
 		return 0
 	}
 	return dot / (math.Sqrt(magA) * math.Sqrt(magB))
-}
-
-func matchesAnyToken(content string, tokens []string) bool {
-	if len(tokens) == 0 {
-		return true
-	}
-	lower := strings.ToLower(content)
-	for _, token := range tokens {
-		if strings.Contains(lower, token) {
-			return true
-		}
-	}
-	return false
 }
 
 func nodeContent(node write.NodeRecord) string {

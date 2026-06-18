@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -8,10 +9,26 @@ import (
 	"kg-service/internal/access"
 	"kg-service/internal/config"
 	"kg-service/internal/ontology"
-	"kg-service/internal/platform/postgres"
 	"kg-service/internal/platform/rediscache"
+	"kg-service/internal/platform/session"
 	"kg-service/internal/write"
 )
+
+type recordingSessionManager struct{}
+
+func (recordingSessionManager) Within(ctx context.Context, identity session.WriteIdentity, fn func(session.SessionScope) error) (session.SessionScope, error) {
+	scope := session.SessionScope{
+		Identity: identity,
+		Statements: []string{
+			"BEGIN",
+			"SET LOCAL app.tenant_id = '" + identity.TenantID + "'",
+			"SET LOCAL app.app_id = '" + identity.AppID + "'",
+			"COMMIT",
+		},
+		Transactional: true,
+	}
+	return scope, fn(scope)
+}
 
 func TestRuntimeProjectsNodeRelationshipAndCascade(t *testing.T) {
 	fixture := newWorkerFixture(t)
@@ -44,6 +61,21 @@ func TestRuntimePollOnceIsIdempotentForSeenEvents(t *testing.T) {
 	}
 	if second.Processed != 0 || second.Failed != 0 || second.DeadLetter != 0 {
 		t.Fatalf("second poll = %+v, want zero work for seen events", second)
+	}
+	events := fixture.store.ListOutboxEvents()
+	for _, event := range events {
+		if event.Status != string(EventDone) {
+			t.Fatalf("event %s status = %s, want done", event.ID, event.Status)
+		}
+		if event.ProcessedAt == nil {
+			t.Fatalf("event %s missing processed_at", event.ID)
+		}
+	}
+
+	restarted := NewRuntime(fixture.store, fixture.ontologySvc, &fixture.cache)
+	restartedReport := restarted.PollOnce()
+	if restartedReport.Processed != 0 || restartedReport.Failed != 0 || restartedReport.DeadLetter != 0 {
+		t.Fatalf("restarted poll = %+v, want zero work", restartedReport)
 	}
 }
 
@@ -90,6 +122,10 @@ func TestRuntimeRetriesAndDeadLettersTransientFailures(t *testing.T) {
 	}
 	if env.RetryCount != 3 {
 		t.Fatalf("retry_count = %d, want 3", env.RetryCount)
+	}
+	events := runtime.store.ListOutboxEvents()
+	if len(events) != 1 || events[0].Status != string(EventDeadLetter) {
+		t.Fatalf("persisted events = %#v, want dead letter", events)
 	}
 }
 
@@ -225,6 +261,18 @@ func (f *failingStore) GetRelationshipByID(id string) (write.RelationshipRecord,
 }
 func (f *failingStore) ListNodes() []write.NodeRecord                 { return nil }
 func (f *failingStore) ListRelationships() []write.RelationshipRecord { return nil }
+func (f *failingStore) UpdateOutboxStatus(ctx context.Context, eventID, status string, retryCount int, processedAt *time.Time) error {
+	for i := range f.events {
+		if f.events[i].ID != eventID {
+			continue
+		}
+		f.events[i].Status = status
+		f.events[i].RetryCount = retryCount
+		f.events[i].ProcessedAt = processedAt
+		return nil
+	}
+	return nil
+}
 
 type workerFixture struct {
 	store       *write.MemoryStore
@@ -288,7 +336,7 @@ func newWorkerFixture(t *testing.T) workerFixture {
 	}
 
 	store := write.NewMemoryStore()
-	writeSvc := write.NewService(store, ontologySvc, accessResolver, &postgres.SessionManager{}, nil)
+	writeSvc := write.NewService(store, ontologySvc, accessResolver, &recordingSessionManager{}, nil)
 	parent, err := writeSvc.CreateNode(actor, write.NodeCreateRequest{
 		DomainID:   "test-domain",
 		NodeType:   "Parent",

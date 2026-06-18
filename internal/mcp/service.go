@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -33,7 +32,7 @@ type SearchService interface {
 }
 
 type WriteService interface {
-	CreateNode(ctx context.Context, actor access.Identity, req write.NodeCreateRequest) (write.NodeCreateResponse, error)
+	CreateNode(actor access.Identity, req write.NodeCreateRequest) (write.NodeCreateResponse, error)
 }
 
 type OntologyResolver interface {
@@ -211,7 +210,7 @@ func (s *Service) callWriteNode(actor access.Identity, args map[string]any) (any
 	if props, ok := args["properties"].(map[string]any); ok {
 		req.Properties = props
 	}
-	result, callErr := s.writeService.CreateNode(context.Background(), actor, req)
+	result, callErr := s.writeService.CreateNode(actor, req)
 	if callErr != nil {
 		return nil, toToolError(callErr)
 	}

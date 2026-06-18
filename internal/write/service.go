@@ -2,6 +2,7 @@ package write
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,7 +11,7 @@ import (
 
 	"kg-service/internal/access"
 	"kg-service/internal/ontology"
-	"kg-service/internal/platform/postgres"
+	"kg-service/internal/platform/session"
 )
 
 var (
@@ -35,7 +36,7 @@ type OntologyResolver interface {
 }
 
 type SessionManager interface {
-	Within(ctx context.Context, identity postgres.WriteIdentity, fn func(postgres.SessionScope) error) (postgres.SessionScope, error)
+	Within(ctx context.Context, identity session.WriteIdentity, fn func(session.SessionScope) error) (session.SessionScope, error)
 }
 
 type AuditLogger interface {
@@ -65,6 +66,18 @@ func NewService(store Repository, ontology OntologyResolver, accessResolver Acce
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (s *Service) repositoryForScope(scope session.SessionScope) Repository {
+	if scope.Tx == nil {
+		return s.store
+	}
+	if txRepo, ok := s.store.(interface {
+		WithTx(*sql.Tx) Repository
+	}); ok {
+		return txRepo.WithTx(scope.Tx)
+	}
+	return s.store
 }
 
 func (s *Service) IngestDocument(actor access.Identity, req IngestDocumentRequest) (IngestJobResponse, error) {
@@ -178,11 +191,11 @@ func (s *Service) CreateNodeWithContext(ctx context.Context, actor access.Identi
 	if err != nil {
 		return NodeCreateResponse{}, err
 	}
-	var scope postgres.SessionScope
-	scope, err = s.sessionManager.Within(ctx, postgres.WriteIdentity{
+	var scope session.SessionScope
+	scope, err = s.sessionManager.Within(ctx, session.WriteIdentity{
 		TenantID: actor.TenantID,
 		AppID:    actor.AppID,
-	}, func(scope postgres.SessionScope) error {
+	}, func(scope session.SessionScope) error {
 		event := OutboxEvent{
 			ID:            newID("evt"),
 			AggregateType: "kg_node",
@@ -201,7 +214,8 @@ func (s *Service) CreateNodeWithContext(ctx context.Context, actor access.Identi
 			RetryCount: 0,
 			CreatedAt:  now,
 		}
-		if err := s.store.CreateNodeBundle(node, bridgeRelationships, event); err != nil {
+		repo := s.repositoryForScope(scope)
+		if err := repo.CreateNodeBundle(ctx, node, bridgeRelationships, event); err != nil {
 			if errors.Is(err, ErrDuplicateExternalRef) {
 				return errors.Join(ErrValidation, errors.New("external_ref already exists"))
 			}
@@ -299,11 +313,11 @@ func (s *Service) UpdateNodeWithContext(ctx context.Context, actor access.Identi
 	updated.DomainVersion = version.Version
 	updated.StatusValue = statusValue
 	updated.UpdatedAt = s.now()
-	var scope postgres.SessionScope
-	scope, err = s.sessionManager.Within(ctx, postgres.WriteIdentity{
+	var scope session.SessionScope
+	scope, err = s.sessionManager.Within(ctx, session.WriteIdentity{
 		TenantID: actor.TenantID,
 		AppID:    actor.AppID,
-	}, func(scope postgres.SessionScope) error {
+	}, func(scope session.SessionScope) error {
 		event := OutboxEvent{
 			ID:            newID("evt"),
 			AggregateType: "kg_node",
@@ -322,7 +336,8 @@ func (s *Service) UpdateNodeWithContext(ctx context.Context, actor access.Identi
 			RetryCount: 0,
 			CreatedAt:  updated.UpdatedAt,
 		}
-		if err := s.store.UpdateNodeWithOutbox(updated, event); err != nil {
+		repo := s.repositoryForScope(scope)
+		if err := repo.UpdateNodeWithOutbox(ctx, updated, event); err != nil {
 			switch {
 			case errors.Is(err, ErrDuplicateExternalRef):
 				return errors.Join(ErrValidation, errors.New("external_ref already exists"))
@@ -375,10 +390,10 @@ func (s *Service) DeleteNodeWithContext(ctx context.Context, actor access.Identi
 	deleted := node
 	deleted.IsDeleted = true
 	deleted.UpdatedAt = s.now()
-	_, err = s.sessionManager.Within(ctx, postgres.WriteIdentity{
+	_, err = s.sessionManager.Within(ctx, session.WriteIdentity{
 		TenantID: actor.TenantID,
 		AppID:    actor.AppID,
-	}, func(scope postgres.SessionScope) error {
+	}, func(scope session.SessionScope) error {
 		event := OutboxEvent{
 			ID:            newID("evt"),
 			AggregateType: "kg_node",
@@ -395,7 +410,8 @@ func (s *Service) DeleteNodeWithContext(ctx context.Context, actor access.Identi
 			RetryCount: 0,
 			CreatedAt:  deleted.UpdatedAt,
 		}
-		if err := s.store.SoftDeleteNodeWithOutbox(deleted, event); err != nil {
+		repo := s.repositoryForScope(scope)
+		if err := repo.SoftDeleteNodeWithOutbox(ctx, deleted, event); err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				return ErrNotFound
 			}
@@ -472,10 +488,10 @@ func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor acces
 		Properties:    req.Properties,
 		CreatedAt:     now,
 	}
-	_, err = s.sessionManager.Within(ctx, postgres.WriteIdentity{
+	_, err = s.sessionManager.Within(ctx, session.WriteIdentity{
 		TenantID: actor.TenantID,
 		AppID:    actor.AppID,
-	}, func(scope postgres.SessionScope) error {
+	}, func(scope session.SessionScope) error {
 		event := OutboxEvent{
 			ID:            newID("evt"),
 			AggregateType: "kg_relationship",
@@ -493,7 +509,8 @@ func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor acces
 			RetryCount: 0,
 			CreatedAt:  now,
 		}
-		if err := s.store.CreateRelationshipWithOutbox(rel, event); err != nil {
+		repo := s.repositoryForScope(scope)
+		if err := repo.CreateRelationshipWithOutbox(ctx, rel, event); err != nil {
 			return err
 		}
 		return nil

@@ -1,6 +1,7 @@
 package read
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -597,7 +598,7 @@ func newReadFixture(t *testing.T) (*Service, *ontology.Service, access.Identity,
 
 func seedVisibleNode(t *testing.T, store *write.MemoryStore, node write.NodeRecord) write.NodeRecord {
 	t.Helper()
-	if err := store.CreateNodeWithOutbox(node, write.OutboxEvent{
+	if err := store.CreateNodeWithOutbox(context.Background(), node, write.OutboxEvent{
 		ID:            "evt-" + node.ID,
 		AggregateType: "kg_node",
 		AggregateID:   node.ID,
@@ -616,7 +617,7 @@ func seedVisibleNode(t *testing.T, store *write.MemoryStore, node write.NodeReco
 
 func seedVisibleRelationship(t *testing.T, store *write.MemoryStore, rel write.RelationshipRecord) {
 	t.Helper()
-	if err := store.CreateRelationshipWithOutbox(rel, write.OutboxEvent{
+	if err := store.CreateRelationshipWithOutbox(context.Background(), rel, write.OutboxEvent{
 		ID:            "evt-" + rel.ID,
 		AggregateType: "kg_relationship",
 		AggregateID:   rel.ID,

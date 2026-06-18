@@ -1,8 +1,10 @@
 package write
 
 import (
+	"context"
 	"errors"
 	"sync"
+	"time"
 )
 
 var ErrDuplicateExternalRef = errors.New("duplicate external_ref")
@@ -25,7 +27,7 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-func (s *MemoryStore) CreateNodeWithOutbox(node NodeRecord, event OutboxEvent) error {
+func (s *MemoryStore) CreateNodeWithOutbox(_ context.Context, node NodeRecord, event OutboxEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -43,7 +45,7 @@ func (s *MemoryStore) CreateNodeWithOutbox(node NodeRecord, event OutboxEvent) e
 	return nil
 }
 
-func (s *MemoryStore) CreateNodeBundle(node NodeRecord, rels []RelationshipRecord, event OutboxEvent) error {
+func (s *MemoryStore) CreateNodeBundle(_ context.Context, node NodeRecord, rels []RelationshipRecord, event OutboxEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -93,7 +95,7 @@ func (s *MemoryStore) ListNodes() []NodeRecord {
 	return result
 }
 
-func (s *MemoryStore) UpdateNodeWithOutbox(node NodeRecord, event OutboxEvent) error {
+func (s *MemoryStore) UpdateNodeWithOutbox(_ context.Context, node NodeRecord, event OutboxEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -121,7 +123,7 @@ func (s *MemoryStore) UpdateNodeWithOutbox(node NodeRecord, event OutboxEvent) e
 	return nil
 }
 
-func (s *MemoryStore) SoftDeleteNodeWithOutbox(node NodeRecord, event OutboxEvent) error {
+func (s *MemoryStore) SoftDeleteNodeWithOutbox(_ context.Context, node NodeRecord, event OutboxEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -134,11 +136,26 @@ func (s *MemoryStore) SoftDeleteNodeWithOutbox(node NodeRecord, event OutboxEven
 	return nil
 }
 
-func (s *MemoryStore) CreateRelationshipWithOutbox(rel RelationshipRecord, event OutboxEvent) error {
+func (s *MemoryStore) CreateRelationshipWithOutbox(_ context.Context, rel RelationshipRecord, event OutboxEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.rels[rel.ID] = rel
 	s.outbox = append(s.outbox, event)
+	return nil
+}
+
+func (s *MemoryStore) UpdateOutboxStatus(_ context.Context, eventID, status string, retryCount int, processedAt *time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.outbox {
+		if s.outbox[i].ID != eventID {
+			continue
+		}
+		s.outbox[i].Status = status
+		s.outbox[i].RetryCount = retryCount
+		s.outbox[i].ProcessedAt = processedAt
+		return nil
+	}
 	return nil
 }
 

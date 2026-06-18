@@ -1,5 +1,8 @@
 package write
 
+import "context"
+import "time"
+
 // Reader exposes source-of-truth lookup operations used by read, search, workers, and integrity code.
 type Reader interface {
 	GetNodeByID(id string) (NodeRecord, bool)
@@ -16,11 +19,12 @@ type OutboxReader interface {
 
 // Writer exposes the mutation operations that must persist source data and outbox entries together.
 type Writer interface {
-	CreateNodeWithOutbox(node NodeRecord, event OutboxEvent) error
-	CreateNodeBundle(node NodeRecord, rels []RelationshipRecord, event OutboxEvent) error
-	UpdateNodeWithOutbox(node NodeRecord, event OutboxEvent) error
-	SoftDeleteNodeWithOutbox(node NodeRecord, event OutboxEvent) error
-	CreateRelationshipWithOutbox(rel RelationshipRecord, event OutboxEvent) error
+	CreateNodeWithOutbox(ctx context.Context, node NodeRecord, event OutboxEvent) error
+	CreateNodeBundle(ctx context.Context, node NodeRecord, rels []RelationshipRecord, event OutboxEvent) error
+	UpdateNodeWithOutbox(ctx context.Context, node NodeRecord, event OutboxEvent) error
+	SoftDeleteNodeWithOutbox(ctx context.Context, node NodeRecord, event OutboxEvent) error
+	CreateRelationshipWithOutbox(ctx context.Context, rel RelationshipRecord, event OutboxEvent) error
+	UpdateOutboxStatus(ctx context.Context, eventID, status string, retryCount int, processedAt *time.Time) error
 }
 
 // Repository combines the source-of-truth read/write and outbox boundaries.

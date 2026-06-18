@@ -1,6 +1,7 @@
 package integrity
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -106,7 +107,7 @@ func newIntegrityFixture(t *testing.T) (*Service, access.Identity) {
 
 func seedIntegrityNode(t *testing.T, store *write.MemoryStore, node write.NodeRecord) {
 	t.Helper()
-	if err := store.CreateNodeWithOutbox(node, write.OutboxEvent{
+	if err := store.CreateNodeWithOutbox(context.Background(), node, write.OutboxEvent{
 		ID:            "evt-" + node.ID,
 		AggregateType: "kg_node",
 		AggregateID:   node.ID,

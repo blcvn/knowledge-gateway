@@ -2,6 +2,7 @@ package search
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +44,7 @@ func TestSemanticSearchFiltersByACLAndReturnsMetadata(t *testing.T) {
 
 	resp, err := svc.SemanticSearch(actor, SemanticSearchRequest{
 		Query:     "Returns workflow",
-		DomainIDs: []string{"sample-policy"},
+		DomainIDs: []string{"sample-registry"},
 		TopK:      10,
 	})
 	if err != nil {
@@ -71,17 +72,15 @@ func TestRagSearchUsesDistinctRetrievalPath(t *testing.T) {
 	svc, _, actor := newSearchFixture(t)
 
 	semantic, err := svc.SemanticSearch(actor, SemanticSearchRequest{
-		Query:     "Hộ kinh doanh online",
-		DomainIDs: []string{"luat_thue_hkd"},
-		TopK:      10,
+		Query: "Returns workflow online",
+		TopK:  10,
 	})
 	if err != nil {
 		t.Fatalf("SemanticSearch() error = %v", err)
 	}
 	rag, err := svc.RagSearch(actor, SemanticSearchRequest{
-		Query:     "Hộ kinh doanh online",
-		DomainIDs: []string{"luat_thue_hkd"},
-		TopK:      10,
+		Query: "Returns workflow online",
+		TopK:  10,
 	})
 	if err != nil {
 		t.Fatalf("RagSearch() error = %v", err)
@@ -98,7 +97,7 @@ func TestSemanticSearchRejectsInvisibleDomainFilter(t *testing.T) {
 	svc, _, actor := newSearchFixture(t)
 
 	_, err := svc.SemanticSearch(actor, SemanticSearchRequest{
-		Query:     "Hộ kinh doanh",
+		Query:     "Returns workflow",
 		DomainIDs: []string{"secret-domain"},
 	})
 	if err == nil {
@@ -126,7 +125,7 @@ func TestSemanticSearchWithoutDomainFilterReturnsAllVisibleDomains(t *testing.T)
 			t.Fatalf("deleted node unexpectedly returned: %#v", result)
 		}
 	}
-	if !gotDomains["sample-policy"] || !gotDomains["shared-domain"] {
+	if !gotDomains["sample-registry"] || !gotDomains["shared-domain"] {
 		t.Fatalf("domains = %#v, want visible domains", gotDomains)
 	}
 }
@@ -136,7 +135,7 @@ func TestSemanticSearchIgnoresLifecycleWhenTargetedDomainsAreMixed(t *testing.T)
 
 	resp, err := svc.SemanticSearch(actor, SemanticSearchRequest{
 		Query:     "Mixed lifecycle node",
-		DomainIDs: []string{"sample-policy", "shared-domain"},
+		DomainIDs: []string{"sample-registry", "shared-domain"},
 	})
 	if err != nil {
 		t.Fatalf("SemanticSearch() error = %v", err)
@@ -211,7 +210,17 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 		ontology.SeedRelTypes(),
 		ontology.SeedCrossDomainRules(),
 		ontology.SeedQueryTemplates(),
-		ontology.SeedStatusFieldConfigs(),
+		append(ontology.SeedStatusFieldConfigs(), ontology.StatusFieldConfig{
+			DomainID:            "sample-registry",
+			StatusFieldName:     "record_status",
+			ValidStatusValues:   []string{"active"},
+			WarningStatusValues: []string{"review"},
+			AuthorityFieldName:  "document_class",
+			AuthorityValuesMap: map[string]int{
+				"article":   4,
+				"reference": 2,
+			},
+		}),
 	)
 	ontologyService := ontology.NewService(ontologyStore, accessResolver)
 
@@ -225,15 +234,15 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 	mustInsertNode(t, store, write.NodeRecord{
 		ID:            "visible-node",
 		NodeType:      "Doc",
-		DomainID:      "sample-policy",
+		DomainID:      "sample-registry",
 		OwnerTenantID: actor.TenantID,
 		OwnerAppID:    actor.AppID,
 		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
 		Properties: map[string]any{
-			"summary":       "Returns workflow for marketplace sellers",
-			"document_class": "policy",
+			"summary":        "Returns workflow for marketplace sellers",
+			"document_class": "article",
 			"record_status":  "active",
-			"domain_marker": "visible",
+			"domain_marker":  "visible",
 		},
 		StatusValue: "active",
 		CreatedAt:   now,
@@ -242,13 +251,13 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 	mustInsertNode(t, store, write.NodeRecord{
 		ID:            "hidden-acl-node",
 		NodeType:      "Doc",
-		DomainID:      "sample-policy",
+		DomainID:      "sample-registry",
 		OwnerTenantID: "22222222-2222-2222-2222-222222222222",
 		OwnerAppID:    "22222222-aaaa-2222-aaaa-222222222222",
 		ACLVisibleTo:  []string{"22222222-2222-2222-2222-222222222222:22222222-aaaa-2222-aaaa-222222222222"},
 		Properties: map[string]any{
 			"summary":        "Hidden workflow document",
-			"document_class": "policy",
+			"document_class": "article",
 			"record_status":  "active",
 		},
 		StatusValue: "active",
@@ -284,7 +293,7 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 	mustInsertNode(t, store, write.NodeRecord{
 		ID:            "deleted-visible-node",
 		NodeType:      "Doc",
-		DomainID:      "sample-policy",
+		DomainID:      "sample-registry",
 		OwnerTenantID: actor.TenantID,
 		OwnerAppID:    actor.AppID,
 		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
@@ -298,14 +307,14 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 	mustInsertNode(t, store, write.NodeRecord{
 		ID:            "mixed-lifecycle-node",
 		NodeType:      "Doc",
-		DomainID:      "sample-policy",
+		DomainID:      "sample-registry",
 		OwnerTenantID: actor.TenantID,
 		OwnerAppID:    actor.AppID,
 		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
 		Properties: map[string]any{
-			"summary":       "Mixed lifecycle node",
-			"document_class": "guide",
-			"domain_marker": "mixed",
+			"summary":        "Mixed lifecycle node",
+			"document_class": "reference",
+			"domain_marker":  "mixed",
 		},
 		StatusValue: "inactive",
 		CreatedAt:   now.Add(5 * time.Minute),
@@ -318,7 +327,7 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 
 func mustInsertNode(t *testing.T, store *write.MemoryStore, node write.NodeRecord, createdAt time.Time) {
 	t.Helper()
-	if err := store.CreateNodeWithOutbox(node, write.OutboxEvent{
+	if err := store.CreateNodeWithOutbox(context.Background(), node, write.OutboxEvent{
 		ID:            "evt-" + node.ID,
 		AggregateType: "kg_node",
 		AggregateID:   node.ID,
