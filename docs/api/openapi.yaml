@@ -1,0 +1,2070 @@
+openapi: 3.1.0
+info:
+  title: KG Service API
+  version: 0.1.0-bootstrap
+  description: |
+    Versioned API specification for the current bootstrap HTTP surface exposed by `kg-service`.
+
+    This document follows the live runtime contract registered in `internal/bootstrap/app.go`.
+    It documents the current bootstrap implementation rather than historical TDD examples.
+servers:
+  - url: http://127.0.0.1:8082
+    description: Local bootstrap server
+security:
+  - bearerAuth: []
+tags:
+  - name: Health
+  - name: Access
+  - name: Tenants
+  - name: Ontology
+  - name: Read
+  - name: Search
+  - name: Write
+  - name: Integrity
+  - name: MCP
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Public route that reports bootstrap service and dependency configuration.
+      security: []
+      responses:
+        '200':
+          description: Service health payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthzResponse'
+  /v1/access/resolve:
+    get:
+      tags: [Access]
+      summary: Resolve caller visibility
+      responses:
+        '200':
+          description: Visible owners for the authenticated caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/access/grants:
+    post:
+      tags: [Access]
+      summary: Create a sharing grant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantCreateRequest'
+      responses:
+        '201':
+          description: Grant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Access]
+      summary: List sharing grants
+      parameters:
+        - $ref: '#/components/parameters/GrantorTenantID'
+        - $ref: '#/components/parameters/GranteeTenantID'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Paginated grant list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GrantListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/access/grants/{id}:
+    delete:
+      tags: [Access]
+      summary: Revoke a sharing grant
+      parameters:
+        - $ref: '#/components/parameters/GrantID'
+      responses:
+        '200':
+          description: Grant revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevocationResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/access/audit:
+    get:
+      tags: [Access]
+      summary: List audit log entries
+      parameters:
+        - $ref: '#/components/parameters/ResourceOwnerTenantID'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Paginated audit log list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants:
+    post:
+      tags: [Tenants]
+      summary: Create a tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantCreateRequest'
+      responses:
+        '201':
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}:
+    get:
+      tags: [Tenants]
+      summary: Get a tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Tenants]
+      summary: Update a tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantUpdateRequest'
+      responses:
+        '200':
+          description: Tenant updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Tenants]
+      summary: Suspend a tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200':
+          description: Tenant suspended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/apps:
+    post:
+      tags: [Tenants]
+      summary: Create an app for a tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppCreateRequest'
+      responses:
+        '201':
+          description: App created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Tenants]
+      summary: List apps for a tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Paginated app list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/apps/{app_id}/rotate-key:
+    post:
+      tags: [Tenants]
+      summary: Rotate an app API key
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/AppID'
+      responses:
+        '200':
+          description: New API key issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RotateKeyResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/apps/{app_id}:
+    delete:
+      tags: [Tenants]
+      summary: Revoke an app
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/AppID'
+      responses:
+        '200':
+          description: App revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevocationResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/domains:
+    post:
+      tags: [Ontology]
+      summary: Create a domain
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainCreateRequest'
+      responses:
+        '201':
+          description: Domain created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/node-types:
+    post:
+      tags: [Ontology]
+      summary: Create a node type schema
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/DomainID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeTypeCreateRequest'
+      responses:
+        '201':
+          description: Node type schema created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeTypeSchema'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/rel-types:
+    post:
+      tags: [Ontology]
+      summary: Create a relationship type schema
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/DomainID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelTypeCreateRequest'
+      responses:
+        '201':
+          description: Relationship type schema created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelTypeSchema'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/effective:
+    get:
+      tags: [Ontology]
+      summary: List effective visible domains for a tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200':
+          description: Effective domain list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectiveOntologyResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates:
+    post:
+      tags: [Ontology]
+      summary: Create a query template
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/DomainID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryTemplateCreateRequest'
+      responses:
+        '201':
+          description: Query template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates/{name}/activate:
+    put:
+      tags: [Ontology]
+      summary: Activate a query template
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/DomainID'
+        - $ref: '#/components/parameters/TemplateNamePath'
+      responses:
+        '200':
+          description: Query template activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryTemplate'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/status-field-config:
+    post:
+      tags: [Ontology]
+      summary: Upsert status field configuration
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/DomainID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusFieldConfigRequest'
+      responses:
+        '201':
+          description: Status field configuration upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusFieldConfig'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/ontology/domains/{domain_id}:
+    get:
+      tags: [Ontology]
+      summary: Get domain details
+      parameters:
+        - $ref: '#/components/parameters/DomainID'
+      responses:
+        '200':
+          description: Domain details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainDetailsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/read/templates:
+    get:
+      tags: [Read]
+      summary: List active templates
+      parameters:
+        - $ref: '#/components/parameters/DomainIDQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Paginated template list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/read/template/{domain_id}/{template_name}:
+    post:
+      tags: [Read]
+      summary: Execute a registered query template
+      description: Generic route backed by active domain query templates rather than hard-coded domain-specific routes.
+      parameters:
+        - $ref: '#/components/parameters/DomainID'
+        - $ref: '#/components/parameters/TemplateName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateExecutionRequest'
+      responses:
+        '200':
+          description: Template execution result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateExecutionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '504':
+          $ref: '#/components/responses/TimeoutError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/read/nodes/{id}:
+    get:
+      tags: [Read]
+      summary: Fetch a visible node
+      parameters:
+        - $ref: '#/components/parameters/NodeID'
+      responses:
+        '200':
+          description: Node details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/search/semantic:
+    post:
+      tags: [Search]
+      summary: Run semantic search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SemanticSearchRequest'
+      responses:
+        '200':
+          description: Semantic search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SemanticSearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/search/rag:
+    post:
+      tags: [Search]
+      summary: Run RAG-style retrieval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SemanticSearchRequest'
+      responses:
+        '200':
+          description: RAG retrieval result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SemanticSearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/nodes:
+    post:
+      tags: [Write]
+      summary: Create a node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeCreateRequest'
+      responses:
+        '202':
+          description: Node accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/nodes/{id}:
+    put:
+      tags: [Write]
+      summary: Update a node
+      parameters:
+        - $ref: '#/components/parameters/NodeID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeUpdateRequest'
+      responses:
+        '200':
+          description: Node updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeUpdateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Write]
+      summary: Soft-delete a node
+      parameters:
+        - $ref: '#/components/parameters/NodeID'
+      responses:
+        '200':
+          description: Node soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeDeleteResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/relationships:
+    post:
+      tags: [Write]
+      summary: Create a relationship
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationshipCreateRequest'
+      responses:
+        '201':
+          description: Relationship created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/ingest/document:
+    post:
+      tags: [Write]
+      summary: Queue document ingest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestDocumentRequest'
+      responses:
+        '202':
+          description: Ingest accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestJobResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/ingest/jobs/{job_id}:
+    get:
+      tags: [Write]
+      summary: Get ingest job status
+      parameters:
+        - $ref: '#/components/parameters/JobID'
+      responses:
+        '200':
+          description: Ingest job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestJobResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/integrity/tenant/{tenant_id}:
+    get:
+      tags: [Integrity]
+      summary: Get tenant integrity status
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200':
+          description: Tenant integrity report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantIntegrityResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/integrity/missing-bridges:
+    get:
+      tags: [Integrity]
+      summary: List missing bridge candidates
+      parameters:
+        - $ref: '#/components/parameters/TenantIDQueryRequired'
+      responses:
+        '200':
+          description: Missing bridge candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissingBridgeListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/mcp/connect:
+    get:
+      tags: [MCP]
+      summary: Open an MCP session
+      description: Returns an SSE stream that emits a `session` event containing `session_id`.
+      responses:
+        '200':
+          description: MCP session stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: session
+                  data: {"session_id":"mcp_1234567890"}
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+  /v1/mcp/messages/{session_id}:
+    post:
+      tags: [MCP]
+      summary: Post a JSON-RPC MCP message
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONRPCRequest'
+      responses:
+        '200':
+          description: JSON-RPC result or error envelope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JSONRPCResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+  parameters:
+    TenantID:
+      name: tenant_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Tenant identifier.
+    AppID:
+      name: app_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: App identifier.
+    GrantID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Grant identifier.
+    DomainID:
+      name: domain_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Domain identifier.
+    TemplateName:
+      name: template_name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Query template name.
+    TemplateNamePath:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Query template name used by the activation route.
+    NodeID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Node identifier.
+    JobID:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Ingest job identifier.
+    SessionID:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: MCP session identifier.
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Page size. Runtime normalizes missing or non-positive values to 20 and caps values above 100.
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Cursor returned by a previous list response.
+    GrantorTenantID:
+      name: grantor_tenant_id
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Optional grantor tenant filter. Current handler expects UUID-shaped values when provided.
+    GranteeTenantID:
+      name: grantee_tenant_id
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Optional grantee tenant filter. Current handler expects UUID-shaped values when provided.
+    ResourceOwnerTenantID:
+      name: resource_owner_tenant_id
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Optional audit owner tenant filter. Current handler expects UUID-shaped values when provided.
+    DomainIDQuery:
+      name: domain_id
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Domain filter for visible active templates.
+    TenantIDQueryRequired:
+      name: tenant_id
+      in: query
+      required: true
+      schema:
+        type: string
+      description: Tenant identifier required by the integrity missing-bridges endpoint.
+  responses:
+    BadRequestError:
+      description: Malformed request or unsupported parameter shape
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    UnauthorizedError:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ForbiddenError:
+      description: Authenticated caller lacks permission
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFoundError:
+      description: Requested resource was not found in visible scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ValidationError:
+      description: Request failed schema or business validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    TooManyRequestsError:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    TimeoutError:
+      description: Request timed out
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    InternalError:
+      description: Unexpected internal failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+  schemas:
+    HealthzResponse:
+      type: object
+      required: [service, postgres, redis]
+      properties:
+        service:
+          type: string
+        postgres:
+          type: object
+          required: [dsn]
+          properties:
+            dsn:
+              type: string
+        redis:
+          type: object
+          required: [address, db]
+          properties:
+            address:
+              type: string
+            db:
+              type: integer
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
+        request_id:
+          type: string
+    VisibleOwner:
+      type: object
+      required: [tenant_id, source]
+      properties:
+        tenant_id:
+          type: string
+        app_id:
+          type: string
+        permission:
+          type: string
+        scope_type:
+          type: string
+        scope_value:
+          type: string
+        source:
+          type: string
+    ResolveResponse:
+      type: object
+      required: [tenant_id, app_id, visible_owners]
+      properties:
+        tenant_id:
+          type: string
+        app_id:
+          type: string
+        visible_owners:
+          type: array
+          items:
+            $ref: '#/components/schemas/VisibleOwner'
+    TenantCreateRequest:
+      type: object
+      required: [slug, name, tier]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        tier:
+          type: string
+    TenantUpdateRequest:
+      type: object
+      properties:
+        tier:
+          type: string
+        default_sharing_policy:
+          type: string
+    TenantResponse:
+      type: object
+      required: [id, slug, name, status, tier, default_sharing_policy, created_at]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        tier:
+          type: string
+        default_sharing_policy:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AppCreateRequest:
+      type: object
+      required: [slug, name, type]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+    AppResponse:
+      type: object
+      required: [id, slug, type, status]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        api_key:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    RotateKeyResponse:
+      type: object
+      required: [api_key, rotated_at]
+      properties:
+        api_key:
+          type: string
+        rotated_at:
+          type: string
+          format: date-time
+    GrantCreateRequest:
+      type: object
+      required: [grantor_app_id, grantee_tenant_id, grantee_app_id, scope_type, scope_value, permission]
+      properties:
+        grantor_app_id:
+          type: string
+        grantee_tenant_id:
+          type: string
+        grantee_app_id:
+          type: string
+        scope_type:
+          type: string
+        scope_value:
+          type: string
+        permission:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    GrantResponse:
+      type: object
+      required: [id, grantor_tenant_id, grantee_tenant_id, scope_type, permission, status, created_at]
+      properties:
+        id:
+          type: string
+        grantor_tenant_id:
+          type: string
+        grantor_app_id:
+          type: string
+        grantee_tenant_id:
+          type: string
+        grantee_app_id:
+          type: string
+        scope_type:
+          type: string
+        scope_value:
+          type: string
+        permission:
+          type: string
+        status:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    AuditLogEntry:
+      type: object
+      required:
+        - id
+        - resource_owner_tenant_id
+        - requester_tenant_id
+        - requester_app_id
+        - action
+        - resource_type
+        - outcome
+        - created_at
+      properties:
+        id:
+          type: string
+        resource_owner_tenant_id:
+          type: string
+        resource_owner_app_id:
+          type: string
+        requester_tenant_id:
+          type: string
+        requester_app_id:
+          type: string
+        action:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        outcome:
+          type: string
+        reason:
+          type: string
+        scope_type:
+          type: string
+        scope_value:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+    StatusResponse:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+    RevocationResponse:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    PropertySchema:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+    ParameterSchema:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        required:
+          type: boolean
+    DomainCreateRequest:
+      type: object
+      required: [id, name, description, status, visibility]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        visibility:
+          type: string
+    Domain:
+      type: object
+      required: [id, name, owner_tenant_id, status, version, visibility, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        owner_tenant_id:
+          type: string
+        parent_domain_id:
+          type: string
+        status:
+          type: string
+        version:
+          type: integer
+        visibility:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    NodeTypeCreateRequest:
+      type: object
+      required: [node_type_name, graph_label, required_props, optional_props, validation_rules]
+      properties:
+        node_type_name:
+          type: string
+        graph_label:
+          type: string
+        required_props:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertySchema'
+        optional_props:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertySchema'
+        validation_rules:
+          type: array
+          items:
+            type: string
+    NodeTypeSchema:
+      type: object
+      required: [id, domain_id, node_type_name, graph_label, required_props, optional_props, validation_rules, version, created_at]
+      properties:
+        id:
+          type: string
+        domain_id:
+          type: string
+        node_type_name:
+          type: string
+        graph_label:
+          type: string
+        required_props:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertySchema'
+        optional_props:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertySchema'
+        validation_rules:
+          type: array
+          items:
+            type: string
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    RelTypeCreateRequest:
+      type: object
+      required: [rel_type_name, from_node_type, to_node_type, same_domain, required_props, optional_props]
+      properties:
+        rel_type_name:
+          type: string
+        from_node_type:
+          type: string
+        to_node_type:
+          type: string
+        same_domain:
+          type: boolean
+        required_props:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertySchema'
+        optional_props:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertySchema'
+    RelTypeSchema:
+      type: object
+      required: [id, domain_id, rel_type_name, from_node_type, to_node_type, same_domain, required_props, optional_props]
+      properties:
+        id:
+          type: string
+        domain_id:
+          type: string
+        rel_type_name:
+          type: string
+        from_node_type:
+          type: string
+        to_node_type:
+          type: string
+        same_domain:
+          type: boolean
+        required_props:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertySchema'
+        optional_props:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertySchema'
+    QueryTemplateCreateRequest:
+      type: object
+      required: [template_name, pattern_spec, param_schema, return_fields, description]
+      properties:
+        template_name:
+          type: string
+        pattern_spec:
+          type: object
+          additionalProperties: true
+        param_schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterSchema'
+        return_fields:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+    QueryTemplate:
+      type: object
+      required: [id, domain_id, template_name, pattern_spec, param_schema, return_fields, status, version, created_at]
+      properties:
+        id:
+          type: string
+        domain_id:
+          type: string
+        template_name:
+          type: string
+        pattern_spec:
+          type: object
+          additionalProperties: true
+        param_schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParameterSchema'
+        return_fields:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        status:
+          type: string
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    CascadeRule:
+      type: object
+      required: [from_node_type, via_rel, to_node_type]
+      properties:
+        from_node_type:
+          type: string
+        via_rel:
+          type: string
+        to_node_type:
+          type: string
+    StatusFieldConfigRequest:
+      type: object
+      required:
+        - status_field_name
+        - valid_status_values
+        - warning_status_values
+        - cascade_rules
+        - authority_field_name
+        - authority_values_map
+      properties:
+        status_field_name:
+          type: string
+        valid_status_values:
+          type: array
+          items:
+            type: string
+        warning_status_values:
+          type: array
+          items:
+            type: string
+        cascade_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/CascadeRule'
+        authority_field_name:
+          type: string
+        authority_values_map:
+          type: object
+          additionalProperties:
+            type: integer
+    StatusFieldConfig:
+      type: object
+      required: [domain_id, status_field_name, valid_status_values]
+      properties:
+        domain_id:
+          type: string
+        status_field_name:
+          type: string
+        valid_status_values:
+          type: array
+          items:
+            type: string
+        warning_status_values:
+          type: array
+          items:
+            type: string
+        cascade_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/CascadeRule'
+        authority_field_name:
+          type: string
+        authority_values_map:
+          type: object
+          additionalProperties:
+            type: integer
+    DomainSummary:
+      type: object
+      required: [id, owner]
+      properties:
+        id:
+          type: string
+        owner:
+          type: string
+    EffectiveOntologyResponse:
+      type: object
+      required: [domains]
+      properties:
+        domains:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainSummary'
+    DomainDetailsResponse:
+      type: object
+      required: [domain, node_types, rel_types, query_templates]
+      properties:
+        domain:
+          $ref: '#/components/schemas/Domain'
+        node_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeTypeSchema'
+        rel_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelTypeSchema'
+        query_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryTemplate'
+        status_field_config:
+          $ref: '#/components/schemas/StatusFieldConfig'
+    ParamSchemaItem:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        required:
+          type: boolean
+    TemplateListItem:
+      type: object
+      required: [template_name, status, param_schema]
+      properties:
+        template_name:
+          type: string
+        status:
+          type: string
+        param_schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParamSchemaItem'
+    TemplateExecutionRequest:
+      type: object
+      required: [params]
+      properties:
+        params:
+          type: object
+          additionalProperties: true
+    TemplateExecutionResponse:
+      type: object
+      required: [results, query_time_ms]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        query_time_ms:
+          type: integer
+    NodeResponse:
+      type: object
+      required:
+        - id
+        - node_type
+        - domain_id
+        - owner_tenant_id
+        - owner_app_id
+        - visibility
+        - properties
+        - relationships
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        node_type:
+          type: string
+        domain_id:
+          type: string
+        owner_tenant_id:
+          type: string
+        owner_app_id:
+          type: string
+        visibility:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        relationships:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SemanticSearchRequest:
+      type: object
+      required: [query, domain_ids, top_k]
+      properties:
+        query:
+          type: string
+        domain_ids:
+          type: array
+          items:
+            type: string
+        top_k:
+          type: integer
+    SearchResult:
+      type: object
+      required:
+        - node_id
+        - node_type
+        - domain_id
+        - owner_tenant_id
+        - owner_app_id
+        - acl_visible_to
+        - is_deleted
+        - domain_props
+        - content
+        - score
+        - created_at
+      properties:
+        node_id:
+          type: string
+        node_type:
+          type: string
+        domain_id:
+          type: string
+        owner_tenant_id:
+          type: string
+        owner_app_id:
+          type: string
+        acl_visible_to:
+          type: array
+          items:
+            type: string
+        is_deleted:
+          type: boolean
+        status_value:
+          type: string
+        authority_score:
+          type: integer
+          nullable: true
+        domain_props:
+          type: object
+          additionalProperties: true
+        content:
+          type: string
+        score:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+    SemanticSearchResponse:
+      type: object
+      required: [results, search_time_ms]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        search_time_ms:
+          type: integer
+    NodeCreateRequest:
+      type: object
+      required: [domain_id, node_type, properties, visibility, external_ref]
+      properties:
+        domain_id:
+          type: string
+        node_type:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        visibility:
+          type: string
+        external_ref:
+          type: string
+        bridge_node_ids:
+          type: array
+          items:
+            type: string
+    NodeCreateResponse:
+      type: object
+      required: [node_id, domain_version, status, sync_eta_ms]
+      properties:
+        node_id:
+          type: string
+        domain_version:
+          type: integer
+        status:
+          type: string
+        sync_eta_ms:
+          type: integer
+    NodeUpdateRequest:
+      type: object
+      properties:
+        properties:
+          type: object
+          additionalProperties: true
+        visibility:
+          type: string
+        external_ref:
+          type: string
+    NodeUpdateResponse:
+      type: object
+      required: [node_id, domain_version, status]
+      properties:
+        node_id:
+          type: string
+        domain_version:
+          type: integer
+        status:
+          type: string
+    NodeDeleteResponse:
+      type: object
+      required: [node_id, is_deleted]
+      properties:
+        node_id:
+          type: string
+        is_deleted:
+          type: boolean
+    RelationshipCreateRequest:
+      type: object
+      required: [rel_type, from_node_id, to_node_id, domain_id, properties]
+      properties:
+        rel_type:
+          type: string
+        from_node_id:
+          type: string
+        to_node_id:
+          type: string
+        domain_id:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+    RelationshipCreateResponse:
+      type: object
+      required: [relationship_id, status]
+      properties:
+        relationship_id:
+          type: string
+        status:
+          type: string
+    IngestDocumentRequest:
+      type: object
+      required: [file_url, loai_van_ban, domain_id]
+      properties:
+        file_url:
+          type: string
+        loai_van_ban:
+          type: string
+        domain_id:
+          type: string
+    IngestJobResponse:
+      type: object
+      required: [job_id, status]
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+        nodes_created:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+    CheckResult:
+      type: object
+      required: [id, name, result, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        result:
+          type: integer
+        status:
+          type: string
+    TenantIntegrityResponse:
+      type: object
+      required: [checks, overall]
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckResult'
+        overall:
+          type: string
+    MissingBridgeItem:
+      type: object
+      required: [node_id, node_type, domain_id]
+      properties:
+        node_id:
+          type: string
+        node_type:
+          type: string
+        domain_id:
+          type: string
+    JSONRPCRequest:
+      type: object
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id: {}
+        method:
+          type: string
+          enum: [tools/list, tools/call]
+        params:
+          type: object
+          additionalProperties: true
+    JSONRPCError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+    JSONRPCResponse:
+      type: object
+      required: [jsonrpc]
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id: {}
+        result: {}
+        error:
+          $ref: '#/components/schemas/JSONRPCError'
+    AppListResponse:
+      type: object
+      required: [data, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppResponse'
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
+    GrantListResponse:
+      type: object
+      required: [data, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/GrantResponse'
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
+    AuditLogListResponse:
+      type: object
+      required: [data, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogEntry'
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
+    TemplateListResponse:
+      type: object
+      required: [data, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateListItem'
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
+    MissingBridgeListResponse:
+      type: object
+      required: [data, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MissingBridgeItem'
+        next_cursor:
+          type: string
+        has_more:
+          type: boolean
