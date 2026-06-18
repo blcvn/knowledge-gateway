@@ -12,8 +12,8 @@ This guide gets you from a fresh checkout to the first authenticated `kg-service
 ## Run The Service
 
 ```bash
-go test ./...
-go run ./cmd/kg-service
+make test
+make run
 ```
 
 In another terminal:

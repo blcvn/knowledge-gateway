@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kg-service
+  namespace: __KG_NAMESPACE__
+spec:
+  selector:
+    app: kg-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http
+  type: ClusterIP
