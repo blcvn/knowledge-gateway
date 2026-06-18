@@ -3,6 +3,7 @@ package ontology
 import (
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"strings"
 	"time"
@@ -387,6 +388,153 @@ func (s *Service) GetDomainDetails(actor access.Identity, domainID string) (Doma
 		QueryTemplates:    templates,
 		StatusFieldConfig: statusFieldConfig,
 	}, nil
+}
+
+func (s *Service) Resolve(domainID, tenantID, appID string) (ResolvedSearchProfile, error) {
+	domain, ok := s.store.GetDomain(domainID)
+	if !ok {
+		return ResolvedSearchProfile{}, ErrNotFound
+	}
+
+	profile := domain.SearchProfile
+	if profile == nil {
+		if stored, ok := s.store.GetSearchProfile(domainID); ok {
+			profile = &stored
+		}
+	}
+	if profile == nil {
+		resolved := ResolvedSearchProfile{
+			Domain:         domain,
+			SemanticFields: defaultSemanticFields(),
+			FTSLanguage:    "simple",
+			QueryStrategy:  defaultQueryStrategy("default"),
+		}
+		return resolved, nil
+	}
+
+	resolved := ResolvedSearchProfile{
+		Domain:         domain,
+		SearchProfile:  profile,
+		SemanticFields: mergeSemanticFields(profile.SemanticFields, profile.TenantOverrides, profile.AppOverrides, tenantID, appID),
+		FTSLanguage:    resolvedFTSLanguage(profile.FTSLanguage, profile.TenantOverrides, profile.AppOverrides, tenantID, appID),
+	}
+	strategyRef := resolvedQueryStrategyRef(profile.QueryStrategyRef, profile.TenantOverrides, profile.AppOverrides, tenantID, appID)
+	if strategyRef == "" {
+		strategyRef = "default"
+	}
+	strategy, ok := s.store.GetQueryStrategy(strategyRef)
+	if !ok {
+		log.Printf("WARNING: missing query strategy %q for domain %s; falling back to default", strategyRef, domainID)
+		strategy, ok = s.store.GetQueryStrategy("default")
+		if !ok {
+			strategy = defaultQueryStrategy("default")
+		}
+	}
+	resolved.QueryStrategy = strategy
+	if len(resolved.SemanticFields) == 0 {
+		resolved.SemanticFields = defaultSemanticFields()
+	}
+	if strings.TrimSpace(resolved.FTSLanguage) == "" {
+		resolved.FTSLanguage = "simple"
+	}
+	return resolved, nil
+}
+
+func (s *Service) UpsertSearchProfile(actor access.Identity, tenantID, domainID string, profile SearchProfile) (SearchProfile, error) {
+	if !canManageTenant(actor, tenantID) {
+		return SearchProfile{}, ErrForbidden
+	}
+	domain, ok := s.store.GetDomain(domainID)
+	if !ok {
+		return SearchProfile{}, ErrNotFound
+	}
+	if domain.OwnerTenantID != tenantID {
+		return SearchProfile{}, ErrForbidden
+	}
+	if profile.SemanticFields != nil && len(profile.SemanticFields) == 0 {
+		return SearchProfile{}, errors.New("semantic_fields must be nil (use defaults) or a non-empty list")
+	}
+	if strings.TrimSpace(profile.FTSLanguage) == "" {
+		return SearchProfile{}, errors.New("fts_language must be a non-empty string")
+	}
+	allowedFields := s.allowedSearchFieldNames(domainID)
+	for _, field := range profile.SemanticFields {
+		if strings.TrimSpace(field.FieldName) == "" {
+			return SearchProfile{}, errors.New("semantic_fields.field_name must not be empty")
+		}
+		if _, ok := allowedFields[field.FieldName]; !ok {
+			return SearchProfile{}, fmt.Errorf("unknown semantic field: %s", field.FieldName)
+		}
+		if field.Weight < 0.1 || field.Weight > 10.0 {
+			return SearchProfile{}, errors.New("semantic_fields.weight must be between 0.1 and 10.0")
+		}
+	}
+	if strings.TrimSpace(profile.QueryStrategyRef) != "" {
+		if _, ok := s.store.GetQueryStrategy(profile.QueryStrategyRef); !ok {
+			return SearchProfile{}, fmt.Errorf("unknown query strategy: %s", profile.QueryStrategyRef)
+		}
+	}
+	return s.store.UpsertSearchProfile(domainID, profile), nil
+}
+
+func (s *Service) UpsertQueryStrategy(actor access.Identity, tenantID string, strategy QueryStrategy) (QueryStrategy, error) {
+	if !canManageTenant(actor, tenantID) {
+		return QueryStrategy{}, ErrForbidden
+	}
+	if err := validateQueryStrategy(strategy); err != nil {
+		return QueryStrategy{}, errors.Join(ErrValidation, err)
+	}
+	existing, ok := s.store.GetQueryStrategy(strategy.Key)
+	if ok && (strategy.Key == "default" || strategy.Key == "deep_traversal") {
+		return QueryStrategy{}, ErrForbidden
+	}
+	if ok {
+		strategy.Version = existing.Version + 1
+	} else if strategy.Version == 0 {
+		strategy.Version = 1
+	}
+	return s.store.UpsertQueryStrategy(strategy), nil
+}
+
+func (s *Service) SeedQueryStrategy(strategy QueryStrategy) QueryStrategy {
+	return s.store.UpsertQueryStrategy(strategy)
+}
+
+func (s *Service) DeleteQueryStrategy(actor access.Identity, tenantID, key string) error {
+	if !canManageTenant(actor, tenantID) {
+		return ErrForbidden
+	}
+	if key == "default" || key == "deep_traversal" {
+		return ErrForbidden
+	}
+	if deleted := s.store.DeleteQueryStrategy(key); !deleted {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Service) ListQueryStrategies() []QueryStrategy {
+	return s.store.ListQueryStrategies()
+}
+
+func (s *Service) allowedSearchFieldNames(domainID string) map[string]struct{} {
+	fields := map[string]struct{}{
+		"id":           {},
+		"node_type":    {},
+		"domain_id":    {},
+		"external_ref": {},
+		"status_value": {},
+		"*properties":  {},
+	}
+	for _, schema := range s.store.ListNodeTypes(domainID) {
+		for _, prop := range schema.RequiredProps {
+			fields[prop.Name] = struct{}{}
+		}
+		for _, prop := range schema.OptionalProps {
+			fields[prop.Name] = struct{}{}
+		}
+	}
+	return fields
 }
 
 func validateDomainCreateRequest(req DomainCreateRequest) error {

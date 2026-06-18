@@ -1,12 +1,14 @@
 package read
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"kg-service/internal/access"
 	"kg-service/internal/ontology"
+	"kg-service/internal/platform/graphstore"
 	"kg-service/internal/write"
 )
 
@@ -21,54 +23,40 @@ type GraphIndex interface {
 }
 
 type ProjectionGraphIndex struct {
-	store ProjectionStore
+	adapter graphstore.GraphAdapter
 }
 
 func NewProjectionGraphIndex(store ProjectionStore) ProjectionGraphIndex {
-	return ProjectionGraphIndex{store: store}
+	return ProjectionGraphIndex{adapter: newProjectionGraphAdapter(store)}
 }
 
 func (i ProjectionGraphIndex) ExecuteTemplate(actor access.Identity, domainID string, compiled CompiledTemplate, bound map[string]any, visibility map[string]struct{}, statusCfg *ontology.StatusFieldConfig, maxRows int, queryTimeout time.Duration, now func() time.Time) ([]map[string]any, error) {
-	nodes := i.store.ListNodes()
-	relationships := i.store.ListRelationships()
-	nodeByID := map[string]write.NodeRecord{}
-	for _, node := range nodes {
-		nodeByID[node.ID] = node
+	params := map[string]any{}
+	for k, v := range bound {
+		params[k] = v
 	}
-
-	results := []map[string]any{}
-	started := now()
-	for _, node := range nodes {
-		if queryTimeout > 0 && now().Sub(started) > queryTimeout {
-			return nil, ErrTimeout
-		}
-		if maxRows > 0 && len(results) >= maxRows {
-			break
-		}
-		if node.IsDeleted || node.DomainID != domainID || node.NodeType != compiled.StartType {
-			continue
-		}
-		if !isNodeVisible(node, visibility) {
-			continue
-		}
-		if !matchesNode(node, compiled.StartMatch, bound) {
-			continue
-		}
-		if !passesLifecycle(node, statusCfg, nil, nil) {
-			continue
-		}
-
-		result, ok := i.walkTemplate(node, compiled, bound, nodeByID, relationships, visibility, statusCfg)
-		if !ok {
-			continue
-		}
-		results = append(results, result)
+	params[compiled.GraphQuery.ACLTokensParam] = visibleOwnerTokens(visibility)
+	params["__query_timeout"] = queryTimeout
+	params["__max_rows"] = maxRows
+	params["__now"] = now
+	params["__status_cfg"] = statusCfg
+	results, err := i.adapter.ExecuteQuery(context.Background(), compiled.GraphQuery, params)
+	if err != nil {
+		return nil, err
 	}
 	return results, nil
 }
 
 func (i ProjectionGraphIndex) GetNode(actor access.Identity, nodeID string, visibility map[string]struct{}) (NodeResponse, bool) {
-	for _, node := range i.store.ListNodes() {
+	nodes, err := i.adapter.ListNodes(context.Background())
+	if err != nil {
+		return NodeResponse{}, false
+	}
+	rels, err := i.adapter.ListRelationships(context.Background())
+	if err != nil {
+		return NodeResponse{}, false
+	}
+	for _, node := range nodes {
 		if node.ID != nodeID || node.IsDeleted {
 			continue
 		}
@@ -76,7 +64,7 @@ func (i ProjectionGraphIndex) GetNode(actor access.Identity, nodeID string, visi
 			continue
 		}
 		relationships := []string{}
-		for _, rel := range i.store.ListRelationships() {
+		for _, rel := range rels {
 			if rel.FromNodeID == node.ID || rel.ToNodeID == node.ID {
 				relationships = append(relationships, rel.ID)
 			}
@@ -98,39 +86,132 @@ func (i ProjectionGraphIndex) GetNode(actor access.Identity, nodeID string, visi
 	return NodeResponse{}, false
 }
 
-func (i ProjectionGraphIndex) walkTemplate(start write.NodeRecord, compiled CompiledTemplate, bound map[string]any, nodeByID map[string]write.NodeRecord, relationships []write.RelationshipRecord, visibility map[string]struct{}, statusCfg *ontology.StatusFieldConfig) (map[string]any, bool) {
-	payload := cloneMap(start.Properties)
-	payload["id"] = start.ID
-	payload["node_type"] = start.NodeType
-	payload["domain_id"] = start.DomainID
-
-	current := start
-	for idx, hop := range compiled.Hops {
-		nextNode, ok := nextVisibleHop(current, hop.RelType, hop.ToNodeType, hop.Direction, hop.Filter, bound, nodeByID, relationships, visibility, statusCfg, hop.FilterStatus)
-		if !ok {
-			return nil, false
-		}
-		current = nextNode
-		payload[fmt.Sprintf("hop_%d", idx+1)] = current.ID
+func visibleOwnerSet(owners []access.VisibleOwner) map[string]struct{} {
+	result := map[string]struct{}{}
+	for _, owner := range owners {
+		result[nodeKey(owner.TenantID, owner.AppID)] = struct{}{}
 	}
-
-	selected := map[string]any{}
-	for _, field := range compiled.ReturnFields {
-		selected[field] = resolveFieldValue(start, current, field)
-	}
-	for k, v := range payload {
-		selected[k] = v
-	}
-	return selected, true
+	return result
 }
 
-func nextVisibleHop(current write.NodeRecord, relType, toType, direction string, filter map[string]any, bound map[string]any, nodeByID map[string]write.NodeRecord, relationships []write.RelationshipRecord, visibility map[string]struct{}, statusCfg *ontology.StatusFieldConfig, filterStatus string) (write.NodeRecord, bool) {
+func visibleOwnerTokens(visibility map[string]struct{}) []string {
+	tokens := make([]string, 0, len(visibility))
+	for token := range visibility {
+		tokens = append(tokens, token)
+	}
+	return tokens
+}
+
+type projectionGraphAdapter struct {
+	store ProjectionStore
+}
+
+func newProjectionGraphAdapter(store ProjectionStore) graphstore.GraphAdapter {
+	return projectionGraphAdapter{store: store}
+}
+
+func (p projectionGraphAdapter) UpsertNode(context.Context, graphstore.GraphNode) error { return nil }
+func (p projectionGraphAdapter) DeleteNode(context.Context, string) error               { return nil }
+func (p projectionGraphAdapter) UpsertRelationship(context.Context, graphstore.GraphRelationship) error {
+	return nil
+}
+func (p projectionGraphAdapter) DeleteRelationship(context.Context, string) error { return nil }
+
+func (p projectionGraphAdapter) ExecuteQuery(_ context.Context, query graphstore.GraphQuery, params map[string]any) ([]map[string]any, error) {
+	nodes := p.store.ListNodes()
+	rels := p.store.ListRelationships()
+	nodeByID := map[string]write.NodeRecord{}
+	for _, node := range nodes {
+		nodeByID[node.ID] = node
+	}
+	results := []map[string]any{}
+	queryTimeout, _ := params["__query_timeout"].(time.Duration)
+	maxRows, _ := params["__max_rows"].(int)
+	nowFn, _ := params["__now"].(func() time.Time)
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	statusCfg, _ := params["__status_cfg"].(*ontology.StatusFieldConfig)
+	started := nowFn()
+	visibility := visibilityFromParams(params, query.ACLTokensParam)
+	for _, node := range nodes {
+		if queryTimeout > 0 && nowFn().Sub(started) > queryTimeout {
+			return nil, ErrTimeout
+		}
+		if maxRows > 0 && len(results) >= maxRows {
+			break
+		}
+		if node.IsDeleted || node.NodeType != query.StartNodeType {
+			continue
+		}
+		if !matchesNode(node, query.StartMatch, params) {
+			continue
+		}
+		if !isNodeVisible(node, visibility) {
+			continue
+		}
+		payload := cloneMap(node.Properties)
+		payload["id"] = node.ID
+		payload["node_type"] = node.NodeType
+		payload["domain_id"] = node.DomainID
+		current := node
+		ok := true
+		for idx, hop := range query.Hops {
+			next, found := nextVisibleHop(current, hop, nodeByID, rels, visibility, params, statusCfg)
+			if !found {
+				ok = false
+				break
+			}
+			current = next
+			payload[fmt.Sprintf("hop_%d", idx+1)] = current.ID
+		}
+		if statusCfg != nil && !passesLifecycle(node, statusCfg, nil, nil) {
+			continue
+		}
+		if !ok {
+			continue
+		}
+		selected := map[string]any{}
+		for _, field := range query.ReturnFields {
+			selected[field] = resolveFieldValue(node, current, field)
+		}
+		for k, v := range payload {
+			selected[k] = v
+		}
+		results = append(results, selected)
+	}
+	return results, nil
+}
+
+func (p projectionGraphAdapter) ListNodes(context.Context) ([]graphstore.GraphNode, error) {
+	nodes := p.store.ListNodes()
+	result := make([]graphstore.GraphNode, 0, len(nodes))
+	for _, node := range nodes {
+		result = append(result, graphstore.GraphNode{
+			ID:            node.ID,
+			NodeType:      node.NodeType,
+			DomainID:      node.DomainID,
+			OwnerTenantID: node.OwnerTenantID,
+			OwnerAppID:    node.OwnerAppID,
+			ACLVisibleTo:  append([]string(nil), node.ACLVisibleTo...),
+			Visibility:    node.Visibility,
+			StatusValue:   node.StatusValue,
+			IsDeleted:     node.IsDeleted,
+			Properties:    cloneMap(node.Properties),
+			CreatedAt:     node.CreatedAt,
+			UpdatedAt:     node.UpdatedAt,
+		})
+	}
+	return result, nil
+}
+
+func nextVisibleHop(current write.NodeRecord, hop graphstore.GraphQueryHop, nodeByID map[string]write.NodeRecord, relationships []write.RelationshipRecord, visibility map[string]struct{}, params map[string]any, statusCfg *ontology.StatusFieldConfig) (write.NodeRecord, bool) {
 	for _, rel := range relationships {
-		if rel.RelType != relType {
+		if rel.RelType != hop.RelType {
 			continue
 		}
 		var candidateID string
-		switch strings.ToLower(direction) {
+		switch strings.ToLower(hop.Direction) {
 		case "in":
 			if rel.ToNodeID != current.ID {
 				continue
@@ -143,16 +224,16 @@ func nextVisibleHop(current write.NodeRecord, relType, toType, direction string,
 			candidateID = rel.ToNodeID
 		}
 		candidate, ok := nodeByID[candidateID]
-		if !ok || candidate.IsDeleted || candidate.NodeType != toType {
+		if !ok || candidate.IsDeleted || candidate.NodeType != hop.ToNodeType {
 			continue
 		}
 		if _, ok := visibility[nodeKey(candidate.OwnerTenantID, candidate.OwnerAppID)]; !ok {
 			continue
 		}
-		if !matchesNode(candidate, filter, bound) {
+		if !matchesNode(candidate, hop.Filter, params) {
 			continue
 		}
-		if filterStatus == "valid_only" && !passesLifecycle(candidate, statusCfg, map[string]any{}, map[string]any{}) {
+		if hop.FilterStatus == "valid_only" && !passesLifecycle(candidate, statusCfg, nil, nil) {
 			continue
 		}
 		return candidate, true
@@ -160,10 +241,36 @@ func nextVisibleHop(current write.NodeRecord, relType, toType, direction string,
 	return write.NodeRecord{}, false
 }
 
-func visibleOwnerSet(owners []access.VisibleOwner) map[string]struct{} {
-	result := map[string]struct{}{}
-	for _, owner := range owners {
-		result[nodeKey(owner.TenantID, owner.AppID)] = struct{}{}
+func (p projectionGraphAdapter) ListRelationships(context.Context) ([]graphstore.GraphRelationship, error) {
+	rels := p.store.ListRelationships()
+	result := make([]graphstore.GraphRelationship, 0, len(rels))
+	for _, rel := range rels {
+		result = append(result, graphstore.GraphRelationship{
+			ID:         rel.ID,
+			RelType:    rel.RelType,
+			FromNodeID: rel.FromNodeID,
+			ToNodeID:   rel.ToNodeID,
+			DomainID:   rel.DomainID,
+			Properties: cloneMap(rel.Properties),
+		})
 	}
-	return result
+	return result, nil
+}
+
+func visibilityFromParams(params map[string]any, key string) map[string]struct{} {
+	tokens := map[string]struct{}{}
+	raw, _ := params[key]
+	switch value := raw.(type) {
+	case []string:
+		for _, token := range value {
+			tokens[token] = struct{}{}
+		}
+	case []any:
+		for _, item := range value {
+			if token, ok := item.(string); ok {
+				tokens[token] = struct{}{}
+			}
+		}
+	}
+	return tokens
 }

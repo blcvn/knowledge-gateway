@@ -2,7 +2,9 @@ package bootstrap
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
+	"strings"
 
 	"kg-service/internal/access"
 	"kg-service/internal/config"
@@ -10,8 +12,12 @@ import (
 	"kg-service/internal/integrity"
 	"kg-service/internal/mcp"
 	"kg-service/internal/ontology"
+	"kg-service/internal/platform/fts"
+	"kg-service/internal/platform/graphstore"
 	"kg-service/internal/platform/postgres"
 	"kg-service/internal/platform/rediscache"
+	"kg-service/internal/platform/vector"
+	"kg-service/internal/platform/vectorstore"
 	"kg-service/internal/read"
 	"kg-service/internal/search"
 	"kg-service/internal/write"
@@ -33,6 +39,12 @@ type App struct {
 	readHandler      read.Handler
 	searchHandler    search.Handler
 	writeHandler     write.Handler
+
+	embeddingRouter vector.EmbeddingRouter
+	vectorAdapter   vectorstore.VectorAdapter
+	graphAdapter    graphstore.GraphAdapter
+	ftsAdapter      fts.FTSAdapter
+	searchResolver  ontology.SearchProfileResolver
 }
 
 func New(cfg config.Config) (*App, error) {
@@ -57,7 +69,10 @@ func New(cfg config.Config) (*App, error) {
 		redis:   redisClient,
 		httpMux: http.NewServeMux(),
 	}
-	app.initAccess()
+	if err := app.initAccess(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	app.routes()
 
 	return app, nil
@@ -92,12 +107,19 @@ func (a *App) routes() {
 	a.httpMux.Handle("POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.CreateQueryTemplate)))
 	a.httpMux.Handle("PUT /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/query-templates/{name}/activate", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.ActivateQueryTemplate)))
 	a.httpMux.Handle("POST /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/status-field-config", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.UpsertStatusFieldConfig)))
+	a.httpMux.Handle("PUT /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/search-profile", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.UpsertSearchProfile)))
+	a.httpMux.Handle("GET /v1/ontology/domains/{domain_id}/search-profile", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.GetSearchProfile)))
+	a.httpMux.Handle("POST /v1/tenants/{tenant_id}/ontology/query-strategies", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.CreateQueryStrategy)))
+	a.httpMux.Handle("PUT /v1/tenants/{tenant_id}/ontology/query-strategies/{key}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.UpdateQueryStrategy)))
+	a.httpMux.Handle("GET /v1/ontology/query-strategies", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.ListQueryStrategies)))
 	a.httpMux.Handle("GET /v1/ontology/domains/{domain_id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.GetDomain)))
 	a.httpMux.Handle("GET /v1/kg/read/templates", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.readHandler.ListTemplates)))
 	a.httpMux.Handle("POST /v1/kg/read/template/{domain_id}/{template_name}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.readHandler.ExecuteTemplate)))
 	a.httpMux.Handle("GET /v1/kg/read/nodes/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.readHandler.GetNode)))
 	a.httpMux.Handle("POST /v1/kg/search/semantic", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.SemanticSearch)))
 	a.httpMux.Handle("POST /v1/kg/search/rag", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.RagSearch)))
+	a.httpMux.Handle("POST /v1/kg/search/fulltext", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.FullTextSearch)))
+	a.httpMux.Handle("POST /v1/kg/search/hybrid", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.HybridSearch)))
 	a.httpMux.Handle("POST /v1/kg/write/nodes", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.CreateNode)))
 	a.httpMux.Handle("PUT /v1/kg/write/nodes/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.UpdateNode)))
 	a.httpMux.Handle("DELETE /v1/kg/write/nodes/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.DeleteNode)))
@@ -122,7 +144,7 @@ func (a *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	respond.OK(w, payload)
 }
 
-func (a *App) initAccess() {
+func (a *App) initAccess() error {
 	store := access.NewMemoryStore()
 	store.Seed(access.SeedTenants(), access.SeedApps(), access.SeedGrants())
 	a.accessStore = store
@@ -133,6 +155,7 @@ func (a *App) initAccess() {
 	rateLimiter := access.NewRateLimiter(store)
 	ontologyStore := ontology.NewMemoryStore()
 	ontologyService := ontology.NewService(ontologyStore, accessResolver)
+	a.searchResolver = ontologyService
 	bootstrapIdentity := access.Identity{
 		TenantID: access.PlatformTenantID,
 		AppID:    "11111111-admin-1111-admin-111111111111",
@@ -142,9 +165,31 @@ func (a *App) initAccess() {
 	ontologyStore.Seed(nil, nil, nil, nil, ontology.SeedCrossDomainRules(), nil, nil)
 	writeRepo := postgres.NewRepository(a.pgDB)
 	sessionManager := postgres.NewSessionManager(a.pgDB)
+	var err error
+	a.embeddingRouter, err = buildEmbeddingRouter(a.config)
+	if err != nil {
+		return err
+	}
+	a.vectorAdapter, err = buildVectorAdapter(a.config.Vector.Kind, a.pgDB)
+	if err != nil {
+		return err
+	}
+	a.graphAdapter, err = buildGraphAdapter(a.config.Graph.Kind)
+	if err != nil {
+		return err
+	}
+	a.ftsAdapter, err = buildFTSAdapter(a.config.FTS.Kind, a.pgDB)
+	if err != nil {
+		return err
+	}
+	log.Printf("embedding router chain: %s", strings.Join(embeddingChain(a.config), " -> "))
 	writeService := write.NewService(writeRepo, ontologyService, accessResolver, sessionManager, service)
 	readService := read.NewService(writeRepo, ontologyService, accessResolver, service)
-	searchService := search.NewService(writeRepo, ontologyService, accessResolver, service)
+	searchService := search.NewService(writeRepo, ontologyService, accessResolver, service, ontologyService)
+	searchService.SetEmbeddingRouter(a.embeddingRouter)
+	searchService.SetVectorAdapter(a.vectorAdapter)
+	searchService.SetFTSAdapter(a.ftsAdapter)
+	searchService.SetSearchProfileResolver(a.searchResolver)
 	integrityService := integrity.NewService(writeRepo, ontologyStore)
 	mcpService := mcp.NewService(readService, searchService, writeService, ontologyService, accessResolver, integrityService)
 
@@ -156,4 +201,5 @@ func (a *App) initAccess() {
 	a.readHandler = read.NewHandler(readService)
 	a.searchHandler = search.NewHandler(searchService)
 	a.writeHandler = write.NewHandler(writeService)
+	return nil
 }

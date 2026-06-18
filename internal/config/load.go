@@ -26,6 +26,17 @@ func Load() (Config, error) {
 			Password: stringEnv("KG_REDIS_PASSWORD", ""),
 			DB:       intEnv("KG_REDIS_DB", 0),
 		},
+		Embedding: EmbeddingConfig{
+			Provider: stringEnv("EMBEDDING_PROVIDER", "deterministic"),
+			URL:      stringEnv("EMBEDDING_URL", ""),
+			Model:    stringEnv("EMBEDDING_MODEL", ""),
+			APIKey:   stringEnv("EMBEDDING_API_KEY", ""),
+			ProxyURL: stringEnv("EMBEDDING_PROXY_URL", ""),
+			CacheTTL: time.Duration(intEnv("EMBEDDING_CACHE_TTL_S", 0)) * time.Second,
+		},
+		Vector: AdapterConfig{Kind: stringEnv("VECTOR_ADAPTER", "memory")},
+		Graph:  AdapterConfig{Kind: stringEnv("GRAPH_ADAPTER", "memory")},
+		FTS:    AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
 	}
 
 	return cfg, cfg.Validate()

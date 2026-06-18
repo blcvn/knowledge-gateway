@@ -9,8 +9,10 @@ import (
 	"kg-service/internal/access"
 	"kg-service/internal/config"
 	"kg-service/internal/ontology"
+	"kg-service/internal/platform/fts"
 	"kg-service/internal/platform/rediscache"
 	"kg-service/internal/platform/session"
+	"kg-service/internal/platform/vectorstore"
 	"kg-service/internal/write"
 )
 
@@ -47,6 +49,29 @@ func TestRuntimeProjectsNodeRelationshipAndCascade(t *testing.T) {
 	}
 	if got := runtime.Graph().Nodes[fixture.childID].StatusValue; got != "con_hieu_luc" {
 		t.Fatalf("child status = %q, want con_hieu_luc", got)
+	}
+}
+
+func TestRuntimeSyncsFullTextSearchIndex(t *testing.T) {
+	fixture := newWorkerFixture(t)
+	runtime := NewRuntime(fixture.store, fixture.ontologySvc, &fixture.cache)
+	recorder := &recordingFTSAdapter{}
+	runtime.ftsAdapter = recorder
+
+	runtime.PollOnce()
+	if recorder.indexCount == 0 {
+		t.Fatal("expected FTS index calls during projection")
+	}
+	if recorder.deleteCount != 0 {
+		t.Fatalf("delete_count = %d, want 0", recorder.deleteCount)
+	}
+
+	if _, err := fixture.writeSvc.DeleteNode(fixture.actor, fixture.childID); err != nil {
+		t.Fatalf("DeleteNode() error = %v", err)
+	}
+	runtime.PollOnce()
+	if recorder.deleteCount == 0 {
+		t.Fatal("expected FTS delete call during node deletion")
 	}
 }
 
@@ -195,6 +220,7 @@ func TestRuntimeReconcileReportsHealthyState(t *testing.T) {
 	runtime.PollOnce()
 
 	report := runtime.Reconcile()
+	t.Logf("report=%+v", report)
 	if report.Overall != "pass" {
 		t.Fatalf("overall = %q, want pass", report.Overall)
 	}
@@ -217,9 +243,13 @@ func TestRuntimeReconcileReportsReplicaDrift(t *testing.T) {
 	parent := runtime.Graph().Nodes[fixture.parentID]
 	parent.NodeType = "Mismatch"
 	runtime.Graph().Nodes[fixture.parentID] = parent
-	delete(runtime.Vector().Documents, fixture.childID)
+	if err := runtime.vectorAdapter.Delete(context.Background(), fixture.childID); err != nil {
+		t.Fatalf("vectorAdapter.Delete() error = %v", err)
+	}
+	if err := runtime.vectorAdapter.Upsert(context.Background(), vectorstore.VectorDocument{NodeID: "orphan-vector-node", NodeType: "Orphan", DomainID: "test-domain"}); err != nil {
+		t.Fatalf("vectorAdapter.Upsert() error = %v", err)
+	}
 	runtime.Graph().Nodes["orphan-graph-node"] = GraphNode{ID: "orphan-graph-node", NodeType: "Orphan", DomainID: "test-domain"}
-	runtime.Vector().Documents["orphan-vector-node"] = VectorDocument{NodeID: "orphan-vector-node", NodeType: "Orphan", DomainID: "test-domain"}
 	for id := range runtime.Graph().Rels {
 		delete(runtime.Graph().Rels, id)
 		break
@@ -392,4 +422,25 @@ func containsIssueKind(issues []ReconciliationIssue, want string) bool {
 		}
 	}
 	return false
+}
+
+type recordingFTSAdapter struct {
+	indexCount  int
+	deleteCount int
+	lastIndex   fts.FTSDocument
+}
+
+func (r *recordingFTSAdapter) Index(_ context.Context, doc fts.FTSDocument) error {
+	r.indexCount++
+	r.lastIndex = doc
+	return nil
+}
+
+func (r *recordingFTSAdapter) Delete(_ context.Context, nodeID string) error {
+	r.deleteCount++
+	return nil
+}
+
+func (r *recordingFTSAdapter) Search(_ context.Context, query fts.FTSQuery, filter fts.FTSFilter, opts fts.SearchOptions) ([]fts.FTSResult, error) {
+	return nil, nil
 }

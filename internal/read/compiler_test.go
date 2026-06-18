@@ -1,64 +1,74 @@
 package read
 
 import (
-	"strings"
+	"errors"
 	"testing"
 
 	"kg-service/internal/ontology"
+	"kg-service/internal/platform/graphstore"
 )
 
-func TestQueryTemplateCompilerCompilesDSL(t *testing.T) {
+func TestQueryTemplateCompilerUsesStrategyHandlers(t *testing.T) {
 	compiler := NewQueryTemplateCompiler()
-	compiled, err := compiler.Compile("noi_bo_hop_dong", ontology.QueryTemplate{
-		TemplateName: "contract_lookup",
+	template := ontology.QueryTemplate{
+		TemplateName: "sample",
 		PatternSpec: map[string]any{
-			"start": map[string]any{
-				"node_type": "HopDongMau",
-				"match": map[string]any{
-					"ten": "$ten_hop_dong",
-				},
-			},
+			"start": map[string]any{"node_type": "Doc", "match": map[string]any{"title": "alpha"}},
 			"hops": []any{
-				map[string]any{
-					"rel_type":     "THAM_CHIEU",
-					"to_node_type": "KhoanMau",
-				},
+				map[string]any{"rel_type": "LINKS", "to_node_type": "Doc", "direction": "out"},
 			},
 		},
-		ReturnFields: []string{"HopDongMau.ten", "KhoanMau.ten"},
-	})
+		ReturnFields: []string{"id"},
+	}
+
+	compiled, err := compiler.Compile("domain-1", template, ontology.QueryStrategy{Key: "default", MaxDepth: 5})
 	if err != nil {
-		t.Fatalf("Compile() error = %v", err)
+		t.Fatalf("Compile(default) error = %v", err)
 	}
-	if compiled.StartType != "HopDongMau" {
-		t.Fatalf("StartType = %q", compiled.StartType)
+	if compiled.GraphQuery.MaxDepth != 5 || compiled.GraphQuery.Strategy != "default" {
+		t.Fatalf("default GraphQuery = %#v", compiled.GraphQuery)
 	}
-	if compiled.Query == "" {
-		t.Fatal("Query is empty")
+
+	compiled, err = compiler.Compile("domain-1", template, ontology.QueryStrategy{Key: "deep_traversal", MaxDepth: 10})
+	if err != nil {
+		t.Fatalf("Compile(deep_traversal) error = %v", err)
 	}
-	if !strings.Contains(compiled.Query, "acl_visible_to") {
-		t.Fatalf("Query = %q, want ACL predicate", compiled.Query)
+	if compiled.GraphQuery.MaxDepth != 10 || compiled.GraphQuery.Strategy != "deep_traversal" {
+		t.Fatalf("deep_traversal GraphQuery = %#v", compiled.GraphQuery)
+	}
+
+	RegisterQueryStrategyHandler("finance_deep", func(base graphstore.GraphQuery, strategy ontology.QueryStrategy) (graphstore.GraphQuery, error) {
+		base.MaxDepth = strategy.MaxDepth
+		base.Strategy = strategy.Key
+		return base, nil
+	})
+	compiled, err = compiler.Compile("domain-1", template, ontology.QueryStrategy{Key: "finance_deep", MaxDepth: 8})
+	if err != nil {
+		t.Fatalf("Compile(custom) error = %v", err)
+	}
+	if compiled.GraphQuery.MaxDepth != 8 || compiled.GraphQuery.Strategy != "finance_deep" {
+		t.Fatalf("custom GraphQuery = %#v", compiled.GraphQuery)
 	}
 }
 
-func TestQueryTemplateCompilerRejectsDeepTemplates(t *testing.T) {
+func TestQueryTemplateCompilerRejectsTooDeepTemplates(t *testing.T) {
 	compiler := NewQueryTemplateCompiler()
-	hops := []any{}
-	for i := 0; i < 6; i++ {
-		hops = append(hops, map[string]any{
-			"rel_type":     "THAM_CHIEU",
-			"to_node_type": "KhoanMau",
-		})
-	}
-	_, err := compiler.Compile("noi_bo_hop_dong", ontology.QueryTemplate{
-		TemplateName: "too_deep",
+	template := ontology.QueryTemplate{
+		TemplateName: "too-deep",
 		PatternSpec: map[string]any{
-			"start": map[string]any{"node_type": "HopDongMau"},
-			"hops":  hops,
+			"start": map[string]any{"node_type": "Doc"},
+			"hops": []any{
+				map[string]any{"rel_type": "LINKS", "to_node_type": "Doc"},
+				map[string]any{"rel_type": "LINKS", "to_node_type": "Doc"},
+			},
 		},
-		ReturnFields: []string{"HopDongMau.ten"},
-	})
+	}
+
+	_, err := compiler.Compile("domain-1", template, ontology.QueryStrategy{Key: "default", MaxDepth: 1})
 	if err == nil {
-		t.Fatal("Compile() error = nil, want validation failure")
+		t.Fatal("Compile() error = nil, want too-deep error")
+	}
+	if !errors.Is(err, ErrTemplateTooDeep) {
+		t.Fatalf("error = %v, want ErrTemplateTooDeep", err)
 	}
 }

@@ -1,40 +1,47 @@
 package vector
 
 import (
+	"context"
 	"math"
 	"math/bits"
 	"strings"
 )
 
-type Provider interface {
-	Embed(text string) []float64
+type EmbeddingProvider interface {
+	Embed(ctx context.Context, text string) ([]float64, error)
 	Dimensions() int
+	ModelID() string
 }
 
 type DeterministicProvider struct {
 	dimensions int
+	modelID    string
 }
 
 func NewDeterministicProvider(dimensions int) DeterministicProvider {
 	if dimensions <= 0 {
 		dimensions = 8
 	}
-	return DeterministicProvider{dimensions: dimensions}
+	return DeterministicProvider{dimensions: dimensions, modelID: "deterministic"}
 }
 
 func (p DeterministicProvider) Dimensions() int {
 	return p.dimensions
 }
 
-func (p DeterministicProvider) Embed(text string) []float64 {
+func (p DeterministicProvider) ModelID() string {
+	return p.modelID
+}
+
+func (p DeterministicProvider) Embed(_ context.Context, text string) ([]float64, error) {
 	vec := make([]float64, p.dimensions)
 	if len(vec) == 0 {
-		return vec
+		return vec, nil
 	}
 
 	tokens := strings.Fields(strings.ToLower(text))
 	if len(tokens) == 0 {
-		return vec
+		return vec, nil
 	}
 
 	for _, token := range tokens {
@@ -53,10 +60,10 @@ func (p DeterministicProvider) Embed(text string) []float64 {
 	}
 	norm = math.Sqrt(norm)
 	if norm == 0 {
-		return vec
+		return vec, nil
 	}
 	for i := range vec {
 		vec[i] /= norm
 	}
-	return vec
+	return vec, nil
 }

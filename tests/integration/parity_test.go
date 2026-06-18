@@ -98,6 +98,46 @@ func TestEndToEndParityFlow(t *testing.T) {
 	}
 }
 
+func TestEndToEndSearchPipelineReturnsProjectedNode(t *testing.T) {
+	fixture := newIntegrationFixture(t)
+
+	created, err := fixture.writeSvc.CreateNode(fixture.actor, write.NodeCreateRequest{
+		DomainID:   "integration-domain",
+		NodeType:   "Doc",
+		Properties: map[string]any{"title": "Projected Search Doc", "status": "active"},
+	})
+	if err != nil {
+		t.Fatalf("CreateNode() error = %v", err)
+	}
+	if report := fixture.runtime.PollOnce(); report.Processed == 0 {
+		t.Fatalf("PollOnce() = %+v, want processed work", report)
+	}
+
+	semanticReq := httptest.NewRequest(http.MethodPost, "/v1/kg/search/semantic", strings.NewReader(`{"query":"Projected Search Doc","domain_ids":["integration-domain"],"top_k":5}`))
+	semanticReq = semanticReq.WithContext(access.ContextWithIdentity(semanticReq.Context(), fixture.actor))
+	semanticRec := httptest.NewRecorder()
+	fixture.searchHandler.SemanticSearch(semanticRec, semanticReq)
+	if semanticRec.Code != http.StatusOK || !strings.Contains(semanticRec.Body.String(), created.NodeID) {
+		t.Fatalf("SemanticSearch() status=%d body=%s", semanticRec.Code, semanticRec.Body.String())
+	}
+
+	fulltextReq := httptest.NewRequest(http.MethodPost, "/v1/kg/search/fulltext", strings.NewReader(`{"query":"Projected Search Doc","domain_ids":["integration-domain"],"top_k":5,"mode":"phrase"}`))
+	fulltextReq = fulltextReq.WithContext(access.ContextWithIdentity(fulltextReq.Context(), fixture.actor))
+	fulltextRec := httptest.NewRecorder()
+	fixture.searchHandler.FullTextSearch(fulltextRec, fulltextReq)
+	if fulltextRec.Code != http.StatusOK || !strings.Contains(fulltextRec.Body.String(), created.NodeID) {
+		t.Fatalf("FullTextSearch() status=%d body=%s", fulltextRec.Code, fulltextRec.Body.String())
+	}
+
+	hybridReq := httptest.NewRequest(http.MethodPost, "/v1/kg/search/hybrid", strings.NewReader(`{"query":"Projected Search Doc","domain_ids":["integration-domain"],"top_k":5,"semantic_weight":0.5,"fts_operator":"phrase"}`))
+	hybridReq = hybridReq.WithContext(access.ContextWithIdentity(hybridReq.Context(), fixture.actor))
+	hybridRec := httptest.NewRecorder()
+	fixture.searchHandler.HybridSearch(hybridRec, hybridReq)
+	if hybridRec.Code != http.StatusOK || !strings.Contains(hybridRec.Body.String(), created.NodeID) {
+		t.Fatalf("HybridSearch() status=%d body=%s", hybridRec.Code, hybridRec.Body.String())
+	}
+}
+
 func TestReplaySurvivesRestart(t *testing.T) {
 	fixture := newIntegrationFixture(t)
 
@@ -203,6 +243,8 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 	searchSvc := search.NewService(store, ontologySvc, accessResolver, accessSvc)
 	integritySvc := integrity.NewService(store, ontologyStore)
 	runtime := workers.NewRuntime(store, ontologySvc, &cache)
+	searchSvc.SetVectorAdapter(runtime.VectorAdapter())
+	searchSvc.SetFTSAdapter(runtime.FTSAdapter())
 
 	return integrationFixture{
 		store:         store,

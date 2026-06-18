@@ -1,6 +1,10 @@
 package workers
 
-import "kg-service/internal/write"
+import (
+	"time"
+
+	"kg-service/internal/write"
+)
 
 type EventStatus string
 
@@ -26,9 +30,12 @@ type GraphNode struct {
 	OwnerTenantID string         `json:"owner_tenant_id"`
 	OwnerAppID    string         `json:"owner_app_id"`
 	ACLVisibleTo  []string       `json:"acl_visible_to"`
+	Visibility    string         `json:"visibility,omitempty"`
 	StatusValue   string         `json:"status_value,omitempty"`
 	IsDeleted     bool           `json:"is_deleted"`
 	Properties    map[string]any `json:"properties"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
 type GraphRelationship struct {

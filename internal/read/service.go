@@ -24,6 +24,7 @@ type OntologyResolver interface {
 	GetQueryTemplate(domainID, templateName string) (ontology.QueryTemplate, error)
 	ListQueryTemplates(domainID string) []ontology.QueryTemplate
 	GetStatusFieldConfig(domainID string) (*ontology.StatusFieldConfig, error)
+	Resolve(domainID, tenantID, appID string) (ontology.ResolvedSearchProfile, error)
 }
 
 type AccessResolver interface {
@@ -106,7 +107,11 @@ func (s *Service) ExecuteTemplate(actor access.Identity, domainID, templateName 
 		s.recordAudit(actor, "read", "query_template", domainID+"."+templateName, "deny", "template_inactive", nil)
 		return TemplateExecutionResponse{}, ErrNotFound
 	}
-	compiled, err := s.compiler.Compile(domainID, template)
+	resolvedProfile, err := s.ontology.Resolve(domainID, actor.TenantID, actor.AppID)
+	if err != nil {
+		return TemplateExecutionResponse{}, err
+	}
+	compiled, err := s.compiler.Compile(domainID, template, resolvedProfile.QueryStrategy)
 	if err != nil {
 		s.recordAudit(actor, "read", "query_template", domainID+"."+templateName, "deny", err.Error(), nil)
 		return TemplateExecutionResponse{}, err

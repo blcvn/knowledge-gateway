@@ -10,7 +10,12 @@ import (
 	"time"
 
 	"kg-service/internal/ontology"
+	"kg-service/internal/platform/fts"
+	"kg-service/internal/platform/graphstore"
 	"kg-service/internal/platform/rediscache"
+	"kg-service/internal/platform/vector"
+	"kg-service/internal/platform/vectorstore"
+	"kg-service/internal/searchprofile"
 	"kg-service/internal/write"
 )
 
@@ -29,26 +34,40 @@ type OntologyResolver interface {
 }
 
 type Runtime struct {
-	store      Repository
-	ontology   OntologyResolver
-	cache      *rediscache.Client
-	graph      *GraphStore
-	vector     *VectorStore
-	mu         sync.Mutex
-	outbox     map[string]EventEnvelope
-	maxRetries int
+	store         Repository
+	ontology      OntologyResolver
+	cache         *rediscache.Client
+	embedding     vector.EmbeddingRouter
+	profiles      ontology.SearchProfileResolver
+	graphAdapter  graphstore.GraphAdapter
+	vectorAdapter vectorstore.VectorAdapter
+	ftsAdapter    fts.FTSAdapter
+	graph         *GraphStore
+	vector        *VectorStore
+	mu            sync.Mutex
+	outbox        map[string]EventEnvelope
+	maxRetries    int
 }
 
-func NewRuntime(store Repository, ontology OntologyResolver, cache *rediscache.Client) *Runtime {
-	return &Runtime{
-		store:      store,
-		ontology:   ontology,
-		cache:      cache,
-		graph:      &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
-		vector:     &VectorStore{Documents: map[string]VectorDocument{}},
-		outbox:     map[string]EventEnvelope{},
-		maxRetries: 3,
+func NewRuntime(store Repository, ontologyResolver OntologyResolver, cache *rediscache.Client) *Runtime {
+	deterministic := vector.NewDeterministicProvider(8)
+	router := vector.DirectRouter{Provider: deterministic}
+	profileResolver, _ := ontologyResolver.(ontology.SearchProfileResolver)
+	runtime := &Runtime{
+		store:         store,
+		ontology:      ontologyResolver,
+		cache:         cache,
+		embedding:     router,
+		profiles:      profileResolver,
+		vectorAdapter: vectorstore.NewInMemoryVectorAdapter(),
+		ftsAdapter:    fts.NewInMemoryFTSAdapter(),
+		graph:         &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
+		vector:        &VectorStore{Documents: map[string]VectorDocument{}},
+		outbox:        map[string]EventEnvelope{},
+		maxRetries:    3,
 	}
+	runtime.graphAdapter = runtimeGraphAdapter{graph: runtime.graph}
+	return runtime
 }
 
 func (r *Runtime) Graph() *GraphStore {
@@ -57,6 +76,14 @@ func (r *Runtime) Graph() *GraphStore {
 
 func (r *Runtime) Vector() *VectorStore {
 	return r.vector
+}
+
+func (r *Runtime) VectorAdapter() vectorstore.VectorAdapter {
+	return r.vectorAdapter
+}
+
+func (r *Runtime) FTSAdapter() fts.FTSAdapter {
+	return r.ftsAdapter
 }
 
 func (r *Runtime) PollOnce() WorkerReport {
@@ -124,9 +151,46 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 	for _, rel := range r.store.ListRelationships() {
 		sourceRelationships[rel.ID] = rel
 	}
-	graphNodes := r.graph.SnapshotNodes()
-	graphRelationships := r.graph.SnapshotRelationships()
+	graphNodes := map[string]GraphNode{}
+	graphRelationships := map[string]GraphRelationship{}
+	if r.graphAdapter != nil {
+		if nodes, err := r.graphAdapter.ListNodes(context.Background()); err == nil {
+			for _, node := range nodes {
+				graphNodes[node.ID] = GraphNode{
+					ID:            node.ID,
+					NodeType:      node.NodeType,
+					DomainID:      node.DomainID,
+					OwnerTenantID: node.OwnerTenantID,
+					OwnerAppID:    node.OwnerAppID,
+					ACLVisibleTo:  append([]string(nil), node.ACLVisibleTo...),
+					Visibility:    node.Visibility,
+					StatusValue:   node.StatusValue,
+					IsDeleted:     node.IsDeleted,
+					Properties:    cloneMap(node.Properties),
+					CreatedAt:     node.CreatedAt,
+					UpdatedAt:     node.UpdatedAt,
+				}
+			}
+		}
+		if rels, err := r.graphAdapter.ListRelationships(context.Background()); err == nil {
+			for _, rel := range rels {
+				graphRelationships[rel.ID] = GraphRelationship{
+					ID:         rel.ID,
+					RelType:    rel.RelType,
+					FromNodeID: rel.FromNodeID,
+					ToNodeID:   rel.ToNodeID,
+					DomainID:   rel.DomainID,
+					Properties: cloneMap(rel.Properties),
+				}
+			}
+		}
+	}
 	vectorDocs := r.vector.SnapshotDocuments()
+	if snapshotter, ok := any(r.vectorAdapter).(interface {
+		SnapshotDocuments() map[string]vectorstore.VectorDocument
+	}); ok && snapshotter != nil {
+		vectorDocs = snapshotWorkerVectorDocuments(snapshotter.SnapshotDocuments())
+	}
 
 	for id, source := range sourceNodes {
 		graphNode, ok := graphNodes[id]
@@ -210,6 +274,15 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 			return errors.New("node not found")
 		}
 		node.IsDeleted = true
+		if r.graphAdapter != nil {
+			_ = r.graphAdapter.DeleteNode(context.Background(), nodeID)
+		}
+		if r.vectorAdapter != nil {
+			_ = r.vectorAdapter.Delete(context.Background(), nodeID)
+		}
+		if r.ftsAdapter != nil {
+			_ = r.ftsAdapter.Delete(context.Background(), nodeID)
+		}
 		return r.projectNode(node)
 	case "RELATIONSHIP_UPSERTED", "RELATIONSHIP_DELETED":
 		relID, _ := event.Payload["relationship_id"].(string)
@@ -217,7 +290,7 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 		if !ok {
 			return errors.New("relationship not found")
 		}
-		r.graph.Rels[rel.ID] = GraphRelationship{
+		relPayload := GraphRelationship{
 			ID:         rel.ID,
 			RelType:    rel.RelType,
 			FromNodeID: rel.FromNodeID,
@@ -225,6 +298,21 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 			DomainID:   rel.DomainID,
 			Properties: cloneMap(rel.Properties),
 		}
+		if r.graphAdapter != nil {
+			if event.EventType == "RELATIONSHIP_DELETED" {
+				_ = r.graphAdapter.DeleteRelationship(context.Background(), relID)
+			} else {
+				_ = r.graphAdapter.UpsertRelationship(context.Background(), graphstore.GraphRelationship{
+					ID:         relPayload.ID,
+					RelType:    relPayload.RelType,
+					FromNodeID: relPayload.FromNodeID,
+					ToNodeID:   relPayload.ToNodeID,
+					DomainID:   relPayload.DomainID,
+					Properties: cloneMap(relPayload.Properties),
+				})
+			}
+		}
+		r.graph.Rels[rel.ID] = relPayload
 		return r.applyStatusCascade(rel.DomainID, rel.FromNodeID)
 	case "ACCESS_GRANT_CHANGED":
 		return r.handleAccessGrantChanged(event.Payload)
@@ -246,7 +334,38 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 		IsDeleted:     node.IsDeleted,
 		Properties:    cloneMap(node.Properties),
 	}
+	if r.graphAdapter != nil {
+		_ = r.graphAdapter.UpsertNode(context.Background(), graphstore.GraphNode{
+			ID:            node.ID,
+			NodeType:      node.NodeType,
+			DomainID:      node.DomainID,
+			OwnerTenantID: node.OwnerTenantID,
+			OwnerAppID:    node.OwnerAppID,
+			ACLVisibleTo:  append([]string(nil), acl...),
+			Visibility:    node.Visibility,
+			StatusValue:   node.StatusValue,
+			IsDeleted:     node.IsDeleted,
+			Properties:    cloneMap(node.Properties),
+			CreatedAt:     node.CreatedAt,
+			UpdatedAt:     node.UpdatedAt,
+		})
+	}
 	cfg, err := r.ontology.GetStatusFieldConfig(node.DomainID)
+	if err != nil {
+		return err
+	}
+	resolvedProfile := ontology.ResolvedSearchProfile{}
+	if r.profiles != nil {
+		if profile, err := r.profiles.Resolve(node.DomainID, node.OwnerTenantID, node.OwnerAppID); err == nil {
+			resolvedProfile = profile
+		}
+	}
+	text := searchprofile.BuildEmbeddingText(node, resolvedProfile)
+	embeddingProvider := r.embedding.RouteContext(node.OwnerTenantID, node.DomainID)
+	if embeddingProvider == nil {
+		embeddingProvider = vector.NewDeterministicProvider(8)
+	}
+	embedding, err := embeddingProvider.Embed(context.Background(), text)
 	if err != nil {
 		return err
 	}
@@ -260,7 +379,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 		IsDeleted:     node.IsDeleted,
 		StatusValue:   node.StatusValue,
 		DomainProps:   cloneMap(node.Properties),
-		Embedding:     buildEmbeddingVector(buildEmbeddingText(node)),
+		Embedding:     embedding,
 	}
 	if cfg != nil && cfg.AuthorityFieldName != "" && len(cfg.AuthorityValuesMap) > 0 {
 		if raw, ok := node.Properties[cfg.AuthorityFieldName]; ok {
@@ -269,7 +388,29 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 			}
 		}
 	}
+	if r.vectorAdapter != nil {
+		if err := r.vectorAdapter.Upsert(context.Background(), vectorstore.VectorDocument{
+			NodeID:         doc.NodeID,
+			NodeType:       doc.NodeType,
+			DomainID:       doc.DomainID,
+			OwnerTenantID:  doc.OwnerTenantID,
+			OwnerAppID:     doc.OwnerAppID,
+			ACLVisibleTo:   append([]string(nil), doc.ACLVisibleTo...),
+			IsDeleted:      doc.IsDeleted,
+			StatusValue:    doc.StatusValue,
+			AuthorityScore: doc.AuthorityScore,
+			DomainProps:    cloneMap(doc.DomainProps),
+			Embedding:      append([]float64(nil), doc.Embedding...),
+		}); err != nil {
+			return err
+		}
+	}
 	r.vector.Documents[node.ID] = doc
+	if !node.IsDeleted && r.ftsAdapter != nil {
+		if err := r.ftsAdapter.Index(context.Background(), buildFTSDocument(node, acl, doc.AuthorityScore)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -341,6 +482,26 @@ func (r *Runtime) handleAccessGrantChanged(payload map[string]any) error {
 	return nil
 }
 
+func snapshotWorkerVectorDocuments(source map[string]vectorstore.VectorDocument) map[string]VectorDocument {
+	result := make(map[string]VectorDocument, len(source))
+	for id, doc := range source {
+		result[id] = VectorDocument{
+			NodeID:         doc.NodeID,
+			NodeType:       doc.NodeType,
+			DomainID:       doc.DomainID,
+			OwnerTenantID:  doc.OwnerTenantID,
+			OwnerAppID:     doc.OwnerAppID,
+			ACLVisibleTo:   append([]string(nil), doc.ACLVisibleTo...),
+			IsDeleted:      doc.IsDeleted,
+			StatusValue:    doc.StatusValue,
+			AuthorityScore: doc.AuthorityScore,
+			DomainProps:    cloneMap(doc.DomainProps),
+			Embedding:      append([]float64(nil), doc.Embedding...),
+		}
+	}
+	return result
+}
+
 func nodeACLVisibleTo(node write.NodeRecord) []string {
 	if len(node.ACLVisibleTo) > 0 {
 		return append([]string(nil), node.ACLVisibleTo...)
@@ -357,20 +518,39 @@ func nodeHasIncomingRel(nodeID, relType, fromNodeID string, rels map[string]Grap
 	return false
 }
 
-func buildEmbeddingText(node write.NodeRecord) string {
-	parts := []string{node.ID, node.NodeType, node.DomainID, node.ExternalRef, node.StatusValue}
-	for k, v := range node.Properties {
-		parts = append(parts, k, fmt.Sprintf("%v", v))
-	}
-	return strings.Join(parts, " ")
-}
-
 func cloneMap(in map[string]any) map[string]any {
 	out := map[string]any{}
 	for k, v := range in {
 		out[k] = v
 	}
 	return out
+}
+
+func buildFTSDocument(node write.NodeRecord, acl []string, authorityScore *int) fts.FTSDocument {
+	fields := map[string]string{
+		"id":           node.ID,
+		"node_type":    node.NodeType,
+		"domain_id":    node.DomainID,
+		"external_ref": node.ExternalRef,
+		"status_value": node.StatusValue,
+	}
+	for key, value := range node.Properties {
+		fields[key] = fmt.Sprint(value)
+	}
+	return fts.FTSDocument{
+		NodeID:         node.ID,
+		NodeType:       node.NodeType,
+		DomainID:       node.DomainID,
+		OwnerTenantID:  node.OwnerTenantID,
+		OwnerAppID:     node.OwnerAppID,
+		ACLVisibleTo:   append([]string(nil), acl...),
+		IsDeleted:      node.IsDeleted,
+		StatusValue:    node.StatusValue,
+		AuthorityScore: authorityScore,
+		DomainProps:    cloneMap(node.Properties),
+		Fields:         fields,
+		CreatedAt:      node.CreatedAt,
+	}
 }
 
 func appendUnique(values []string, item string) []string {
@@ -399,13 +579,248 @@ func removeString(values []string, item string) []string {
 	return result
 }
 
-func buildEmbeddingVector(text string) []float64 {
-	vec := make([]float64, 8)
-	if len(text) == 0 {
-		return vec
+type runtimeGraphAdapter struct {
+	graph *GraphStore
+}
+
+func (a runtimeGraphAdapter) UpsertNode(_ context.Context, node graphstore.GraphNode) error {
+	if a.graph == nil {
+		return nil
 	}
-	for i, r := range text {
-		vec[i%len(vec)] += float64((int(r)%17)+1) / 17.0
+	a.graph.Nodes[node.ID] = GraphNode{
+		ID:            node.ID,
+		NodeType:      node.NodeType,
+		DomainID:      node.DomainID,
+		OwnerTenantID: node.OwnerTenantID,
+		OwnerAppID:    node.OwnerAppID,
+		ACLVisibleTo:  append([]string(nil), node.ACLVisibleTo...),
+		Visibility:    node.Visibility,
+		StatusValue:   node.StatusValue,
+		IsDeleted:     node.IsDeleted,
+		Properties:    cloneMap(node.Properties),
 	}
-	return vec
+	return nil
+}
+
+func (a runtimeGraphAdapter) DeleteNode(_ context.Context, nodeID string) error {
+	if a.graph == nil {
+		return nil
+	}
+	delete(a.graph.Nodes, nodeID)
+	for id, rel := range a.graph.Rels {
+		if rel.FromNodeID == nodeID || rel.ToNodeID == nodeID {
+			delete(a.graph.Rels, id)
+		}
+	}
+	return nil
+}
+
+func (a runtimeGraphAdapter) UpsertRelationship(_ context.Context, rel graphstore.GraphRelationship) error {
+	if a.graph == nil {
+		return nil
+	}
+	a.graph.Rels[rel.ID] = GraphRelationship{
+		ID:         rel.ID,
+		RelType:    rel.RelType,
+		FromNodeID: rel.FromNodeID,
+		ToNodeID:   rel.ToNodeID,
+		DomainID:   rel.DomainID,
+		Properties: cloneMap(rel.Properties),
+	}
+	return nil
+}
+
+func (a runtimeGraphAdapter) DeleteRelationship(_ context.Context, relID string) error {
+	if a.graph == nil {
+		return nil
+	}
+	delete(a.graph.Rels, relID)
+	return nil
+}
+
+func (a runtimeGraphAdapter) ExecuteQuery(_ context.Context, query graphstore.GraphQuery, params map[string]any) ([]map[string]any, error) {
+	if a.graph == nil {
+		return nil, nil
+	}
+	return runtimeGraphQuery(a.graph.SnapshotNodes(), a.graph.SnapshotRelationships(), query, params), nil
+}
+
+func (a runtimeGraphAdapter) ListNodes(_ context.Context) ([]graphstore.GraphNode, error) {
+	if a.graph == nil {
+		return nil, nil
+	}
+	result := make([]graphstore.GraphNode, 0, len(a.graph.Nodes))
+	for _, node := range a.graph.Nodes {
+		result = append(result, graphstore.GraphNode{
+			ID:            node.ID,
+			NodeType:      node.NodeType,
+			DomainID:      node.DomainID,
+			OwnerTenantID: node.OwnerTenantID,
+			OwnerAppID:    node.OwnerAppID,
+			ACLVisibleTo:  append([]string(nil), node.ACLVisibleTo...),
+			Visibility:    node.Visibility,
+			StatusValue:   node.StatusValue,
+			IsDeleted:     node.IsDeleted,
+			Properties:    cloneMap(node.Properties),
+			CreatedAt:     node.CreatedAt,
+			UpdatedAt:     node.UpdatedAt,
+		})
+	}
+	return result, nil
+}
+
+func (a runtimeGraphAdapter) ListRelationships(_ context.Context) ([]graphstore.GraphRelationship, error) {
+	if a.graph == nil {
+		return nil, nil
+	}
+	result := make([]graphstore.GraphRelationship, 0, len(a.graph.Rels))
+	for _, rel := range a.graph.Rels {
+		result = append(result, graphstore.GraphRelationship{
+			ID:         rel.ID,
+			RelType:    rel.RelType,
+			FromNodeID: rel.FromNodeID,
+			ToNodeID:   rel.ToNodeID,
+			DomainID:   rel.DomainID,
+			Properties: cloneMap(rel.Properties),
+		})
+	}
+	return result, nil
+}
+
+func runtimeGraphQuery(nodes map[string]GraphNode, rels map[string]GraphRelationship, query graphstore.GraphQuery, params map[string]any) []map[string]any {
+	nodeByID := map[string]GraphNode{}
+	for _, node := range nodes {
+		nodeByID[node.ID] = node
+	}
+	visibility := visibleOwnerTokensFromAny(params[query.ACLTokensParam])
+	results := []map[string]any{}
+	for _, node := range nodes {
+		if node.IsDeleted || node.NodeType != query.StartNodeType {
+			continue
+		}
+		if !runtimeMatchesNode(node.Properties, query.StartMatch, params) {
+			continue
+		}
+		if !runtimeIsVisible(node, visibility) {
+			continue
+		}
+		payload := cloneMap(node.Properties)
+		payload["id"] = node.ID
+		payload["node_type"] = node.NodeType
+		payload["domain_id"] = node.DomainID
+		current := node
+		ok := true
+		for idx, hop := range query.Hops {
+			next, found := runtimeNextHop(current, hop, nodeByID, rels, visibility, params)
+			if !found {
+				ok = false
+				break
+			}
+			current = next
+			payload[fmt.Sprintf("hop_%d", idx+1)] = current.ID
+		}
+		if !ok {
+			continue
+		}
+		selected := map[string]any{}
+		for _, field := range query.ReturnFields {
+			selected[field] = runtimeResolveFieldValue(node, current, field)
+		}
+		for k, v := range payload {
+			selected[k] = v
+		}
+		results = append(results, selected)
+	}
+	return results
+}
+
+func runtimeIsVisible(node GraphNode, visibility map[string]struct{}) bool {
+	if len(visibility) == 0 {
+		return true
+	}
+	for _, token := range node.ACLVisibleTo {
+		if _, ok := visibility[token]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func runtimeMatchesNode(props map[string]any, match map[string]any, params map[string]any) bool {
+	for key, raw := range match {
+		want, ok := raw.(string)
+		if ok && strings.HasPrefix(want, "$") {
+			if value, exists := params[strings.TrimPrefix(want, "$")]; exists {
+				want = fmt.Sprint(value)
+			}
+		}
+		got, exists := props[key]
+		if !exists || fmt.Sprint(got) != want {
+			return false
+		}
+	}
+	return true
+}
+
+func runtimeNextHop(current GraphNode, hop graphstore.GraphQueryHop, nodeByID map[string]GraphNode, relationships map[string]GraphRelationship, visibility map[string]struct{}, params map[string]any) (GraphNode, bool) {
+	for _, rel := range relationships {
+		if rel.RelType != hop.RelType {
+			continue
+		}
+		var candidateID string
+		switch strings.ToLower(hop.Direction) {
+		case "in":
+			if rel.ToNodeID != current.ID {
+				continue
+			}
+			candidateID = rel.FromNodeID
+		default:
+			if rel.FromNodeID != current.ID {
+				continue
+			}
+			candidateID = rel.ToNodeID
+		}
+		candidate, ok := nodeByID[candidateID]
+		if !ok || candidate.IsDeleted || candidate.NodeType != hop.ToNodeType {
+			continue
+		}
+		if !runtimeIsVisible(candidate, visibility) {
+			continue
+		}
+		if !runtimeMatchesNode(candidate.Properties, hop.Filter, params) {
+			continue
+		}
+		return candidate, true
+	}
+	return GraphNode{}, false
+}
+
+func runtimeResolveFieldValue(start, current GraphNode, field string) any {
+	if strings.Contains(field, ".") {
+		parts := strings.SplitN(field, ".", 2)
+		switch parts[0] {
+		case start.NodeType:
+			return start.Properties[parts[1]]
+		case current.NodeType:
+			return current.Properties[parts[1]]
+		}
+	}
+	return current.Properties[field]
+}
+
+func visibleOwnerTokensFromAny(raw any) map[string]struct{} {
+	result := map[string]struct{}{}
+	switch value := raw.(type) {
+	case []string:
+		for _, token := range value {
+			result[token] = struct{}{}
+		}
+	case []any:
+		for _, item := range value {
+			if token, ok := item.(string); ok {
+				result[token] = struct{}{}
+			}
+		}
+	}
+	return result
 }
