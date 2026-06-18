@@ -4,6 +4,7 @@ CREATE TABLE domains (
     description TEXT,
     owner_tenant_id UUID NOT NULL REFERENCES tenants(id),
     parent_domain_id TEXT REFERENCES domains(id),
+    search_profile JSONB,
     status TEXT NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft', 'active', 'deprecated')),
     version INT NOT NULL DEFAULT 1,
@@ -85,4 +86,11 @@ CREATE TABLE domain_status_field_configs (
     cascade_rules JSONB NOT NULL DEFAULT '[]'::jsonb,
     authority_field_name TEXT,
     authority_values_map JSONB
+);
+
+CREATE TABLE query_strategies (
+    key TEXT PRIMARY KEY,
+    version INT NOT NULL DEFAULT 1,
+    max_depth INT NOT NULL,
+    params JSONB NOT NULL DEFAULT '{}'::jsonb
 );

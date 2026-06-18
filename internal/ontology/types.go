@@ -3,16 +3,17 @@ package ontology
 import "time"
 
 type Domain struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	Description    string    `json:"description,omitempty"`
-	OwnerTenantID  string    `json:"owner_tenant_id"`
-	ParentDomainID string    `json:"parent_domain_id,omitempty"`
-	Status         string    `json:"status"`
-	Version        int       `json:"version"`
-	Visibility     string    `json:"visibility"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             string         `json:"id"`
+	Name           string         `json:"name"`
+	Description    string         `json:"description,omitempty"`
+	OwnerTenantID  string         `json:"owner_tenant_id"`
+	ParentDomainID string         `json:"parent_domain_id,omitempty"`
+	Status         string         `json:"status"`
+	Version        int            `json:"version"`
+	Visibility     string         `json:"visibility"`
+	SearchProfile  *SearchProfile `json:"search_profile,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type OntologyVersion struct {
@@ -90,6 +91,41 @@ type StatusFieldConfig struct {
 	CascadeRules        []CascadeRule  `json:"cascade_rules,omitempty"`
 	AuthorityFieldName  string         `json:"authority_field_name,omitempty"`
 	AuthorityValuesMap  map[string]int `json:"authority_values_map,omitempty"`
+}
+
+type SearchProfile struct {
+	SemanticFields   []IndexedField                   `json:"semantic_fields"`
+	FTSLanguage      string                           `json:"fts_language"`
+	QueryStrategyRef string                           `json:"query_strategy_ref"`
+	TenantOverrides  map[string]SearchProfileOverride `json:"tenant_overrides,omitempty"`
+	AppOverrides     map[string]SearchProfileOverride `json:"app_overrides,omitempty"`
+}
+
+type IndexedField struct {
+	FieldName string  `json:"field_name"`
+	Weight    float64 `json:"weight"`
+	Prefix    string  `json:"prefix,omitempty"`
+}
+
+type SearchProfileOverride struct {
+	SemanticFields   []IndexedField `json:"semantic_fields,omitempty"`
+	FTSLanguage      string         `json:"fts_language,omitempty"`
+	QueryStrategyRef string         `json:"query_strategy_ref,omitempty"`
+}
+
+type QueryStrategy struct {
+	Key      string         `json:"key"`
+	Version  int            `json:"version"`
+	MaxDepth int            `json:"max_depth"`
+	Params   map[string]any `json:"params,omitempty"`
+}
+
+type ResolvedSearchProfile struct {
+	Domain         Domain
+	SearchProfile  *SearchProfile
+	SemanticFields []IndexedField
+	FTSLanguage    string
+	QueryStrategy  QueryStrategy
 }
 
 type CascadeRule struct {

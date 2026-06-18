@@ -1,6 +1,7 @@
 package search
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"kg-service/internal/access"
 	"kg-service/internal/ontology"
 	"kg-service/internal/platform/vector"
+	"kg-service/internal/searchprofile"
 	"kg-service/internal/write"
 )
 
@@ -25,11 +27,11 @@ type VectorIndex interface {
 type ProjectionVectorIndex struct {
 	store    ProjectionStore
 	ontology OntologyResolver
-	provider vector.Provider
+	provider vector.EmbeddingProvider
 	now      func() time.Time
 }
 
-func NewProjectionVectorIndex(store ProjectionStore, ontology OntologyResolver, provider vector.Provider) ProjectionVectorIndex {
+func NewProjectionVectorIndex(store ProjectionStore, ontology OntologyResolver, provider vector.EmbeddingProvider) ProjectionVectorIndex {
 	return ProjectionVectorIndex{
 		store:    store,
 		ontology: ontology,
@@ -50,9 +52,10 @@ func (i ProjectionVectorIndex) RagSearch(actor access.Identity, req SemanticSear
 
 func (i ProjectionVectorIndex) execute(actor access.Identity, req SemanticSearchRequest, visibility map[string]struct{}, domainSet map[string]struct{}, statusConfigs map[string]*ontology.StatusFieldConfig, allHaveStatus bool, rag bool) ([]SearchResult, error) {
 	if i.provider == nil {
-		i.provider = vector.NewDeterministicProvider(8)
+		p := vector.NewDeterministicProvider(8)
+		i.provider = p
 	}
-	queryEmbedding := i.provider.Embed(req.Query)
+	queryEmbedding, _ := i.provider.Embed(context.Background(), req.Query)
 	results := make([]SearchResult, 0)
 	for _, node := range i.store.ListNodes() {
 		if node.IsDeleted {
@@ -126,7 +129,7 @@ func (i ProjectionVectorIndex) execute(actor access.Identity, req SemanticSearch
 }
 
 func scoreNodeWithEmbedding(content string, queryEmbedding []float64, query string, rag bool) float64 {
-	nodeEmbedding := vector.NewDeterministicProvider(len(queryEmbedding)).Embed(content)
+	nodeEmbedding, _ := vector.NewDeterministicProvider(len(queryEmbedding)).Embed(context.Background(), content)
 	sim := cosineSimilarity(queryEmbedding, nodeEmbedding)
 	if rag {
 		return math.Min(1.0, sim+0.05*tokenOverlap(content, query))
@@ -168,11 +171,7 @@ func cosineSimilarity(a, b []float64) float64 {
 }
 
 func nodeContent(node write.NodeRecord) string {
-	parts := []string{node.ID, node.NodeType, node.DomainID, node.ExternalRef, node.StatusValue}
-	for k, v := range node.Properties {
-		parts = append(parts, k, fmt.Sprintf("%v", v))
-	}
-	return strings.Join(parts, " ")
+	return searchprofile.BuildEmbeddingText(node, ontology.ResolvedSearchProfile{})
 }
 
 func nodeACLVisibleTo(node write.NodeRecord) []string {

@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"log"
+	"strings"
 
 	"kg-service/internal/access"
 	"kg-service/internal/ontology"
@@ -24,6 +25,26 @@ func bootstrapSampleOntology(service *ontology.Service, actor access.Identity) {
 	for _, cfg := range ontology.SeedStatusFieldConfigs() {
 		mustUpsertStatusFieldConfig(service, actor, cfg.DomainID, cfg)
 	}
+	mustSeedQueryStrategy(service, ontology.QueryStrategy{
+		Key:      "default",
+		Version:  1,
+		MaxDepth: 5,
+		Params: map[string]any{
+			"direction":     "out",
+			"depth_mode":    "fixed",
+			"acl_predicate": "any_hop",
+		},
+	})
+	mustSeedQueryStrategy(service, ontology.QueryStrategy{
+		Key:      "deep_traversal",
+		Version:  1,
+		MaxDepth: 10,
+		Params: map[string]any{
+			"direction":     "out",
+			"depth_mode":    "variable",
+			"acl_predicate": "start_only",
+		},
+	})
 }
 
 func mustCreateDomain(service *ontology.Service, actor access.Identity, id, name, ownerTenantID string) {
@@ -83,5 +104,13 @@ func mustUpsertStatusFieldConfig(service *ontology.Service, actor access.Identit
 		AuthorityValuesMap:  cfg.AuthorityValuesMap,
 	}); err != nil {
 		log.Printf("bootstrap status config %s: %v", cfg.DomainID, err)
+	}
+}
+
+func mustSeedQueryStrategy(service *ontology.Service, strategy ontology.QueryStrategy) {
+	if _, err := service.UpsertQueryStrategy(access.Identity{TenantID: access.PlatformTenantID, AppType: "admin_tool"}, access.PlatformTenantID, strategy); err != nil {
+		if !strings.Contains(err.Error(), "forbidden") {
+			log.Printf("bootstrap query strategy %s: %v", strategy.Key, err)
+		}
 	}
 }

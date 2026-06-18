@@ -6,9 +6,13 @@ import (
 )
 
 type Config struct {
-	HTTP     HTTPConfig
-	Postgres PostgresConfig
-	Redis    RedisConfig
+	HTTP      HTTPConfig
+	Postgres  PostgresConfig
+	Redis     RedisConfig
+	Embedding EmbeddingConfig
+	Vector    AdapterConfig
+	Graph     AdapterConfig
+	FTS       AdapterConfig
 }
 
 type HTTPConfig struct {
@@ -54,4 +58,17 @@ type RedisConfig struct {
 
 func (c RedisConfig) Address() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+type EmbeddingConfig struct {
+	Provider string
+	URL      string
+	Model    string
+	APIKey   string
+	ProxyURL string
+	CacheTTL time.Duration
+}
+
+type AdapterConfig struct {
+	Kind string
 }

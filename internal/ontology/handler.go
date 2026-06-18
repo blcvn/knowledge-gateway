@@ -82,6 +82,66 @@ func (h Handler) GetDomain(w http.ResponseWriter, r *http.Request) {
 	respond.OK(w, domain)
 }
 
+func (h Handler) GetSearchProfile(w http.ResponseWriter, r *http.Request) {
+	identity, _ := access.IdentityFromContext(r.Context())
+	profile, err := h.service.Resolve(r.PathValue("domain_id"), identity.TenantID, identity.AppID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, profile)
+}
+
+func (h Handler) UpsertSearchProfile(w http.ResponseWriter, r *http.Request) {
+	var req SearchProfile
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+	identity, _ := access.IdentityFromContext(r.Context())
+	profile, err := h.service.UpsertSearchProfile(identity, r.PathValue("tenant_id"), r.PathValue("domain_id"), req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.Created(w, profile)
+}
+
+func (h Handler) ListQueryStrategies(w http.ResponseWriter, r *http.Request) {
+	respond.OK(w, h.service.ListQueryStrategies())
+}
+
+func (h Handler) CreateQueryStrategy(w http.ResponseWriter, r *http.Request) {
+	var req QueryStrategy
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+	identity, _ := access.IdentityFromContext(r.Context())
+	strategy, err := h.service.UpsertQueryStrategy(identity, r.PathValue("tenant_id"), req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.Created(w, strategy)
+}
+
+func (h Handler) UpdateQueryStrategy(w http.ResponseWriter, r *http.Request) {
+	var req QueryStrategy
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+	req.Key = r.PathValue("key")
+	identity, _ := access.IdentityFromContext(r.Context())
+	strategy, err := h.service.UpsertQueryStrategy(identity, r.PathValue("tenant_id"), req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, strategy)
+}
+
 func (h Handler) CreateQueryTemplate(w http.ResponseWriter, r *http.Request) {
 	var req QueryTemplateCreateRequest
 	if err := decodeJSON(r, &req); err != nil {

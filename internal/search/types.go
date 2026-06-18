@@ -9,8 +9,34 @@ type SemanticSearchRequest struct {
 }
 
 type SemanticSearchResponse struct {
-	Results     []SearchResult `json:"results"`
-	SearchTimeMs int           `json:"search_time_ms"`
+	Results      []SearchResult `json:"results"`
+	SearchTimeMs int            `json:"search_time_ms"`
+}
+
+type FullTextSearchRequest struct {
+	Query     string   `json:"query"`
+	DomainIDs []string `json:"domain_ids"`
+	TopK      int      `json:"top_k"`
+	Mode      string   `json:"mode"`
+	Fields    []string `json:"fields"`
+}
+
+type FullTextSearchResponse struct {
+	Results      []SearchResult `json:"results"`
+	SearchTimeMs int            `json:"search_time_ms"`
+}
+
+type HybridSearchRequest struct {
+	Query          string   `json:"query"`
+	DomainIDs      []string `json:"domain_ids"`
+	TopK           int      `json:"top_k"`
+	FTSOperator    string   `json:"fts_operator"`
+	SemanticWeight float64  `json:"semantic_weight"`
+}
+
+type HybridSearchResponse struct {
+	Results      []SearchResult `json:"results"`
+	SearchTimeMs int            `json:"search_time_ms"`
 }
 
 type SearchResult struct {

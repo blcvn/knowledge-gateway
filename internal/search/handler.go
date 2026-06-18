@@ -51,6 +51,38 @@ func (h Handler) RagSearch(w http.ResponseWriter, r *http.Request) {
 	respond.OK(w, result)
 }
 
+func (h Handler) FullTextSearch(w http.ResponseWriter, r *http.Request) {
+	var req FullTextSearchRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	identity, _ := access.IdentityFromContext(r.Context())
+	result, err := h.service.FullTextSearch(identity, req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, result)
+}
+
+func (h Handler) HybridSearch(w http.ResponseWriter, r *http.Request) {
+	var req HybridSearchRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	identity, _ := access.IdentityFromContext(r.Context())
+	result, err := h.service.HybridSearch(identity, req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, result)
+}
+
 func decodeJSON(r *http.Request, target any) error {
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(target); err != nil {

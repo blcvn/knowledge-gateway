@@ -11,6 +11,12 @@ type DomainStore interface {
 	ListDomains() []Domain
 	CreateVersion(version OntologyVersion)
 	GetCurrentVersion(domainID string) (OntologyVersion, bool)
+	UpsertSearchProfile(domainID string, profile SearchProfile) SearchProfile
+	GetSearchProfile(domainID string) (SearchProfile, bool)
+	UpsertQueryStrategy(strategy QueryStrategy) QueryStrategy
+	GetQueryStrategy(key string) (QueryStrategy, bool)
+	ListQueryStrategies() []QueryStrategy
+	DeleteQueryStrategy(key string) bool
 	CreateNodeType(schema NodeTypeSchema) NodeTypeSchema
 	GetNodeType(domainID, nodeTypeName string) (NodeTypeSchema, bool)
 	ListNodeTypes(domainID string) []NodeTypeSchema
@@ -28,14 +34,16 @@ type DomainStore interface {
 }
 
 type MemoryStore struct {
-	mu        sync.RWMutex
-	domains   map[string]Domain
-	versions  map[string]OntologyVersion
-	nodeTypes map[string]NodeTypeSchema
-	relTypes  map[string]RelTypeSchema
-	rules     []CrossDomainRelRule
-	templates map[string]QueryTemplate
-	statuses  map[string]StatusFieldConfig
+	mu         sync.RWMutex
+	domains    map[string]Domain
+	versions   map[string]OntologyVersion
+	nodeTypes  map[string]NodeTypeSchema
+	relTypes   map[string]RelTypeSchema
+	rules      []CrossDomainRelRule
+	templates  map[string]QueryTemplate
+	statuses   map[string]StatusFieldConfig
+	profiles   map[string]SearchProfile
+	strategies map[string]QueryStrategy
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -47,6 +55,11 @@ func NewMemoryStore() *MemoryStore {
 		rules:     []CrossDomainRelRule{},
 		templates: map[string]QueryTemplate{},
 		statuses:  map[string]StatusFieldConfig{},
+		profiles:  map[string]SearchProfile{},
+		strategies: map[string]QueryStrategy{
+			"default":        defaultQueryStrategy("default"),
+			"deep_traversal": defaultQueryStrategy("deep_traversal"),
+		},
 	}
 }
 
@@ -56,6 +69,9 @@ func (s *MemoryStore) Seed(domains []Domain, versions []OntologyVersion, nodeTyp
 
 	for _, domain := range domains {
 		s.domains[domain.ID] = domain
+		if domain.SearchProfile != nil {
+			s.profiles[domain.ID] = *domain.SearchProfile
+		}
 	}
 	for _, version := range versions {
 		s.versions[version.DomainID] = version
@@ -72,6 +88,12 @@ func (s *MemoryStore) Seed(domains []Domain, versions []OntologyVersion, nodeTyp
 	}
 	for _, status := range statuses {
 		s.statuses[status.DomainID] = status
+	}
+	if _, ok := s.strategies["default"]; !ok {
+		s.strategies["default"] = defaultQueryStrategy("default")
+	}
+	if _, ok := s.strategies["deep_traversal"]; !ok {
+		s.strategies["deep_traversal"] = defaultQueryStrategy("deep_traversal")
 	}
 }
 
@@ -120,6 +142,67 @@ func (s *MemoryStore) GetCurrentVersion(domainID string) (OntologyVersion, bool)
 	defer s.mu.RUnlock()
 	version, ok := s.versions[domainID]
 	return version, ok
+}
+
+func (s *MemoryStore) UpsertSearchProfile(domainID string, profile SearchProfile) SearchProfile {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.profiles[domainID] = profile
+	if domain, ok := s.domains[domainID]; ok {
+		domain.SearchProfile = &profile
+		s.domains[domainID] = domain
+	}
+	return profile
+}
+
+func (s *MemoryStore) GetSearchProfile(domainID string) (SearchProfile, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	profile, ok := s.profiles[domainID]
+	return profile, ok
+}
+
+func (s *MemoryStore) UpsertQueryStrategy(strategy QueryStrategy) QueryStrategy {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.strategies[strategy.Key] = strategy
+	return strategy
+}
+
+func (s *MemoryStore) GetQueryStrategy(key string) (QueryStrategy, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	strategy, ok := s.strategies[key]
+	return strategy, ok
+}
+
+func (s *MemoryStore) ListQueryStrategies() []QueryStrategy {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]QueryStrategy, 0, len(s.strategies))
+	for _, strategy := range s.strategies {
+		result = append(result, strategy)
+	}
+	slices.SortFunc(result, func(a, b QueryStrategy) int {
+		if a.Key < b.Key {
+			return -1
+		}
+		if a.Key > b.Key {
+			return 1
+		}
+		return 0
+	})
+	return result
+}
+
+func (s *MemoryStore) DeleteQueryStrategy(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.strategies[key]; !ok {
+		return false
+	}
+	delete(s.strategies, key)
+	return true
 }
 
 func (s *MemoryStore) CreateNodeType(schema NodeTypeSchema) NodeTypeSchema {

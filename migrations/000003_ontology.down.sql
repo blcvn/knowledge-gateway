@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS query_strategies;
 DROP TABLE IF EXISTS domain_status_field_configs;
 DROP TABLE IF EXISTS domain_query_templates;
 DROP TABLE IF EXISTS cross_domain_rel_rules;
