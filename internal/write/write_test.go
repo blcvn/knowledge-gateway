@@ -1,6 +1,7 @@
 package write
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +12,8 @@ import (
 	"kg-service/internal/access"
 	"kg-service/internal/config"
 	"kg-service/internal/ontology"
-	"kg-service/internal/platform/postgres"
 	"kg-service/internal/platform/rediscache"
+	"kg-service/internal/platform/session"
 )
 
 type fakeAuditLogger struct {
@@ -24,6 +25,25 @@ type writeAuditCall struct {
 	resourceType string
 	resourceID   string
 	outcome      string
+}
+
+type recordingSessionManager struct {
+	LastScope session.SessionScope
+}
+
+func (m *recordingSessionManager) Within(ctx context.Context, identity session.WriteIdentity, fn func(session.SessionScope) error) (session.SessionScope, error) {
+	scope := session.SessionScope{
+		Identity: identity,
+		Statements: []string{
+			"BEGIN",
+			"SET LOCAL app.tenant_id = '" + identity.TenantID + "'",
+			"SET LOCAL app.app_id = '" + identity.AppID + "'",
+			"COMMIT",
+		},
+		Transactional: true,
+	}
+	m.LastScope = scope
+	return scope, fn(scope)
 }
 
 func (f *fakeAuditLogger) RecordWriteAudit(actor access.Identity, ownerTenantID, ownerAppID, action, resourceType, resourceID, outcome, reason string, metadata map[string]any) {
@@ -160,7 +180,7 @@ func TestCrossTenantWriteGrantAllowsAndRevokeDeniesMutation(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	seedBridgeTarget(store)
-	svc := NewService(store, ontologyService, accessResolver, &postgres.SessionManager{}, nil)
+	svc := NewService(store, ontologyService, accessResolver, &recordingSessionManager{}, nil)
 	grantActor := access.Identity{
 		TenantID: "22222222-2222-2222-2222-222222222222",
 		AppID:    "22222222-bbbb-2222-bbbb-222222222222",
@@ -597,7 +617,7 @@ func newTestService(t *testing.T) (*Service, *MemoryStore) {
 
 	store := NewMemoryStore()
 	seedBridgeTarget(store)
-	return NewService(store, ontologyService, accessResolver, &postgres.SessionManager{}, nil), store
+	return NewService(store, ontologyService, accessResolver, &recordingSessionManager{}, nil), store
 }
 
 func TestCreateNodeRequiresBridgePropertyWhenRuleIsConfigured(t *testing.T) {
@@ -640,7 +660,7 @@ func TestCreateNodeBuildsBridgeRelationshipsAndTracksSessionScope(t *testing.T) 
 	if err != nil {
 		t.Fatalf("CreateDomain() error = %v", err)
 	}
-	sessionManager := &postgres.SessionManager{}
+	sessionManager := &recordingSessionManager{}
 	store := NewMemoryStore()
 	seedBridgeTarget(store)
 	svc := NewService(store, ontologyService, accessResolver, sessionManager, nil)
@@ -666,8 +686,8 @@ func TestCreateNodeBuildsBridgeRelationshipsAndTracksSessionScope(t *testing.T) 
 	if len(store.ListOutboxEvents()) != 1 {
 		t.Fatalf("outbox len = %d, want 1", len(store.ListOutboxEvents()))
 	}
-	if len(sessionManager.LastScope.Statements) != 2 {
-		t.Fatalf("session statements len = %d, want 2", len(sessionManager.LastScope.Statements))
+	if len(sessionManager.LastScope.Statements) != 4 {
+		t.Fatalf("session statements len = %d, want 4", len(sessionManager.LastScope.Statements))
 	}
 }
 
@@ -847,7 +867,7 @@ func TestWriteServiceEmitsAuditEntriesForSuccessfulMutations(t *testing.T) {
 	store := NewMemoryStore()
 	seedBridgeTarget(store)
 	auditLogger := &fakeAuditLogger{}
-	svc := NewService(store, ontologyService, accessResolver, &postgres.SessionManager{}, auditLogger)
+	svc := NewService(store, ontologyService, accessResolver, &recordingSessionManager{}, auditLogger)
 	actor := access.Identity{
 		TenantID: "11111111-1111-1111-1111-111111111111",
 		AppID:    "11111111-admin-1111-admin-111111111111",

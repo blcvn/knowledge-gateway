@@ -19,11 +19,6 @@ var (
 	ErrTimeout    = errors.New("timeout")
 )
 
-type WriteProjectionStore interface {
-	ListNodes() []write.NodeRecord
-	ListRelationships() []write.RelationshipRecord
-}
-
 type OntologyResolver interface {
 	GetVisibleDomain(actor access.Identity, domainID string) (ontology.Domain, error)
 	GetQueryTemplate(domainID, templateName string) (ontology.QueryTemplate, error)
@@ -40,7 +35,7 @@ type AuditLogger interface {
 }
 
 type Service struct {
-	store          WriteProjectionStore
+	index          GraphIndex
 	ontology       OntologyResolver
 	accessResolver AccessResolver
 	auditLogger    AuditLogger
@@ -50,9 +45,9 @@ type Service struct {
 	now            func() time.Time
 }
 
-func NewService(store WriteProjectionStore, ontology OntologyResolver, accessResolver AccessResolver, auditLogger AuditLogger) *Service {
+func NewService(store ProjectionStore, ontology OntologyResolver, accessResolver AccessResolver, auditLogger AuditLogger) *Service {
 	return &Service{
-		store:          store,
+		index:          NewProjectionGraphIndex(store),
 		ontology:       ontology,
 		accessResolver: accessResolver,
 		auditLogger:    auditLogger,
@@ -129,42 +124,12 @@ func (s *Service) ExecuteTemplate(actor access.Identity, domainID, templateName 
 	}
 	visibility := visibleOwnerSet(allowedOwners)
 	statusCfg, _ := s.ontology.GetStatusFieldConfig(domain.ID)
-
-	nodes := s.store.ListNodes()
-	relationships := s.store.ListRelationships()
-	nodeByID := map[string]write.NodeRecord{}
-	for _, node := range nodes {
-		nodeByID[node.ID] = node
-	}
-
-	results := []map[string]any{}
-	started := s.now()
-	for _, node := range nodes {
-		if s.queryTimeout > 0 && s.now().Sub(started) > s.queryTimeout {
+	results, err := s.index.ExecuteTemplate(actor, domainID, compiled, bound, visibility, statusCfg, s.maxRows, s.queryTimeout, s.now)
+	if err != nil {
+		if errors.Is(err, ErrTimeout) {
 			s.recordAudit(actor, "read", "query_template", domainID+"."+templateName, "deny", "query_timeout", nil)
-			return TemplateExecutionResponse{}, ErrTimeout
 		}
-		if s.maxRows > 0 && len(results) >= s.maxRows {
-			break
-		}
-		if node.IsDeleted || node.DomainID != domainID || node.NodeType != compiled.StartType {
-			continue
-		}
-		if !isNodeVisible(node, visibility) {
-			continue
-		}
-		if !matchesNode(node, compiled.StartMatch, bound) {
-			continue
-		}
-		if !passesLifecycle(node, statusCfg, nil, template.PatternSpec) {
-			continue
-		}
-
-		result, ok := s.walkTemplate(node, compiled, bound, nodeByID, relationships, visibility, statusCfg)
-		if !ok {
-			continue
-		}
-		results = append(results, result)
+		return TemplateExecutionResponse{}, err
 	}
 	s.recordAudit(actor, "read", "query_template", domainID+"."+templateName, "allow", "", map[string]any{
 		"result_count": len(results),
@@ -177,95 +142,20 @@ func (s *Service) ExecuteTemplate(actor access.Identity, domainID, templateName 
 }
 
 func (s *Service) GetNode(actor access.Identity, nodeID string) (NodeResponse, error) {
-	node, ok := findVisibleNode(s.store.ListNodes(), actor, nodeID, s.accessResolver)
+	owners, err := s.accessResolver.ResolveVisibleOwners(actor)
+	if err != nil {
+		return NodeResponse{}, err
+	}
+	node, ok := s.index.GetNode(actor, nodeID, visibleOwnerSet(owners))
 	if !ok {
 		s.recordAudit(actor, "read", "kg_node", nodeID, "deny", "node_not_found_or_invisible", nil)
 		return NodeResponse{}, ErrNotFound
-	}
-	relationships := []string{}
-	for _, rel := range s.store.ListRelationships() {
-		if rel.FromNodeID == node.ID || rel.ToNodeID == node.ID {
-			relationships = append(relationships, rel.ID)
-		}
 	}
 	s.recordAudit(actor, "read", "kg_node", nodeID, "allow", "", map[string]any{
 		"node_type": node.NodeType,
 		"domain_id": node.DomainID,
 	})
-	return NodeResponse{
-		ID:            node.ID,
-		NodeType:      node.NodeType,
-		DomainID:      node.DomainID,
-		OwnerTenantID: node.OwnerTenantID,
-		OwnerAppID:    node.OwnerAppID,
-		Visibility:    node.Visibility,
-		Properties:    node.Properties,
-		Relationships: relationships,
-		CreatedAt:     node.CreatedAt,
-		UpdatedAt:     node.UpdatedAt,
-	}, nil
-}
-
-func (s *Service) walkTemplate(start write.NodeRecord, compiled CompiledTemplate, bound map[string]any, nodeByID map[string]write.NodeRecord, relationships []write.RelationshipRecord, visibility map[string]struct{}, statusCfg *ontology.StatusFieldConfig) (map[string]any, bool) {
-	payload := cloneMap(start.Properties)
-	payload["id"] = start.ID
-	payload["node_type"] = start.NodeType
-	payload["domain_id"] = start.DomainID
-
-	current := start
-	for idx, hop := range compiled.Hops {
-		nextNode, ok := nextVisibleHop(current, hop.RelType, hop.ToNodeType, hop.Direction, hop.Filter, bound, nodeByID, relationships, visibility, statusCfg, hop.FilterStatus)
-		if !ok {
-			return nil, false
-		}
-		current = nextNode
-		payload[fmt.Sprintf("hop_%d", idx+1)] = current.ID
-	}
-
-	selected := map[string]any{}
-	for _, field := range compiled.ReturnFields {
-		selected[field] = resolveFieldValue(start, current, field)
-	}
-	for k, v := range payload {
-		selected[k] = v
-	}
-	return selected, true
-}
-
-func nextVisibleHop(current write.NodeRecord, relType, toType, direction string, filter map[string]any, bound map[string]any, nodeByID map[string]write.NodeRecord, relationships []write.RelationshipRecord, visibility map[string]struct{}, statusCfg *ontology.StatusFieldConfig, filterStatus string) (write.NodeRecord, bool) {
-	for _, rel := range relationships {
-		if rel.RelType != relType {
-			continue
-		}
-		var candidateID string
-		switch strings.ToLower(direction) {
-		case "in":
-			if rel.ToNodeID != current.ID {
-				continue
-			}
-			candidateID = rel.FromNodeID
-		default:
-			if rel.FromNodeID != current.ID {
-				continue
-			}
-			candidateID = rel.ToNodeID
-		}
-		candidate, ok := nodeByID[candidateID]
-		if !ok || candidate.IsDeleted || candidate.NodeType != toType {
-			continue
-		}
-		if _, ok := visibility[nodeKey(candidate.OwnerTenantID, candidate.OwnerAppID)]; !ok {
-			continue
-		}
-		if !matchesNode(candidate, filter, bound) {
-			continue
-		}
-		if filterStatus == "valid_only" && !passesLifecycle(candidate, statusCfg, map[string]any{}, map[string]any{}) {
-			continue
-		}
-		return candidate, true
-	}
-	return write.NodeRecord{}, false
+	return node, nil
 }
 
 func matchesNode(node write.NodeRecord, match map[string]any, bound map[string]any) bool {
@@ -339,14 +229,6 @@ func toParamSchema(in []ontology.ParameterSchema) []ParamSchemaItem {
 	return out
 }
 
-func visibleOwnerSet(owners []access.VisibleOwner) map[string]struct{} {
-	result := map[string]struct{}{}
-	for _, owner := range owners {
-		result[nodeKey(owner.TenantID, owner.AppID)] = struct{}{}
-	}
-	return result
-}
-
 func isNodeVisible(node write.NodeRecord, visibility map[string]struct{}) bool {
 	_, ok := visibility[nodeKey(node.OwnerTenantID, node.OwnerAppID)]
 	return ok
@@ -403,21 +285,4 @@ func (s *Service) recordAudit(actor access.Identity, action, resourceType, resou
 		return
 	}
 	s.auditLogger.RecordReadAudit(actor, action, resourceType, resourceID, outcome, reason, metadata)
-}
-
-func findVisibleNode(nodes []write.NodeRecord, actor access.Identity, nodeID string, resolver AccessResolver) (write.NodeRecord, bool) {
-	owners, err := resolver.ResolveVisibleOwners(actor)
-	if err != nil {
-		return write.NodeRecord{}, false
-	}
-	visible := visibleOwnerSet(owners)
-	for _, node := range nodes {
-		if node.ID != nodeID || node.IsDeleted {
-			continue
-		}
-		if _, ok := visible[nodeKey(node.OwnerTenantID, node.OwnerAppID)]; ok {
-			return node, true
-		}
-	}
-	return write.NodeRecord{}, false
 }

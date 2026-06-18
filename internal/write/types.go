@@ -37,6 +37,7 @@ type OutboxEvent struct {
 	Status        string         `json:"status"`
 	RetryCount    int            `json:"retry_count"`
 	CreatedAt     time.Time      `json:"created_at"`
+	ProcessedAt   *time.Time     `json:"processed_at,omitempty"`
 }
 
 type RelationshipCreateRequest struct {

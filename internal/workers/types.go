@@ -63,6 +63,30 @@ type VectorStore struct {
 	Documents map[string]VectorDocument
 }
 
+func (s *GraphStore) SnapshotNodes() map[string]GraphNode {
+	result := make(map[string]GraphNode, len(s.Nodes))
+	for id, node := range s.Nodes {
+		result[id] = node
+	}
+	return result
+}
+
+func (s *GraphStore) SnapshotRelationships() map[string]GraphRelationship {
+	result := make(map[string]GraphRelationship, len(s.Rels))
+	for id, rel := range s.Rels {
+		result[id] = rel
+	}
+	return result
+}
+
+func (s *VectorStore) SnapshotDocuments() map[string]VectorDocument {
+	result := make(map[string]VectorDocument, len(s.Documents))
+	for id, doc := range s.Documents {
+		result[id] = doc
+	}
+	return result
+}
+
 type WorkerReport struct {
 	Processed  int
 	Failed     int

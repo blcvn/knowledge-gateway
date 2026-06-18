@@ -74,6 +74,7 @@ Outbox event handling must be safe for retries and replay. Graph/vector updates 
 ## Validation Strategy
 
 - Run integration tests that prove backend wiring, not just in-memory projections.
+- Use domain-neutral sample fixtures in tests so the change does not depend on a single business domain.
 - Verify write-path transactions set tenant/app session context against the real session manager.
 - Verify RAG uses a retrieval path distinct from semantic search.
 - Verify reconciliation reports drift against real projection state.

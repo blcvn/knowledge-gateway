@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,14 +13,31 @@ import (
 
 	"kg-service/internal/access"
 	"kg-service/internal/config"
+	"kg-service/internal/httpapi/respond"
 	"kg-service/internal/integrity"
 	"kg-service/internal/ontology"
-	"kg-service/internal/platform/postgres"
 	"kg-service/internal/platform/rediscache"
+	"kg-service/internal/platform/session"
 	"kg-service/internal/read"
 	"kg-service/internal/search"
 	"kg-service/internal/write"
 )
+
+type recordingSessionManager struct{}
+
+func (recordingSessionManager) Within(ctx context.Context, identity session.WriteIdentity, fn func(session.SessionScope) error) (session.SessionScope, error) {
+	scope := session.SessionScope{
+		Identity: identity,
+		Statements: []string{
+			"BEGIN",
+			"SET LOCAL app.tenant_id = '" + identity.TenantID + "'",
+			"SET LOCAL app.app_id = '" + identity.AppID + "'",
+			"COMMIT",
+		},
+		Transactional: true,
+	}
+	return scope, fn(scope)
+}
 
 func TestMCPConnectListAndCallTools(t *testing.T) {
 	handler, actor := newMCPFixture(t)
@@ -83,43 +101,27 @@ func TestMCPConnectListAndCallTools(t *testing.T) {
 }
 
 func TestMCPCheckAccessMatchesRESTVisibility(t *testing.T) {
-	cache, err := rediscache.New(config.RedisConfig{Host: "127.0.0.1", Port: 6379, DB: 0})
-	if err != nil {
-		t.Fatalf("rediscache.New() error = %v", err)
-	}
-	accessStore := access.NewMemoryStore()
-	accessStore.Seed(access.SeedTenants(), access.SeedApps(), access.SeedGrants())
-	accessResolver := access.NewAccessResolver(accessStore, accessStore, &cache)
-	accessSvc := access.NewService(accessStore, &cache)
-
-	ontologyStore := ontology.NewMemoryStore()
-	ontologyStore.Seed(ontology.SeedDomains(), ontology.SeedVersions(), ontology.SeedNodeTypes(), ontology.SeedRelTypes(), ontology.SeedCrossDomainRules(), ontology.SeedQueryTemplates(), ontology.SeedStatusFieldConfigs())
-	ontologySvc := ontology.NewService(ontologyStore, accessResolver)
-	actor := access.Identity{
-		TenantID: "11111111-1111-1111-1111-111111111111",
-		AppID:    "11111111-admin-1111-admin-111111111111",
-		AppType:  "admin_tool",
-	}
-	if _, err := ontologySvc.CreateDomain(actor, actor.TenantID, ontology.DomainCreateRequest{ID: "noi_bo_hop_dong", Name: "Noi Bo Hop Dong"}); err != nil && !strings.Contains(err.Error(), "already exists") {
-		t.Fatalf("CreateDomain() error = %v", err)
-	}
-
-	writeStore := write.NewMemoryStore()
-	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, &postgres.SessionManager{}, nil)
-	readSvc := read.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
-	searchSvc := search.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
-	integritySvc := integrity.NewService(writeStore, ontologyStore)
-	mcpSvc := NewService(readSvc, searchSvc, writeSvc, ontologySvc, accessResolver, integritySvc)
-	handler := NewHandler(mcpSvc)
+	fixture := newParityFixture(t)
+	handler := fixture.mcpHandler
 
 	connectReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/connect", nil)
-	connectReq = connectReq.WithContext(access.ContextWithIdentity(connectReq.Context(), actor))
+	connectReq = connectReq.WithContext(access.ContextWithIdentity(connectReq.Context(), fixture.actor))
 	connectRec := httptest.NewRecorder()
 	handler.Connect(connectRec, connectReq)
 	sessionID := extractSessionID(connectRec.Body.String())
 	if sessionID == "" {
 		t.Fatalf("session body = %s", connectRec.Body.String())
 	}
+
+	restAccessReq := httptest.NewRequest(http.MethodGet, "/v1/access/resolve", nil)
+	restAccessReq = restAccessReq.WithContext(access.ContextWithIdentity(restAccessReq.Context(), fixture.actor))
+	restAccessRec := httptest.NewRecorder()
+	fixture.accessHandler.GetResolve(restAccessRec, restAccessReq)
+	if restAccessRec.Code != http.StatusOK {
+		t.Fatalf("access REST status = %d body=%s", restAccessRec.Code, restAccessRec.Body.String())
+	}
+	var restAccess access.ResolveResponse
+	mustDecodeJSON(t, restAccessRec.Body.Bytes(), &restAccess)
 
 	mcpResp := callMCP(t, handler, sessionID, JSONRPCRequest{
 		JSONRPC: "2.0",
@@ -135,20 +137,6 @@ func TestMCPCheckAccessMatchesRESTVisibility(t *testing.T) {
 		t.Fatalf("kg_check_access error = %#v", mcpPayload["error"])
 	}
 	result := mcpPayload["result"].(map[string]any)
-
-	restHandler := access.NewHandler(accessResolver, accessSvc)
-	restReq := httptest.NewRequest(http.MethodGet, "/v1/access/resolve", nil)
-	restReq = restReq.WithContext(access.ContextWithIdentity(restReq.Context(), actor))
-	restRec := httptest.NewRecorder()
-	restHandler.GetResolve(restRec, restReq)
-	if restRec.Code != http.StatusOK {
-		t.Fatalf("rest status = %d body=%s", restRec.Code, restRec.Body.String())
-	}
-
-	var restPayload access.ResolveResponse
-	if err := json.Unmarshal(restRec.Body.Bytes(), &restPayload); err != nil {
-		t.Fatalf("json.Unmarshal() rest error = %v", err)
-	}
 	rawVisibleOwners, err := json.Marshal(result["visible_owners"])
 	if err != nil {
 		t.Fatalf("json.Marshal() mcp visible owners error = %v", err)
@@ -157,8 +145,185 @@ func TestMCPCheckAccessMatchesRESTVisibility(t *testing.T) {
 	if err := json.Unmarshal(rawVisibleOwners, &mcpVisibleOwners); err != nil {
 		t.Fatalf("json.Unmarshal() mcp visible owners error = %v", err)
 	}
-	if !reflect.DeepEqual(restPayload.VisibleOwners, mcpVisibleOwners) {
-		t.Fatalf("REST owners = %#v, MCP owners = %#v", restPayload.VisibleOwners, mcpVisibleOwners)
+	if !reflect.DeepEqual(restAccess.VisibleOwners, mcpVisibleOwners) {
+		t.Fatalf("REST owners = %#v, MCP owners = %#v", restAccess.VisibleOwners, mcpVisibleOwners)
+	}
+
+	restListReq := httptest.NewRequest(http.MethodGet, "/v1/kg/read/templates?domain_id=noi_bo_hop_dong", nil)
+	restListReq = restListReq.WithContext(access.ContextWithIdentity(restListReq.Context(), fixture.actor))
+	restListRec := httptest.NewRecorder()
+	fixture.readHandler.ListTemplates(restListRec, restListReq)
+	if restListRec.Code != http.StatusOK {
+		t.Fatalf("read REST list status = %d body=%s", restListRec.Code, restListRec.Body.String())
+	}
+	var restTemplates respond.ListEnvelope[read.TemplateListItem]
+	mustDecodeJSON(t, restListRec.Body.Bytes(), &restTemplates)
+
+	mcpTemplatesResp := callMCP(t, handler, sessionID, JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      11,
+		Method:  "tools/call",
+		Params: map[string]any{
+			"name": "kg_list_templates",
+			"arguments": map[string]any{
+				"domain_id": "noi_bo_hop_dong",
+			},
+		},
+	})
+	mustDecodeJSON(t, mcpTemplatesResp.Body.Bytes(), &mcpPayload)
+	if mcpPayload["error"] != nil {
+		t.Fatalf("kg_list_templates error = %#v", mcpPayload["error"])
+	}
+	var mcpTemplates []read.TemplateListItem
+	rawTemplates, err := json.Marshal(mcpPayload["result"].(map[string]any)["templates"])
+	if err != nil {
+		t.Fatalf("json.Marshal() mcp templates error = %v", err)
+	}
+	if err := json.Unmarshal(rawTemplates, &mcpTemplates); err != nil {
+		t.Fatalf("json.Unmarshal() mcp templates error = %v", err)
+	}
+	if !reflect.DeepEqual(restTemplates.Data, mcpTemplates) {
+		t.Fatalf("REST templates = %#v, MCP templates = %#v", restTemplates.Data, mcpTemplates)
+	}
+
+	restReadReq := httptest.NewRequest(http.MethodPost, "/v1/kg/read/template/noi_bo_hop_dong/contract_lookup", strings.NewReader(`{"params":{"ten":"Hop dong A"}}`))
+	restReadReq.SetPathValue("domain_id", "noi_bo_hop_dong")
+	restReadReq.SetPathValue("template_name", "contract_lookup")
+	restReadReq = restReadReq.WithContext(access.ContextWithIdentity(restReadReq.Context(), fixture.actor))
+	restReadRec := httptest.NewRecorder()
+	fixture.readHandler.ExecuteTemplate(restReadRec, restReadReq)
+	if restReadRec.Code != http.StatusOK {
+		t.Fatalf("read REST execute status = %d body=%s", restReadRec.Code, restReadRec.Body.String())
+	}
+	var restRead read.TemplateExecutionResponse
+	mustDecodeJSON(t, restReadRec.Body.Bytes(), &restRead)
+
+	mcpReadResp := callMCP(t, handler, sessionID, JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      12,
+		Method:  "tools/call",
+		Params: map[string]any{
+			"name": "kg_read_pattern",
+			"arguments": map[string]any{
+				"domain_id":     "noi_bo_hop_dong",
+				"template_name": "contract_lookup",
+				"params":        map[string]any{"ten": "Hop dong A"},
+			},
+		},
+	})
+	mustDecodeJSON(t, mcpReadResp.Body.Bytes(), &mcpPayload)
+	if mcpPayload["error"] != nil {
+		t.Fatalf("kg_read_pattern error = %#v", mcpPayload["error"])
+	}
+	var mcpRead read.TemplateExecutionResponse
+	rawRead, err := json.Marshal(mcpPayload["result"])
+	if err != nil {
+		t.Fatalf("json.Marshal() mcp read result error = %v", err)
+	}
+	if err := json.Unmarshal(rawRead, &mcpRead); err != nil {
+		t.Fatalf("json.Unmarshal() mcp read result error = %v", err)
+	}
+	if !reflect.DeepEqual(restRead.Results, mcpRead.Results) {
+		t.Fatalf("REST read = %#v, MCP read = %#v", restRead.Results, mcpRead.Results)
+	}
+
+	restSearchReq := httptest.NewRequest(http.MethodPost, "/v1/kg/search/semantic", strings.NewReader(`{"query":"Hop dong","domain_ids":["noi_bo_hop_dong"],"top_k":1}`))
+	restSearchReq = restSearchReq.WithContext(access.ContextWithIdentity(restSearchReq.Context(), fixture.actor))
+	restSearchRec := httptest.NewRecorder()
+	fixture.searchHandler.SemanticSearch(restSearchRec, restSearchReq)
+	if restSearchRec.Code != http.StatusOK {
+		t.Fatalf("search REST status = %d body=%s", restSearchRec.Code, restSearchRec.Body.String())
+	}
+	var restSearch search.SemanticSearchResponse
+	mustDecodeJSON(t, restSearchRec.Body.Bytes(), &restSearch)
+
+	mcpSearchResp := callMCP(t, handler, sessionID, JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      13,
+		Method:  "tools/call",
+		Params: map[string]any{
+			"name": "kg_search",
+			"arguments": map[string]any{
+				"query":      "Hop dong",
+				"domain_ids": []any{"noi_bo_hop_dong"},
+				"top_k":      1,
+			},
+		},
+	})
+	mustDecodeJSON(t, mcpSearchResp.Body.Bytes(), &mcpPayload)
+	if mcpPayload["error"] != nil {
+		t.Fatalf("kg_search error = %#v", mcpPayload["error"])
+	}
+	var mcpSearch search.SemanticSearchResponse
+	rawSearch, err := json.Marshal(mcpPayload["result"])
+	if err != nil {
+		t.Fatalf("json.Marshal() mcp search result error = %v", err)
+	}
+	if err := json.Unmarshal(rawSearch, &mcpSearch); err != nil {
+		t.Fatalf("json.Unmarshal() mcp search result error = %v", err)
+	}
+	if !reflect.DeepEqual(restSearch.Results, mcpSearch.Results) {
+		t.Fatalf("REST search = %#v, MCP search = %#v", restSearch.Results, mcpSearch.Results)
+	}
+
+	restIntegrityReq := httptest.NewRequest(http.MethodGet, "/v1/kg/integrity/tenant/"+fixture.actor.TenantID, nil)
+	restIntegrityReq.SetPathValue("tenant_id", fixture.actor.TenantID)
+	restIntegrityReq = restIntegrityReq.WithContext(access.ContextWithIdentity(restIntegrityReq.Context(), fixture.actor))
+	restIntegrityRec := httptest.NewRecorder()
+	fixture.integrityHandler.TenantIntegrity(restIntegrityRec, restIntegrityReq)
+	if restIntegrityRec.Code != http.StatusOK {
+		t.Fatalf("integrity REST status = %d body=%s", restIntegrityRec.Code, restIntegrityRec.Body.String())
+	}
+	var restIntegrity integrity.TenantIntegrityResponse
+	mustDecodeJSON(t, restIntegrityRec.Body.Bytes(), &restIntegrity)
+
+	restMissingReq := httptest.NewRequest(http.MethodGet, "/v1/kg/integrity/missing-bridges?tenant_id="+fixture.actor.TenantID, nil)
+	restMissingReq = restMissingReq.WithContext(access.ContextWithIdentity(restMissingReq.Context(), fixture.actor))
+	restMissingRec := httptest.NewRecorder()
+	fixture.integrityHandler.MissingBridges(restMissingRec, restMissingReq)
+	if restMissingRec.Code != http.StatusOK {
+		t.Fatalf("integrity REST missing bridges status = %d body=%s", restMissingRec.Code, restMissingRec.Body.String())
+	}
+	var restMissing respond.ListEnvelope[integrity.MissingBridgeItem]
+	mustDecodeJSON(t, restMissingRec.Body.Bytes(), &restMissing)
+
+	mcpIntegrityResp := callMCP(t, handler, sessionID, JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      14,
+		Method:  "tools/call",
+		Params: map[string]any{
+			"name": "kg_integrity",
+			"arguments": map[string]any{
+				"tenant_id": fixture.actor.TenantID,
+			},
+		},
+	})
+	mustDecodeJSON(t, mcpIntegrityResp.Body.Bytes(), &mcpPayload)
+	if mcpPayload["error"] != nil {
+		t.Fatalf("kg_integrity error = %#v", mcpPayload["error"])
+	}
+	integrityResult := mcpPayload["result"].(map[string]any)
+	rawSummary, err := json.Marshal(integrityResult["summary"])
+	if err != nil {
+		t.Fatalf("json.Marshal() mcp summary error = %v", err)
+	}
+	var mcpIntegrity integrity.TenantIntegrityResponse
+	if err := json.Unmarshal(rawSummary, &mcpIntegrity); err != nil {
+		t.Fatalf("json.Unmarshal() mcp summary error = %v", err)
+	}
+	if !reflect.DeepEqual(restIntegrity.Checks, mcpIntegrity.Checks) || restIntegrity.Overall != mcpIntegrity.Overall {
+		t.Fatalf("REST integrity = %#v, MCP integrity = %#v", restIntegrity, mcpIntegrity)
+	}
+	rawMissing, err := json.Marshal(integrityResult["missing_bridges"])
+	if err != nil {
+		t.Fatalf("json.Marshal() mcp missing bridges error = %v", err)
+	}
+	var mcpMissing []integrity.MissingBridgeItem
+	if err := json.Unmarshal(rawMissing, &mcpMissing); err != nil {
+		t.Fatalf("json.Unmarshal() mcp missing bridges error = %v", err)
+	}
+	if !reflect.DeepEqual(restMissing.Data, mcpMissing) {
+		t.Fatalf("REST missing bridges = %#v, MCP missing bridges = %#v", restMissing.Data, mcpMissing)
 	}
 }
 
@@ -227,6 +392,21 @@ func TestMCPSessionRateLimitsToolCallsByTenantTier(t *testing.T) {
 
 func newMCPFixture(t *testing.T) (Handler, access.Identity) {
 	t.Helper()
+	fixture := newParityFixture(t)
+	return fixture.mcpHandler, fixture.actor
+}
+
+type parityFixture struct {
+	accessHandler    access.Handler
+	readHandler      read.Handler
+	searchHandler    search.Handler
+	integrityHandler integrity.Handler
+	mcpHandler       Handler
+	actor            access.Identity
+}
+
+func newParityFixture(t *testing.T) parityFixture {
+	t.Helper()
 
 	cache, err := rediscache.New(config.RedisConfig{Host: "127.0.0.1", Port: 6379, DB: 0})
 	if err != nil {
@@ -279,7 +459,7 @@ func newMCPFixture(t *testing.T) (Handler, access.Identity) {
 	}
 
 	writeStore := write.NewMemoryStore()
-	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, &postgres.SessionManager{}, nil)
+	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, &recordingSessionManager{}, nil)
 	bridge, err := writeSvc.CreateNode(actor, write.NodeCreateRequest{
 		DomainID:   "noi_bo_hop_dong",
 		NodeType:   "PhuLucHopDong",
@@ -302,7 +482,14 @@ func newMCPFixture(t *testing.T) (Handler, access.Identity) {
 	searchSvc := search.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
 	integritySvc := integrity.NewService(writeStore, ontologyStore)
 	mcpSvc := NewService(readSvc, searchSvc, writeSvc, ontologySvc, accessResolver, integritySvc)
-	return NewHandler(mcpSvc), actor
+	return parityFixture{
+		accessHandler:    access.NewHandler(accessResolver, accessSvc),
+		readHandler:      read.NewHandler(readSvc),
+		searchHandler:    search.NewHandler(searchSvc),
+		integrityHandler: integrity.NewHandler(integritySvc),
+		mcpHandler:       NewHandler(mcpSvc),
+		actor:            actor,
+	}
 }
 
 func newMCPFixtureWithLimiter(t *testing.T, tierLimits map[string]int) (Handler, access.Identity) {
@@ -361,7 +548,7 @@ func newMCPFixtureWithLimiter(t *testing.T, tierLimits map[string]int) (Handler,
 	}
 
 	writeStore := write.NewMemoryStore()
-	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, &postgres.SessionManager{}, nil)
+	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, &recordingSessionManager{}, nil)
 	bridge, err := writeSvc.CreateNode(actor, write.NodeCreateRequest{
 		DomainID:   "noi_bo_hop_dong",
 		NodeType:   "PhuLucHopDong",

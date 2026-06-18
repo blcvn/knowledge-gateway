@@ -1,6 +1,8 @@
 package write
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,7 +11,7 @@ import (
 
 	"kg-service/internal/access"
 	"kg-service/internal/ontology"
-	"kg-service/internal/platform/postgres"
+	"kg-service/internal/platform/session"
 )
 
 var (
@@ -34,7 +36,7 @@ type OntologyResolver interface {
 }
 
 type SessionManager interface {
-	Begin(identity postgres.WriteIdentity) postgres.SessionScope
+	Within(ctx context.Context, identity session.WriteIdentity, fn func(session.SessionScope) error) (session.SessionScope, error)
 }
 
 type AuditLogger interface {
@@ -42,7 +44,7 @@ type AuditLogger interface {
 }
 
 type Service struct {
-	store          Store
+	store          Repository
 	ontology       OntologyResolver
 	accessResolver AccessResolver
 	sessionManager SessionManager
@@ -52,7 +54,7 @@ type Service struct {
 	now            func() time.Time
 }
 
-func NewService(store Store, ontology OntologyResolver, accessResolver AccessResolver, sessionManager SessionManager, auditLogger AuditLogger) *Service {
+func NewService(store Repository, ontology OntologyResolver, accessResolver AccessResolver, sessionManager SessionManager, auditLogger AuditLogger) *Service {
 	return &Service{
 		store:          store,
 		ontology:       ontology,
@@ -64,6 +66,18 @@ func NewService(store Store, ontology OntologyResolver, accessResolver AccessRes
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (s *Service) repositoryForScope(scope session.SessionScope) Repository {
+	if scope.Tx == nil {
+		return s.store
+	}
+	if txRepo, ok := s.store.(interface {
+		WithTx(*sql.Tx) Repository
+	}); ok {
+		return txRepo.WithTx(scope.Tx)
+	}
+	return s.store
 }
 
 func (s *Service) IngestDocument(actor access.Identity, req IngestDocumentRequest) (IngestJobResponse, error) {
@@ -110,6 +124,10 @@ func (s *Service) GetIngestJob(actor access.Identity, jobID string) (IngestJobRe
 }
 
 func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (NodeCreateResponse, error) {
+	return s.CreateNodeWithContext(context.Background(), actor, req)
+}
+
+func (s *Service) CreateNodeWithContext(ctx context.Context, actor access.Identity, req NodeCreateRequest) (NodeCreateResponse, error) {
 	if err := validateNodeCreateRequest(req); err != nil {
 		return NodeCreateResponse{}, errors.Join(ErrValidation, err)
 	}
@@ -152,11 +170,6 @@ func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (Node
 			statusValue = fmt.Sprintf("%v", value)
 		}
 	}
-	scope := s.sessionManager.Begin(postgres.WriteIdentity{
-		TenantID: actor.TenantID,
-		AppID:    actor.AppID,
-	})
-
 	nodeID := newID("node")
 	node := NodeRecord{
 		ID:            nodeID,
@@ -178,31 +191,42 @@ func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (Node
 	if err != nil {
 		return NodeCreateResponse{}, err
 	}
-	event := OutboxEvent{
-		ID:            newID("evt"),
-		AggregateType: "kg_node",
-		AggregateID:   nodeID,
-		EventType:     "NODE_UPSERTED",
-		Payload: map[string]any{
-			"node_id":         nodeID,
-			"domain_id":       req.DomainID,
-			"owner_tenant_id": actor.TenantID,
-			"owner_app_id":    actor.AppID,
-			"node_type":       req.NodeType,
-			"external_ref":    node.ExternalRef,
-			"tx_scope":        scope.Statements,
-		},
-		Status:     "PENDING",
-		RetryCount: 0,
-		CreatedAt:  now,
-	}
-
-	if err := s.store.CreateNodeBundle(node, bridgeRelationships, event); err != nil {
-		if errors.Is(err, ErrDuplicateExternalRef) {
-			return NodeCreateResponse{}, errors.Join(ErrValidation, errors.New("external_ref already exists"))
+	var scope session.SessionScope
+	scope, err = s.sessionManager.Within(ctx, session.WriteIdentity{
+		TenantID: actor.TenantID,
+		AppID:    actor.AppID,
+	}, func(scope session.SessionScope) error {
+		event := OutboxEvent{
+			ID:            newID("evt"),
+			AggregateType: "kg_node",
+			AggregateID:   nodeID,
+			EventType:     "NODE_UPSERTED",
+			Payload: map[string]any{
+				"node_id":         nodeID,
+				"domain_id":       req.DomainID,
+				"owner_tenant_id": actor.TenantID,
+				"owner_app_id":    actor.AppID,
+				"node_type":       req.NodeType,
+				"external_ref":    node.ExternalRef,
+				"tx_scope":        scope.Statements,
+			},
+			Status:     "PENDING",
+			RetryCount: 0,
+			CreatedAt:  now,
 		}
+		repo := s.repositoryForScope(scope)
+		if err := repo.CreateNodeBundle(ctx, node, bridgeRelationships, event); err != nil {
+			if errors.Is(err, ErrDuplicateExternalRef) {
+				return errors.Join(ErrValidation, errors.New("external_ref already exists"))
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return NodeCreateResponse{}, err
 	}
+	_ = scope
 	s.recordWriteAudit(actor, node.OwnerTenantID, node.OwnerAppID, "kg.node.create", "kg_node", node.ID, "allow", "", map[string]any{
 		"domain_id":      node.DomainID,
 		"node_type":      node.NodeType,
@@ -219,6 +243,10 @@ func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (Node
 }
 
 func (s *Service) UpdateNode(actor access.Identity, nodeID string, req NodeUpdateRequest) (NodeUpdateResponse, error) {
+	return s.UpdateNodeWithContext(context.Background(), actor, nodeID, req)
+}
+
+func (s *Service) UpdateNodeWithContext(ctx context.Context, actor access.Identity, nodeID string, req NodeUpdateRequest) (NodeUpdateResponse, error) {
 	if err := validateNodeUpdateRequest(req); err != nil {
 		return NodeUpdateResponse{}, errors.Join(ErrValidation, err)
 	}
@@ -285,40 +313,46 @@ func (s *Service) UpdateNode(actor access.Identity, nodeID string, req NodeUpdat
 	updated.DomainVersion = version.Version
 	updated.StatusValue = statusValue
 	updated.UpdatedAt = s.now()
-	scope := s.sessionManager.Begin(postgres.WriteIdentity{
+	var scope session.SessionScope
+	scope, err = s.sessionManager.Within(ctx, session.WriteIdentity{
 		TenantID: actor.TenantID,
 		AppID:    actor.AppID,
-	})
-
-	event := OutboxEvent{
-		ID:            newID("evt"),
-		AggregateType: "kg_node",
-		AggregateID:   nodeID,
-		EventType:     "NODE_UPSERTED",
-		Payload: map[string]any{
-			"node_id":         nodeID,
-			"domain_id":       updated.DomainID,
-			"owner_tenant_id": updated.OwnerTenantID,
-			"owner_app_id":    updated.OwnerAppID,
-			"node_type":       updated.NodeType,
-			"external_ref":    updated.ExternalRef,
-			"tx_scope":        scope.Statements,
-		},
-		Status:     "PENDING",
-		RetryCount: 0,
-		CreatedAt:  updated.UpdatedAt,
-	}
-
-	if err := s.store.UpdateNodeWithOutbox(updated, event); err != nil {
-		switch {
-		case errors.Is(err, ErrDuplicateExternalRef):
-			return NodeUpdateResponse{}, errors.Join(ErrValidation, errors.New("external_ref already exists"))
-		case errors.Is(err, ErrNodeNotFound):
-			return NodeUpdateResponse{}, ErrNotFound
-		default:
-			return NodeUpdateResponse{}, err
+	}, func(scope session.SessionScope) error {
+		event := OutboxEvent{
+			ID:            newID("evt"),
+			AggregateType: "kg_node",
+			AggregateID:   nodeID,
+			EventType:     "NODE_UPSERTED",
+			Payload: map[string]any{
+				"node_id":         nodeID,
+				"domain_id":       updated.DomainID,
+				"owner_tenant_id": updated.OwnerTenantID,
+				"owner_app_id":    updated.OwnerAppID,
+				"node_type":       updated.NodeType,
+				"external_ref":    updated.ExternalRef,
+				"tx_scope":        scope.Statements,
+			},
+			Status:     "PENDING",
+			RetryCount: 0,
+			CreatedAt:  updated.UpdatedAt,
 		}
+		repo := s.repositoryForScope(scope)
+		if err := repo.UpdateNodeWithOutbox(ctx, updated, event); err != nil {
+			switch {
+			case errors.Is(err, ErrDuplicateExternalRef):
+				return errors.Join(ErrValidation, errors.New("external_ref already exists"))
+			case errors.Is(err, ErrNodeNotFound):
+				return ErrNotFound
+			default:
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return NodeUpdateResponse{}, err
 	}
+	_ = scope
 	s.recordWriteAudit(actor, updated.OwnerTenantID, updated.OwnerAppID, "kg.node.update", "kg_node", updated.ID, "allow", "", map[string]any{
 		"domain_id":    updated.DomainID,
 		"node_type":    updated.NodeType,
@@ -333,6 +367,10 @@ func (s *Service) UpdateNode(actor access.Identity, nodeID string, req NodeUpdat
 }
 
 func (s *Service) DeleteNode(actor access.Identity, nodeID string) (NodeDeleteResponse, error) {
+	return s.DeleteNodeWithContext(context.Background(), actor, nodeID)
+}
+
+func (s *Service) DeleteNodeWithContext(ctx context.Context, actor access.Identity, nodeID string) (NodeDeleteResponse, error) {
 	node, ok := s.store.GetNodeByID(nodeID)
 	if !ok || node.IsDeleted {
 		return NodeDeleteResponse{}, ErrNotFound
@@ -352,32 +390,36 @@ func (s *Service) DeleteNode(actor access.Identity, nodeID string) (NodeDeleteRe
 	deleted := node
 	deleted.IsDeleted = true
 	deleted.UpdatedAt = s.now()
-	scope := s.sessionManager.Begin(postgres.WriteIdentity{
+	_, err = s.sessionManager.Within(ctx, session.WriteIdentity{
 		TenantID: actor.TenantID,
 		AppID:    actor.AppID,
-	})
-
-	event := OutboxEvent{
-		ID:            newID("evt"),
-		AggregateType: "kg_node",
-		AggregateID:   nodeID,
-		EventType:     "NODE_DELETED",
-		Payload: map[string]any{
-			"node_id":         nodeID,
-			"domain_id":       deleted.DomainID,
-			"owner_tenant_id": deleted.OwnerTenantID,
-			"owner_app_id":    deleted.OwnerAppID,
-			"tx_scope":        scope.Statements,
-		},
-		Status:     "PENDING",
-		RetryCount: 0,
-		CreatedAt:  deleted.UpdatedAt,
-	}
-
-	if err := s.store.SoftDeleteNodeWithOutbox(deleted, event); err != nil {
-		if errors.Is(err, ErrNodeNotFound) {
-			return NodeDeleteResponse{}, ErrNotFound
+	}, func(scope session.SessionScope) error {
+		event := OutboxEvent{
+			ID:            newID("evt"),
+			AggregateType: "kg_node",
+			AggregateID:   nodeID,
+			EventType:     "NODE_DELETED",
+			Payload: map[string]any{
+				"node_id":         nodeID,
+				"domain_id":       deleted.DomainID,
+				"owner_tenant_id": deleted.OwnerTenantID,
+				"owner_app_id":    deleted.OwnerAppID,
+				"tx_scope":        scope.Statements,
+			},
+			Status:     "PENDING",
+			RetryCount: 0,
+			CreatedAt:  deleted.UpdatedAt,
 		}
+		repo := s.repositoryForScope(scope)
+		if err := repo.SoftDeleteNodeWithOutbox(ctx, deleted, event); err != nil {
+			if errors.Is(err, ErrNodeNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return NodeDeleteResponse{}, err
 	}
 	s.recordWriteAudit(actor, deleted.OwnerTenantID, deleted.OwnerAppID, "kg.node.delete", "kg_node", deleted.ID, "allow", "", map[string]any{
@@ -391,6 +433,10 @@ func (s *Service) DeleteNode(actor access.Identity, nodeID string) (NodeDeleteRe
 }
 
 func (s *Service) CreateRelationship(actor access.Identity, req RelationshipCreateRequest) (RelationshipCreateResponse, error) {
+	return s.CreateRelationshipWithContext(context.Background(), actor, req)
+}
+
+func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor access.Identity, req RelationshipCreateRequest) (RelationshipCreateResponse, error) {
 	if err := validateRelationshipCreateRequest(req); err != nil {
 		return RelationshipCreateResponse{}, errors.Join(ErrValidation, err)
 	}
@@ -430,10 +476,6 @@ func (s *Service) CreateRelationship(actor access.Identity, req RelationshipCrea
 	}
 
 	now := s.now()
-	scope := s.sessionManager.Begin(postgres.WriteIdentity{
-		TenantID: actor.TenantID,
-		AppID:    actor.AppID,
-	})
 	relID := newID("rel")
 	rel := RelationshipRecord{
 		ID:            relID,
@@ -446,25 +488,34 @@ func (s *Service) CreateRelationship(actor access.Identity, req RelationshipCrea
 		Properties:    req.Properties,
 		CreatedAt:     now,
 	}
-	event := OutboxEvent{
-		ID:            newID("evt"),
-		AggregateType: "kg_relationship",
-		AggregateID:   relID,
-		EventType:     "RELATIONSHIP_UPSERTED",
-		Payload: map[string]any{
-			"relationship_id": relID,
-			"domain_id":       req.DomainID,
-			"from_node_id":    req.FromNodeID,
-			"to_node_id":      req.ToNodeID,
-			"rel_type":        req.RelType,
-			"tx_scope":        scope.Statements,
-		},
-		Status:     "PENDING",
-		RetryCount: 0,
-		CreatedAt:  now,
-	}
-
-	if err := s.store.CreateRelationshipWithOutbox(rel, event); err != nil {
+	_, err = s.sessionManager.Within(ctx, session.WriteIdentity{
+		TenantID: actor.TenantID,
+		AppID:    actor.AppID,
+	}, func(scope session.SessionScope) error {
+		event := OutboxEvent{
+			ID:            newID("evt"),
+			AggregateType: "kg_relationship",
+			AggregateID:   relID,
+			EventType:     "RELATIONSHIP_UPSERTED",
+			Payload: map[string]any{
+				"relationship_id": relID,
+				"domain_id":       req.DomainID,
+				"from_node_id":    req.FromNodeID,
+				"to_node_id":      req.ToNodeID,
+				"rel_type":        req.RelType,
+				"tx_scope":        scope.Statements,
+			},
+			Status:     "PENDING",
+			RetryCount: 0,
+			CreatedAt:  now,
+		}
+		repo := s.repositoryForScope(scope)
+		if err := repo.CreateRelationshipWithOutbox(ctx, rel, event); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return RelationshipCreateResponse{}, err
 	}
 	s.recordWriteAudit(actor, rel.OwnerTenantID, rel.OwnerAppID, "kg.relationship.create", "kg_relationship", rel.ID, "allow", "", map[string]any{
