@@ -3,7 +3,7 @@ package workers
 import (
 	"errors"
 	"fmt"
-	"hash/fnv"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -12,10 +12,11 @@ import (
 	"kg-service/internal/write"
 )
 
-type WriteStore interface {
+type Repository interface {
 	ListOutboxEvents() []write.OutboxEvent
 	GetNodeByID(id string) (write.NodeRecord, bool)
 	GetRelationshipByID(id string) (write.RelationshipRecord, bool)
+	write.OutboxReader
 	ListNodes() []write.NodeRecord
 	ListRelationships() []write.RelationshipRecord
 }
@@ -25,7 +26,7 @@ type OntologyResolver interface {
 }
 
 type Runtime struct {
-	store      WriteStore
+	store      Repository
 	ontology   OntologyResolver
 	cache      *rediscache.Client
 	graph      *GraphStore
@@ -35,7 +36,7 @@ type Runtime struct {
 	maxRetries int
 }
 
-func NewRuntime(store WriteStore, ontology OntologyResolver, cache *rediscache.Client) *Runtime {
+func NewRuntime(store Repository, ontology OntologyResolver, cache *rediscache.Client) *Runtime {
 	return &Runtime{
 		store:      store,
 		ontology:   ontology,
@@ -124,9 +125,16 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 			report.GraphDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_mismatch", Details: "graph projection does not match source node"})
 		}
+		if !reflect.DeepEqual(graphNode.Properties, source.Properties) || !reflect.DeepEqual(graphNode.ACLVisibleTo, nodeACLVisibleTo(source)) {
+			report.GraphDriftCount++
+			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_payload_mismatch", Details: "graph node payload does not match source node"})
+		}
 		if doc, ok := r.vector.Documents[id]; !ok || doc.IsDeleted != source.IsDeleted || doc.StatusValue != source.StatusValue || doc.NodeType != source.NodeType || doc.DomainID != source.DomainID {
 			report.VectorDriftCount++
 			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_mismatch", Details: "vector projection does not match source node"})
+		} else if !reflect.DeepEqual(doc.DomainProps, source.Properties) || !reflect.DeepEqual(doc.ACLVisibleTo, nodeACLVisibleTo(source)) {
+			report.VectorDriftCount++
+			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_payload_mismatch", Details: "vector document payload does not match source node"})
 		}
 	}
 	for id := range r.graph.Nodes {
@@ -237,7 +245,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 		IsDeleted:     node.IsDeleted,
 		StatusValue:   node.StatusValue,
 		DomainProps:   cloneMap(node.Properties),
-		Embedding:     embedText(buildEmbeddingText(node)),
+		Embedding:     buildEmbeddingVector(buildEmbeddingText(node)),
 	}
 	if cfg != nil && cfg.AuthorityFieldName != "" && len(cfg.AuthorityValuesMap) > 0 {
 		if raw, ok := node.Properties[cfg.AuthorityFieldName]; ok {
@@ -334,17 +342,6 @@ func nodeHasIncomingRel(nodeID, relType, fromNodeID string, rels map[string]Grap
 	return false
 }
 
-func embedText(text string) []float64 {
-	vec := make([]float64, 8)
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(text))
-	sum := h.Sum64()
-	for i := range vec {
-		vec[i] = float64((sum>>(uint(i)*8))&0xff) / 255.0
-	}
-	return vec
-}
-
 func buildEmbeddingText(node write.NodeRecord) string {
 	parts := []string{node.ID, node.NodeType, node.DomainID, node.ExternalRef, node.StatusValue}
 	for k, v := range node.Properties {
@@ -385,4 +382,15 @@ func removeString(values []string, item string) []string {
 		return nil
 	}
 	return result
+}
+
+func buildEmbeddingVector(text string) []float64 {
+	vec := make([]float64, 8)
+	if len(text) == 0 {
+		return vec
+	}
+	for i, r := range text {
+		vec[i%len(vec)] += float64((int(r)%17)+1) / 17.0
+	}
+	return vec
 }

@@ -666,8 +666,8 @@ func TestCreateNodeBuildsBridgeRelationshipsAndTracksSessionScope(t *testing.T) 
 	if len(store.ListOutboxEvents()) != 1 {
 		t.Fatalf("outbox len = %d, want 1", len(store.ListOutboxEvents()))
 	}
-	if len(sessionManager.LastScope.Statements) != 2 {
-		t.Fatalf("session statements len = %d, want 2", len(sessionManager.LastScope.Statements))
+	if len(sessionManager.LastScope.Statements) != 4 {
+		t.Fatalf("session statements len = %d, want 4", len(sessionManager.LastScope.Statements))
 	}
 }
 

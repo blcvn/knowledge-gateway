@@ -4,8 +4,8 @@
 
 - [ ] Replace the placeholder Postgres session manager with a real transaction-scoped session implementation.
 - [ ] Add real repository/adapters for source-of-truth write operations and outbox persistence boundaries.
-- [ ] Add a production vector adapter abstraction for embedding storage and retrieval.
-- [ ] Add a production graph adapter abstraction for template execution and projection reads.
+- [x] Add a production vector adapter abstraction for embedding storage and retrieval.
+- [x] Add a production graph adapter abstraction for template execution and projection reads.
 
 ## Milestone: `internal/write`
 
@@ -15,15 +15,15 @@
 
 ## Milestone: `internal/read`
 
-- [ ] Execute query templates through the graph adapter instead of iterating over the projection store directly.
+- [x] Execute query templates through the graph adapter instead of iterating over the projection store directly.
 - [ ] Preserve ACL injection, hop filtering, lifecycle filtering, timeout handling, and row caps in graph execution.
 - [ ] Add integration coverage for graph-backed execution on a non-trivial fixture.
 
 ## Milestone: `internal/search`
 
-- [ ] Replace hash-based embedding generation with a pluggable embedding provider.
-- [ ] Persist and query searchable vectors through a vector adapter.
-- [ ] Implement RAG retrieval as a distinct pipeline from semantic search.
+- [x] Replace hash-based embedding generation with a pluggable embedding provider.
+- [x] Persist and query searchable vectors through a vector adapter.
+- [x] Implement RAG retrieval as a distinct pipeline from semantic search.
 - [ ] Preserve ACL, deletion, domain, lifecycle, and authority-score semantics after adapter migration.
 
 ## Milestone: `internal/workers`

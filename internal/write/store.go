@@ -8,20 +8,6 @@ import (
 var ErrDuplicateExternalRef = errors.New("duplicate external_ref")
 var ErrNodeNotFound = errors.New("node not found")
 
-type Store interface {
-	CreateNodeWithOutbox(node NodeRecord, event OutboxEvent) error
-	CreateNodeBundle(node NodeRecord, rels []RelationshipRecord, event OutboxEvent) error
-	GetNodeByID(id string) (NodeRecord, bool)
-	GetNodeByExternalRef(externalRef string) (NodeRecord, bool)
-	ListNodes() []NodeRecord
-	UpdateNodeWithOutbox(node NodeRecord, event OutboxEvent) error
-	SoftDeleteNodeWithOutbox(node NodeRecord, event OutboxEvent) error
-	CreateRelationshipWithOutbox(rel RelationshipRecord, event OutboxEvent) error
-	GetRelationshipByID(id string) (RelationshipRecord, bool)
-	ListRelationships() []RelationshipRecord
-	ListOutboxEvents() []OutboxEvent
-}
-
 type MemoryStore struct {
 	mu           sync.RWMutex
 	nodes        map[string]NodeRecord

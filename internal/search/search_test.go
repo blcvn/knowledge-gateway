@@ -67,6 +67,33 @@ func TestSemanticSearchFiltersByACLAndReturnsMetadata(t *testing.T) {
 	}
 }
 
+func TestRagSearchUsesDistinctRetrievalPath(t *testing.T) {
+	svc, _, actor := newSearchFixture(t)
+
+	semantic, err := svc.SemanticSearch(actor, SemanticSearchRequest{
+		Query:     "Hộ kinh doanh online",
+		DomainIDs: []string{"luat_thue_hkd"},
+		TopK:      10,
+	})
+	if err != nil {
+		t.Fatalf("SemanticSearch() error = %v", err)
+	}
+	rag, err := svc.RagSearch(actor, SemanticSearchRequest{
+		Query:     "Hộ kinh doanh online",
+		DomainIDs: []string{"luat_thue_hkd"},
+		TopK:      10,
+	})
+	if err != nil {
+		t.Fatalf("RagSearch() error = %v", err)
+	}
+	if len(semantic.Results) != 0 {
+		t.Fatalf("semantic results len = %d, want 0 for fuzzy query", len(semantic.Results))
+	}
+	if len(rag.Results) == 0 {
+		t.Fatal("rag results len = 0, want retrieval from distinct pipeline")
+	}
+}
+
 func TestSemanticSearchRejectsInvisibleDomainFilter(t *testing.T) {
 	svc, _, actor := newSearchFixture(t)
 

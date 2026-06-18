@@ -33,6 +33,20 @@ func TestRuntimeProjectsNodeRelationshipAndCascade(t *testing.T) {
 	}
 }
 
+func TestRuntimePollOnceIsIdempotentForSeenEvents(t *testing.T) {
+	fixture := newWorkerFixture(t)
+	runtime := NewRuntime(fixture.store, fixture.ontologySvc, &fixture.cache)
+
+	first := runtime.PollOnce()
+	second := runtime.PollOnce()
+	if first.Processed == 0 {
+		t.Fatal("first poll expected processed events")
+	}
+	if second.Processed != 0 || second.Failed != 0 || second.DeadLetter != 0 {
+		t.Fatalf("second poll = %+v, want zero work for seen events", second)
+	}
+}
+
 func TestRuntimeGeneratesNonEmptyEmbeddingsFromSearchableContent(t *testing.T) {
 	fixture := newWorkerFixture(t)
 	runtime := NewRuntime(fixture.store, fixture.ontologySvc, &fixture.cache)

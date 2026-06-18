@@ -26,7 +26,7 @@ func (h Handler) CreateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.CreateNode(identity, req)
+	result, err := h.service.CreateNode(r.Context(), identity, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrForbidden):
@@ -51,7 +51,7 @@ func (h Handler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.UpdateNode(identity, r.PathValue("id"), req)
+	result, err := h.service.UpdateNode(r.Context(), identity, r.PathValue("id"), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrForbidden):
@@ -71,7 +71,7 @@ func (h Handler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.DeleteNode(identity, r.PathValue("id"))
+	result, err := h.service.DeleteNode(r.Context(), identity, r.PathValue("id"))
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrForbidden):
@@ -96,7 +96,7 @@ func (h Handler) CreateRelationship(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.CreateRelationship(identity, req)
+	result, err := h.service.CreateRelationship(r.Context(), identity, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrForbidden):
@@ -123,7 +123,7 @@ func (h Handler) IngestDocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.IngestDocument(identity, req)
+	result, err := h.service.IngestDocument(r.Context(), identity, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrForbidden):
@@ -141,7 +141,7 @@ func (h Handler) IngestDocument(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetIngestJob(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.GetIngestJob(identity, r.PathValue("job_id"))
+	result, err := h.service.GetIngestJob(r.Context(), identity, r.PathValue("job_id"))
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrForbidden):
