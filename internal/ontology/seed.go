@@ -10,8 +10,8 @@ func SeedDomains() []Domain {
 	now := time.Date(2026, 6, 17, 10, 10, 0, 0, time.UTC)
 	return []Domain{
 		{
-			ID:            "van_ban_phap_luat",
-			Name:          "Van Ban Phap Luat",
+			ID:            "sample-registry",
+			Name:          "Sample Registry",
 			OwnerTenantID: access.PlatformTenantID,
 			Status:        "active",
 			Version:       1,
@@ -20,8 +20,8 @@ func SeedDomains() []Domain {
 			UpdatedAt:     now,
 		},
 		{
-			ID:            "luat_thue_hkd",
-			Name:          "Luat Thue HKD",
+			ID:            "sample-policy",
+			Name:          "Sample Policy",
 			OwnerTenantID: access.PlatformTenantID,
 			Status:        "active",
 			Version:       1,
@@ -45,8 +45,8 @@ func SeedDomains() []Domain {
 func SeedVersions() []OntologyVersion {
 	now := time.Date(2026, 6, 17, 10, 10, 0, 0, time.UTC)
 	return []OntologyVersion{
-		{DomainID: "van_ban_phap_luat", Version: 1, PublishedAt: now},
-		{DomainID: "luat_thue_hkd", Version: 1, PublishedAt: now},
+		{DomainID: "sample-registry", Version: 1, PublishedAt: now},
+		{DomainID: "sample-policy", Version: 1, PublishedAt: now},
 		{DomainID: "shared-domain", Version: 1, PublishedAt: now},
 	}
 }
@@ -55,15 +55,99 @@ func SeedNodeTypes() []NodeTypeSchema {
 	now := time.Date(2026, 6, 17, 10, 15, 0, 0, time.UTC)
 	return []NodeTypeSchema{
 		{
-			ID:           "shared-domain.HopDongMau",
+			ID:           "shared-domain.SharedDocument",
 			DomainID:     "shared-domain",
-			NodeTypeName: "HopDongMau",
-			GraphLabel:   "HopDongMau",
+			NodeTypeName: "SharedDocument",
+			GraphLabel:   "SharedDocument",
 			RequiredProps: []PropertySchema{
-				{Name: "ten", Type: "string"},
+				{Name: "title", Type: "string"},
 			},
 			OptionalProps: []PropertySchema{
-				{Name: "ghi_chu", Type: "string"},
+				{Name: "summary", Type: "string"},
+			},
+			Version:   1,
+			CreatedAt: now,
+		},
+		{
+			ID:           "sample-policy.Topic",
+			DomainID:     "sample-policy",
+			NodeTypeName: "Topic",
+			GraphLabel:   "Topic",
+			RequiredProps: []PropertySchema{
+				{Name: "topic_key", Type: "string"},
+			},
+			OptionalProps: []PropertySchema{
+				{Name: "title", Type: "string"},
+			},
+			Version:   1,
+			CreatedAt: now,
+		},
+		{
+			ID:           "sample-policy.ActionGuide",
+			DomainID:     "sample-policy",
+			NodeTypeName: "ActionGuide",
+			GraphLabel:   "ActionGuide",
+			RequiredProps: []PropertySchema{
+				{Name: "guide_key", Type: "string"},
+			},
+			OptionalProps: []PropertySchema{
+				{Name: "title", Type: "string"},
+			},
+			Version:   1,
+			CreatedAt: now,
+		},
+		{
+			ID:           "sample-policy.ReferenceDoc",
+			DomainID:     "sample-policy",
+			NodeTypeName: "ReferenceDoc",
+			GraphLabel:   "ReferenceDoc",
+			RequiredProps: []PropertySchema{
+				{Name: "reference_key", Type: "string"},
+			},
+			OptionalProps: []PropertySchema{
+				{Name: "title", Type: "string"},
+			},
+			Version:   1,
+			CreatedAt: now,
+		},
+		{
+			ID:           "sample-policy.Obligation",
+			DomainID:     "sample-policy",
+			NodeTypeName: "Obligation",
+			GraphLabel:   "Obligation",
+			RequiredProps: []PropertySchema{
+				{Name: "obligation_key", Type: "string"},
+			},
+			OptionalProps: []PropertySchema{
+				{Name: "summary", Type: "string"},
+			},
+			Version:   1,
+			CreatedAt: now,
+		},
+		{
+			ID:           "sample-policy.Schedule",
+			DomainID:     "sample-policy",
+			NodeTypeName: "Schedule",
+			GraphLabel:   "Schedule",
+			RequiredProps: []PropertySchema{
+				{Name: "schedule_key", Type: "string"},
+			},
+			OptionalProps: []PropertySchema{
+				{Name: "effective_on", Type: "string"},
+			},
+			Version:   1,
+			CreatedAt: now,
+		},
+		{
+			ID:           "sample-policy.Record",
+			DomainID:     "sample-policy",
+			NodeTypeName: "Record",
+			GraphLabel:   "Record",
+			RequiredProps: []PropertySchema{
+				{Name: "record_key", Type: "string"},
+			},
+			OptionalProps: []PropertySchema{
+				{Name: "title", Type: "string"},
 			},
 			Version:   1,
 			CreatedAt: now,
@@ -99,11 +183,43 @@ func SeedNodeTypes() []NodeTypeSchema {
 func SeedRelTypes() []RelTypeSchema {
 	return []RelTypeSchema{
 		{
-			ID:           relKey("shared-domain", "THAM_CHIEU", "HopDongMau", "KhoanMau"),
+			ID:           relKey("shared-domain", "REFERENCES", "SharedDocument", "SharedDocument"),
 			DomainID:     "shared-domain",
-			RelTypeName:  "THAM_CHIEU",
-			FromNodeType: "HopDongMau",
-			ToNodeType:   "KhoanMau",
+			RelTypeName:  "REFERENCES",
+			FromNodeType: "SharedDocument",
+			ToNodeType:   "SharedDocument",
+			SameDomain:   true,
+		},
+		{
+			ID:           relKey("sample-policy", "ROUTES_TO", "Topic", "ActionGuide"),
+			DomainID:     "sample-policy",
+			RelTypeName:  "ROUTES_TO",
+			FromNodeType: "Topic",
+			ToNodeType:   "ActionGuide",
+			SameDomain:   true,
+		},
+		{
+			ID:           relKey("sample-policy", "CITES", "Record", "ReferenceDoc"),
+			DomainID:     "sample-policy",
+			RelTypeName:  "CITES",
+			FromNodeType: "Record",
+			ToNodeType:   "ReferenceDoc",
+			SameDomain:   true,
+		},
+		{
+			ID:           relKey("sample-policy", "REQUIRES", "Topic", "Obligation"),
+			DomainID:     "sample-policy",
+			RelTypeName:  "REQUIRES",
+			FromNodeType: "Topic",
+			ToNodeType:   "Obligation",
+			SameDomain:   true,
+		},
+		{
+			ID:           relKey("sample-policy", "SCHEDULED_BY", "Record", "Schedule"),
+			DomainID:     "sample-policy",
+			RelTypeName:  "SCHEDULED_BY",
+			FromNodeType: "Record",
+			ToNodeType:   "Schedule",
 			SameDomain:   true,
 		},
 		{
@@ -128,6 +244,16 @@ func SeedRelTypes() []RelTypeSchema {
 func SeedCrossDomainRules() []CrossDomainRelRule {
 	return []CrossDomainRelRule{
 		{
+			ID:                "sample-policy.ATTACHES.ReferenceDoc",
+			RelTypeName:       "ATTACHES",
+			FromDomainID:      "sample-policy",
+			ToDomainID:        "sample-policy",
+			FromNodeTypes:     []string{"Topic"},
+			ToNodeTypes:       []string{"ReferenceDoc"},
+			Required:          true,
+			BridgePropertyKey: "bridge_reference_ids",
+		},
+		{
 			ID:                "noi_bo_hop_dong.DINH_KEM.PhuLucHopDong",
 			RelTypeName:       "DINH_KEM",
 			FromDomainID:      "noi_bo_hop_dong",
@@ -144,107 +270,107 @@ func SeedQueryTemplates() []QueryTemplate {
 	now := time.Date(2026, 6, 17, 10, 20, 0, 0, time.UTC)
 	return []QueryTemplate{
 		{
-			ID:           "luat_thue_hkd.calculator",
-			DomainID:     "luat_thue_hkd",
-			TemplateName: "calculator",
+			ID:           "sample-policy.action-guide",
+			DomainID:     "sample-policy",
+			TemplateName: "action-guide",
 			PatternSpec: map[string]any{
 				"start": map[string]any{
-					"node_type": "NhomDoanhThu",
+					"node_type": "Topic",
 					"match": map[string]any{
-						"ma_nhom": "$ma_nhom",
+						"topic_key": "$topic_key",
 					},
 				},
 				"hops": []any{
 					map[string]any{
-						"rel_type":     "CO_TY_LE",
-						"to_node_type": "TyLeThue",
+						"rel_type":     "ROUTES_TO",
+						"to_node_type": "ActionGuide",
 					},
 				},
 			},
 			ParamSchema: []ParameterSchema{
-				{Name: "ma_nhom", Type: "string", Required: true},
+				{Name: "topic_key", Type: "string", Required: true},
 			},
-			ReturnFields: []string{"TyLeThue.loai_thue"},
+			ReturnFields: []string{"ActionGuide.title"},
 			Status:       "active",
 			Version:      1,
 			CreatedAt:    now,
 		},
 		{
-			ID:           "luat_thue_hkd.tax-routing",
-			DomainID:     "luat_thue_hkd",
-			TemplateName: "tax-routing",
+			ID:           "sample-policy.topic-routing",
+			DomainID:     "sample-policy",
+			TemplateName: "topic-routing",
 			PatternSpec: map[string]any{
 				"start": map[string]any{
-					"node_type": "NhomDoanhThu",
+					"node_type": "Topic",
 					"match": map[string]any{
-						"doanh_thu": "$doanh_thu",
+						"topic_key": "$topic_key",
 					},
 				},
 			},
 			ParamSchema: []ParameterSchema{
-				{Name: "doanh_thu", Type: "number", Required: true},
+				{Name: "topic_key", Type: "string", Required: true},
 			},
-			ReturnFields: []string{"NhomDoanhThu.ma_nhom", "NhomDoanhThu.phuong_phap_tinh"},
+			ReturnFields: []string{"Topic.topic_key", "Topic.title"},
 			Status:       "active",
 			Version:      1,
 			CreatedAt:    now,
 		},
 		{
-			ID:           "luat_thue_hkd.citation-check",
-			DomainID:     "luat_thue_hkd",
-			TemplateName: "citation-check",
+			ID:           "sample-policy.reference-check",
+			DomainID:     "sample-policy",
+			TemplateName: "reference-check",
 			PatternSpec: map[string]any{
 				"start": map[string]any{
-					"node_type": "VanBanPhapLuat",
+					"node_type": "Record",
 					"match": map[string]any{
-						"chunk_ref": "$chunk_ref",
+						"record_key": "$record_key",
 					},
 				},
 			},
 			ParamSchema: []ParameterSchema{
-				{Name: "chunk_ref", Type: "string", Required: true},
+				{Name: "record_key", Type: "string", Required: true},
 			},
-			ReturnFields: []string{"VanBanPhapLuat.so_hieu", "VanBanPhapLuat.status_value"},
+			ReturnFields: []string{"Record.record_key", "Record.status_value"},
 			Status:       "active",
 			Version:      1,
 			CreatedAt:    now,
 		},
 		{
-			ID:           "luat_thue_hkd.obligation-summary",
-			DomainID:     "luat_thue_hkd",
+			ID:           "sample-policy.obligation-summary",
+			DomainID:     "sample-policy",
 			TemplateName: "obligation-summary",
 			PatternSpec: map[string]any{
 				"start": map[string]any{
-					"node_type": "NghiaVu",
+					"node_type": "Obligation",
 					"match": map[string]any{
-						"ma_nhom": "$ma_nhom",
+						"obligation_key": "$obligation_key",
 					},
 				},
 			},
 			ParamSchema: []ParameterSchema{
-				{Name: "ma_nhom", Type: "string", Required: true},
+				{Name: "obligation_key", Type: "string", Required: true},
 			},
-			ReturnFields: []string{"NghiaVu.ten", "NghiaVu.mo_ta"},
+			ReturnFields: []string{"Obligation.obligation_key", "Obligation.summary"},
 			Status:       "active",
 			Version:      1,
 			CreatedAt:    now,
 		},
 		{
-			ID:           "luat_thue_hkd.deadline-trace",
-			DomainID:     "luat_thue_hkd",
-			TemplateName: "deadline-trace",
+			ID:           "sample-policy.schedule-trace",
+			DomainID:     "sample-policy",
+			TemplateName: "schedule-trace",
 			PatternSpec: map[string]any{
 				"start": map[string]any{
-					"node_type": "ThoiHan",
+					"node_type": "Schedule",
 					"match": map[string]any{
-						"chunk_ref": "$chunk_ref",
+						"schedule_key": "$schedule_key",
 					},
 				},
 			},
 			ParamSchema: []ParameterSchema{
-				{Name: "chunk_ref", Type: "string", Required: true},
+				{Name: "schedule_key", Type: "string", Required: true},
 			},
-			ReturnFields: []string{"ThoiHan.noi_dung", "ThoiHan.ngay_hieu_luc"},
+			ReturnFields: []string{"Schedule.schedule_key", "Schedule.effective_on"},
 			Status:       "active",
 			Version:      1,
 			CreatedAt:    now,
@@ -255,16 +381,16 @@ func SeedQueryTemplates() []QueryTemplate {
 func SeedStatusFieldConfigs() []StatusFieldConfig {
 	return []StatusFieldConfig{
 		{
-			DomainID:            "luat_thue_hkd",
-			StatusFieldName:     "tinh_trang",
-			ValidStatusValues:   []string{"con_hieu_luc"},
-			WarningStatusValues: []string{"bi_sua_doi"},
-			AuthorityFieldName:  "loai_van_ban",
+			DomainID:            "sample-policy",
+			StatusFieldName:     "record_status",
+			ValidStatusValues:   []string{"active"},
+			WarningStatusValues: []string{"review"},
+			AuthorityFieldName:  "document_class",
 			AuthorityValuesMap: map[string]int{
-				"Luat":     4,
-				"NghiDinh": 3,
-				"ThongTu":  2,
-				"CongVan":  1,
+				"policy":    4,
+				"procedure": 3,
+				"guide":     2,
+				"memo":      1,
 			},
 		},
 	}

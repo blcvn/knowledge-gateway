@@ -46,7 +46,7 @@ func TestGetEffectiveDomainsIncludesPlatformOwnedAndGrantedDomains(t *testing.T)
 	foundPlatform := false
 	foundGrant := false
 	for _, domain := range domains {
-		if domain.ID == "van_ban_phap_luat" {
+		if domain.ID == "sample-registry" {
 			foundPlatform = true
 		}
 		if domain.ID == "shared-domain" {
@@ -332,17 +332,17 @@ func TestSampleDomainCanBeOnboardedThroughOntologyApis(t *testing.T) {
 	}
 }
 
-func TestSeedQueryTemplatesIncludesFiveLegalTemplates(t *testing.T) {
+func TestSeedQueryTemplatesIncludesFiveSampleTemplates(t *testing.T) {
 	templates := SeedQueryTemplates()
 	if len(templates) != 5 {
 		t.Fatalf("templates len = %d, want 5", len(templates))
 	}
 	want := map[string]bool{
-		"calculator":         false,
-		"tax-routing":        false,
-		"citation-check":     false,
+		"action-guide":       false,
+		"topic-routing":      false,
+		"reference-check":    false,
 		"obligation-summary": false,
-		"deadline-trace":     false,
+		"schedule-trace":     false,
 	}
 	for _, template := range templates {
 		if template.Status != "active" {

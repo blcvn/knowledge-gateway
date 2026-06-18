@@ -31,10 +31,10 @@ func TestListTemplatesReturnsOnlyActiveTemplates(t *testing.T) {
 	}
 }
 
-func TestLegalSeedTemplatesExecuteThroughGenericRoute(t *testing.T) {
+func TestSampleSeedTemplatesExecuteThroughGenericRoute(t *testing.T) {
 	svc, _, actor, _, _, _, _ := newReadFixture(t)
 
-	templates, err := svc.ListTemplates(actor, "luat_thue_hkd")
+	templates, err := svc.ListTemplates(actor, "sample-policy")
 	if err != nil {
 		t.Fatalf("ListTemplates() error = %v", err)
 	}
@@ -43,18 +43,18 @@ func TestLegalSeedTemplatesExecuteThroughGenericRoute(t *testing.T) {
 	}
 
 	cases := map[string]map[string]any{
-		"calculator":         {"ma_nhom": "N2"},
-		"tax-routing":        {"doanh_thu": 800000000.0},
-		"citation-check":     {"chunk_ref": "vb_nd117_2025_ndcp_dieu3_khoan1"},
-		"obligation-summary": {"ma_nhom": "N2"},
-		"deadline-trace":     {"chunk_ref": "vb_nd117_2025_ndcp_dieu3_khoan1"},
+		"action-guide":       {"topic_key": "returns"},
+		"topic-routing":      {"topic_key": "returns"},
+		"reference-check":    {"record_key": "record-101"},
+		"obligation-summary": {"obligation_key": "obligation-7"},
+		"schedule-trace":     {"schedule_key": "schedule-9"},
 	}
 	for _, template := range templates {
 		params := cases[template.TemplateName]
 		if params == nil {
 			t.Fatalf("missing params for template %q", template.TemplateName)
 		}
-		resp, err := svc.ExecuteTemplate(actor, "luat_thue_hkd", template.TemplateName, params)
+		resp, err := svc.ExecuteTemplate(actor, "sample-policy", template.TemplateName, params)
 		if err != nil {
 			t.Fatalf("ExecuteTemplate(%s) error = %v", template.TemplateName, err)
 		}

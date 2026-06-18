@@ -1,5 +1,7 @@
 # Design
 
+> Historical archive note: references to legal seed ontology in this archived design describe an earlier sample-configuration plan, not a current requirement that the core repo bootstrap a legal domain by default.
+
 ## Current Behavior
 
 The repository currently contains only `docs/KG_Service_TDD_v1.md`. There is no existing service code, no OpenSpec workspace, and no implementation backlog tied to the TDD. As a result, the design is documented but not yet decomposed into deliverable units.

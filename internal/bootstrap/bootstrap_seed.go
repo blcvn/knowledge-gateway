@@ -7,9 +7,9 @@ import (
 	"kg-service/internal/ontology"
 )
 
-func bootstrapLegalOntology(service *ontology.Service, actor access.Identity) {
-	mustCreateDomain(service, actor, "van_ban_phap_luat", "Van Ban Phap Luat", access.PlatformTenantID)
-	mustCreateDomain(service, actor, "luat_thue_hkd", "Luat Thue HKD", access.PlatformTenantID)
+func bootstrapSampleOntology(service *ontology.Service, actor access.Identity) {
+	mustCreateDomain(service, actor, "sample-registry", "Sample Registry", access.PlatformTenantID)
+	mustCreateDomain(service, actor, "sample-policy", "Sample Policy", access.PlatformTenantID)
 	mustCreateDomain(service, actor, "shared-domain", "Shared Domain", "22222222-2222-2222-2222-222222222222")
 
 	for _, schema := range ontology.SeedNodeTypes() {
@@ -28,7 +28,7 @@ func bootstrapLegalOntology(service *ontology.Service, actor access.Identity) {
 
 func mustCreateDomain(service *ontology.Service, actor access.Identity, id, name, ownerTenantID string) {
 	if _, err := service.CreateDomain(actor, ownerTenantID, ontology.DomainCreateRequest{ID: id, Name: name, Status: "active", Visibility: "public"}); err != nil {
-		log.Printf("bootstrap legal domain %s: %v", id, err)
+		log.Printf("bootstrap domain %s: %v", id, err)
 	}
 }
 
@@ -40,7 +40,7 @@ func mustCreateNodeType(service *ontology.Service, actor access.Identity, tenant
 		OptionalProps:   schema.OptionalProps,
 		ValidationRules: schema.ValidationRules,
 	}); err != nil {
-		log.Printf("bootstrap legal node type %s.%s: %v", schema.DomainID, schema.NodeTypeName, err)
+		log.Printf("bootstrap node type %s.%s: %v", schema.DomainID, schema.NodeTypeName, err)
 	}
 }
 
@@ -53,7 +53,7 @@ func mustCreateRelType(service *ontology.Service, actor access.Identity, tenantI
 		RequiredProps: schema.RequiredProps,
 		OptionalProps: schema.OptionalProps,
 	}); err != nil {
-		log.Printf("bootstrap legal rel type %s.%s: %v", schema.DomainID, schema.RelTypeName, err)
+		log.Printf("bootstrap rel type %s.%s: %v", schema.DomainID, schema.RelTypeName, err)
 	}
 }
 
@@ -65,7 +65,7 @@ func mustCreateQueryTemplate(service *ontology.Service, actor access.Identity, t
 		ReturnFields: template.ReturnFields,
 		Description:  template.Description,
 	}); err != nil {
-		log.Printf("bootstrap legal template %s.%s: %v", template.DomainID, template.TemplateName, err)
+		log.Printf("bootstrap template %s.%s: %v", template.DomainID, template.TemplateName, err)
 		return
 	}
 	if _, err := service.ActivateQueryTemplate(actor, tenantID, template.DomainID, template.TemplateName); err != nil {

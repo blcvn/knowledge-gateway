@@ -1,8 +1,8 @@
 # KG Service — Technical Design Document (TDD)
 
-> Aevlex by Aurenza · Phiên bản 1.1 · 17/06/2026  
+> Phiên bản 1.1 · 17/06/2026  
 > Tài liệu kỹ thuật hợp nhất: High-Level Architecture, Low-Level Design, API Specification  
-> Tài liệu liên quan: `KG_Ontology_v4.md` (ontology pháp luật — bộ ontology ví dụ đầu tiên), `KG_Service_MultiTenant_Design.md` (thiết kế gốc multi-tenant)
+> Tài liệu liên quan: `KG_Ontology_v4.md` (ví dụ ontology lịch sử, không phải baseline mặc định của repo), `KG_Service_MultiTenant_Design.md` (thiết kế gốc multi-tenant)
 
 ---
 
@@ -23,7 +23,7 @@
 
 ### 1.1 Mục đích
 
-Tài liệu này là đặc tả kỹ thuật đầy đủ cho **KG Service** — một nền tảng Knowledge Graph đa tenant **domain-agnostic**: kiến trúc service không hardcode bất kỳ lĩnh vực nghiệp vụ cụ thể nào. Mọi node type, relationship type, quy tắc lifecycle/hiệu lực, và mẫu truy vấn đều là cấu hình do Ontology Plane cung cấp theo từng domain — service chỉ thực thi engine generic, không "biết" trước nội dung domain. LegalAI Advisor (ontology pháp luật mô tả trong `KG_Ontology_v4.md`) là **ứng dụng đầu tiên** triển khai trên nền tảng này, không phải một phần kiến trúc cứng của service. Tài liệu hợp nhất ba lớp đặc tả:
+Tài liệu này là đặc tả kỹ thuật đầy đủ cho **KG Service** — một nền tảng Knowledge Graph đa tenant **domain-agnostic**: kiến trúc service không hardcode bất kỳ lĩnh vực nghiệp vụ cụ thể nào. Mọi node type, relationship type, quy tắc lifecycle/hiệu lực, và mẫu truy vấn đều là cấu hình do Ontology Plane cung cấp theo từng domain — service chỉ thực thi engine generic, không "biết" trước nội dung domain. Các ví dụ domain-specific trong tài liệu, bao gồm ví dụ pháp luật từ `KG_Ontology_v4.md`, chỉ nhằm minh hoạ khả năng cấu hình chứ không đại diện cho phạm vi mặc định của core service. Tài liệu hợp nhất ba lớp đặc tả:
 
 | Lớp | Trả lời câu hỏi |
 |---|---|
@@ -40,7 +40,7 @@ KG Service chịu trách nhiệm:
 - Cung cấp dữ liệu qua 3 mode tách biệt: Write (PostgreSQL), Read (Graph DB), Search (Vector DB) — hành vi của cả 3 mode do domain config quyết định tại runtime.
 - Expose API qua REST và MCP cho Agent Service và các hệ thống tiêu thụ khác.
 
-> **Lưu ý kiến trúc quan trọng:** Lĩnh vực pháp luật (thuế HKD, lao động, dân sự, doanh nghiệp, đất đai) trong `KG_Ontology_v4.md` là **bộ ontology đầu tiên** triển khai trên nền tảng KG Service — một ví dụ cấu hình cụ thể, không phải một phần kiến trúc bắt buộc. Một tenant khác hoàn toàn có thể triển khai một domain phi-pháp-luật (vd: catalog sản phẩm, knowledge base y tế) trên cùng service mà không cần sửa code service.
+> **Lưu ý kiến trúc quan trọng:** Các ví dụ pháp luật trong `KG_Ontology_v4.md` chỉ là một bộ ontology minh hoạ/historical reference, không phải một phần kiến trúc bắt buộc và không phải baseline bootstrap của repo hiện tại. Một tenant khác hoàn toàn có thể triển khai catalog sản phẩm, quy trình nội bộ, knowledge base y tế, hay bất kỳ domain nào khác trên cùng service mà không cần sửa code service.
 
 **Không thuộc phạm vi:** OCR/ingestion pipeline chi tiết (xem `pipeline-service`), LLM prompt engineering cho Agent Service, UI admin portal (chỉ đặc tả API mà portal gọi).
 
@@ -48,7 +48,7 @@ KG Service chịu trách nhiệm:
 
 | Tài liệu | Nội dung |
 |---|---|
-| `KG_Ontology_v4.md` | Ontology đầy đủ: Tầng 0 (van_ban_phap_luat), Tầng 1 (LinhVucPhapLuat), 5 domain nghiệp vụ |
+| `KG_Ontology_v4.md` | Ontology ví dụ/historical reference cho một cấu hình domain-specific |
 | `KG_Ontology_HKD.md` | Ontology domain HKD chi tiết (lịch sử v3, đã merge vào v4) |
 | `KG_Service_HLA_Ontology.md` | Thiết kế Ontology Plane / Data Plane ban đầu (chưa có multi-tenant) |
 | `KG_Service_MultiTenant_Design.md` | Thiết kế gốc Tenant/App/AccessGrant (tài liệu này mở rộng và chính thức hoá) |
@@ -61,7 +61,7 @@ KG Service chịu trách nhiệm:
 | **Tenant** | Tổ chức khách hàng, đơn vị cô lập dữ liệu cao nhất |
 | **App** | Ứng dụng cụ thể thuộc một tenant, đơn vị sở hữu (owner) dữ liệu KG |
 | **Platform** | Tenant đặc biệt (sentinel), sở hữu ontology nền tảng dùng chung (nếu có) |
-| **Domain** | Đơn vị phân loại ontology (vd: `luat_thue_hkd`), có owner_tenant_id — service không biết trước nội dung domain |
+| **Domain** | Đơn vị phân loại ontology (vd: `sample_policy`), có owner_tenant_id — service không biết trước nội dung domain |
 | **AccessGrant** | Bản ghi cấp quyền chia sẻ giữa (tenant, app) nguồn và đích |
 | **acl_visible_to** | Field denormalized trên node/vector, danh sách `{tenant}:{app}` được phép xem |
 | **Effective ontology** | Tập hợp domain mà một app cụ thể được phép dùng (sở hữu + platform + được share) |
@@ -271,7 +271,7 @@ CREATE TABLE access_audit_log (
 
 ```sql
 CREATE TABLE domains (
-    id                  TEXT PRIMARY KEY,              -- "luat_thue_hkd", "noi_bo_hop_dong"
+    id                  TEXT PRIMARY KEY,              -- "sample_policy", "noi_bo_hop_dong"
     name                TEXT NOT NULL,
     description         TEXT,
     owner_tenant_id     UUID NOT NULL REFERENCES tenants(id),
@@ -649,18 +649,17 @@ function write_node(tenant_id, app_id, domain_id, node_type, properties) -> Node
 
 **Giải pháp:** domain owner đăng ký template dưới dạng **Query Pattern DSL** (JSON, không phải Cypher) qua Ontology API (`POST /v1/tenants/{id}/ontology/domains/{id}/query-templates`, xem §4.4). Service có một `QueryTemplateCompiler` **generic duy nhất**, biên dịch DSL này thành Cypher tại runtime, **luôn tự inject ACL filter ở mọi hop** — domain owner không thể bỏ qua bước này dù có cố ý.
 
-**Ví dụ pattern_spec lưu trong `domain_query_templates` cho domain `luat_thue_hkd`, template `calculator`** (đây là dữ liệu cấu hình, không phải code service):
+**Ví dụ pattern_spec lưu trong `domain_query_templates` cho domain `sample_policy`, template `action-guide`** (đây là dữ liệu cấu hình, không phải code service):
 
 ```json
 {
-  "start": { "node_type": "NhomDoanhThu", "match": { "ma_nhom": "$ma_nhom" } },
+  "start": { "node_type": "Topic", "match": { "topic_key": "$topic_key" } },
   "hops": [
-    { "rel_type": "CO_TY_LE", "to_node_type": "TyLeThue", "filter": { "nganh_code": "$nganh_code" } },
-    { "rel_type": "QUY_DINH_BOI", "to_node_type": "Khoan" },
-    { "rel_type": "CO_KHOAN", "direction": "in", "to_node_type": "Dieu" },
-    { "rel_type": "BAO_GOM", "direction": "in", "to_node_type": "VanBanLuat", "filter_status": "valid_only" }
+    { "rel_type": "ROUTES_TO", "to_node_type": "ActionGuide" },
+    { "rel_type": "REQUIRES", "to_node_type": "Obligation", "filter_status": "valid_only" },
+    { "rel_type": "SCHEDULED_BY", "direction": "in", "to_node_type": "Record" }
   ],
-  "return_fields": ["TyLeThue.loai_thue", "TyLeThue.ty_le_pct", "VanBanLuat.so_hieu", "Dieu.so_dieu", "Khoan.so_khoan", "Khoan.noi_dung"]
+  "return_fields": ["Topic.title", "ActionGuide.title", "Obligation.summary", "Record.record_key"]
 }
 ```
 
@@ -860,18 +859,18 @@ PostgreSQL transaction:
 GraphSyncWorker + VectorSyncWorker consume outbox → đồng bộ sang Graph DB / Qdrant
 ```
 
-#### 3.5.2 Read flow (ví dụ: template "calculator" của domain `luat_thue_hkd`)
+#### 3.5.2 Read flow (ví dụ: template `action-guide` của domain `sample-policy`)
 
 ```
-Agent ──POST /v1/kg/read/template/luat_thue_hkd/calculator──▶ API Gateway
-  { ma_nhom: "N2", nganh_code: "thuong_mai" }
+Agent ──POST /v1/kg/read/template/sample-policy/action-guide──▶ API Gateway
+  { topic_key: "returns" }
   ▼
 IdentityResolver → (tenant_id, app_id)
   ▼
 AccessResolver.resolve_visible_owners(tenant_id, app_id)
   → cache hit (60s) hoặc compute mới
   ▼
-ReadService.execute_read(domain_id, "calculator", params)
+ReadService.execute_read(domain_id, "action-guide", params)
   → load pattern_spec từ domain_query_templates
   → QueryTemplateCompiler biên dịch DSL → Cypher, tự chèn ACL ở mọi hop
   ▼
@@ -1486,7 +1485,7 @@ Tóm tắt từ `KG_Service_MultiTenant_Design.md §9`, bổ sung chi tiết tri
 | Phase | Nội dung | Acceptance |
 |---|---|---|
 | A — Foundation | Tenant/App/AccessGrant schema + RLS, platform sentinel, AccessResolver, WriteService, QueryTemplateCompiler (engine generic) | Integration test: app chỉ thấy data của chính nó |
-| B — Read/Search + ACL + Ontology pháp luật | acl_visible_to trên Graph DB/Qdrant, Sync Workers, ReadService + SearchService với ACL injection, **seed ontology v4 + đăng ký 5 query template cho domain `luat_thue_hkd` qua Ontology API** (không phải code service) | TenantA không thấy TenantB khi chưa grant; 5 template hoạt động đúng qua route generic |
+| B — Read/Search + ACL + Sample Ontology | acl_visible_to trên Graph DB/Qdrant, Sync Workers, ReadService + SearchService với ACL injection, **seed sample ontology + đăng ký 5 query template qua Ontology API** (không phải code service) | TenantA không thấy TenantB khi chưa grant; 5 template hoạt động đúng qua route generic |
 | C — Sharing + MCP | Access & Sharing API đầy đủ, MCP Server 7 tools (kể cả `kg_list_templates`), Audit log API | Tạo grant → search thấy dữ liệu chia sẻ trong < 5s |
 | D — Production hardening | Reconciliation job, rate limit theo tier, Qdrant sharding nếu cần, pentest, **thử triển khai một domain phi-pháp-luật để verify domain-agnostic** | NFR §5 đạt mục tiêu; pentest không tìm thấy cross-tenant escalation |
 

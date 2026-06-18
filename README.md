@@ -49,8 +49,8 @@ Bootstrap workspace for the multi-tenant, domain-agnostic KG Service described i
 - `GET /v1/mcp/connect`
 - `POST /v1/mcp/messages/{session_id}`
 
-Current bootstrap flow seeds the core legal ontology through the ontology service APIs at startup, including domains, node types, relationship types, templates, and status configuration.
-The legal bootstrap now registers five active query templates for `luat_thue_hkd`, and the generic read route exercises them through the same template execution path used by custom domains.
+Current bootstrap flow seeds a small domain-neutral sample ontology through the ontology service APIs at startup, including sample domains, node types, relationship types, templates, and status configuration.
+The bootstrap now registers five active templates for `sample-policy`, and the generic read route exercises them through the same template execution path used by arbitrary tenant-defined domains.
 Current audit coverage in the bootstrap slice includes grant create/revoke events, read/write path mutations, and owner-scoped audit retrieval for tenant admins.
 List endpoints now return standard envelopes with `data`, `next_cursor`, and `has_more`, and accept `limit`/`cursor` query parameters.
 
@@ -116,5 +116,5 @@ The repo currently uses in-memory stores and an in-process TTL cache abstraction
 ## Reference
 
 - TDD: [docs/KG_Service_TDD_v1.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/KG_Service_TDD_v1.md)
-- OpenSpec change: [openspec/changes/bootstrap-kg-service-from-tdd/tasks.md](/Users/anhdt/vnpay/knowledge/kg-service/openspec/changes/bootstrap-kg-service-from-tdd/tasks.md)
+- OpenSpec change: [openspec/changes/remove-legal-domain-coupling/tasks.md](/Users/anhdt/vnpay/knowledge/kg-service/openspec/changes/remove-legal-domain-coupling/tasks.md)
 - Operations runbooks: [docs/operations](/Users/anhdt/vnpay/knowledge/kg-service/docs/operations)

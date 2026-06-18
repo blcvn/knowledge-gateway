@@ -42,8 +42,8 @@ func TestSemanticSearchFiltersByACLAndReturnsMetadata(t *testing.T) {
 	svc, auditLogger, actor := newSearchFixture(t)
 
 	resp, err := svc.SemanticSearch(actor, SemanticSearchRequest{
-		Query:     "Hộ kinh doanh",
-		DomainIDs: []string{"luat_thue_hkd"},
+		Query:     "Returns workflow",
+		DomainIDs: []string{"sample-policy"},
 		TopK:      10,
 	})
 	if err != nil {
@@ -86,7 +86,7 @@ func TestSemanticSearchWithoutDomainFilterReturnsAllVisibleDomains(t *testing.T)
 	svc, _, actor := newSearchFixture(t)
 
 	resp, err := svc.SemanticSearch(actor, SemanticSearchRequest{
-		Query: "Hộ kinh doanh",
+		Query: "Returns workflow",
 		TopK:  10,
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func TestSemanticSearchWithoutDomainFilterReturnsAllVisibleDomains(t *testing.T)
 			t.Fatalf("deleted node unexpectedly returned: %#v", result)
 		}
 	}
-	if !gotDomains["luat_thue_hkd"] || !gotDomains["shared-domain"] {
+	if !gotDomains["sample-policy"] || !gotDomains["shared-domain"] {
 		t.Fatalf("domains = %#v, want visible domains", gotDomains)
 	}
 }
@@ -109,7 +109,7 @@ func TestSemanticSearchIgnoresLifecycleWhenTargetedDomainsAreMixed(t *testing.T)
 
 	resp, err := svc.SemanticSearch(actor, SemanticSearchRequest{
 		Query:     "Mixed lifecycle node",
-		DomainIDs: []string{"luat_thue_hkd", "shared-domain"},
+		DomainIDs: []string{"sample-policy", "shared-domain"},
 	})
 	if err != nil {
 		t.Fatalf("SemanticSearch() error = %v", err)
@@ -129,7 +129,7 @@ func TestSearchHandlerServesSemanticAndRagEndpoints(t *testing.T) {
 	svc, _, actor := newSearchFixture(t)
 	handler := NewHandler(svc)
 
-	body := []byte(`{"query":"Hộ kinh doanh","top_k":5}`)
+	body := []byte(`{"query":"Returns workflow","top_k":5}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/kg/search/semantic", bytes.NewReader(body))
 	req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
@@ -198,33 +198,33 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 	mustInsertNode(t, store, write.NodeRecord{
 		ID:            "visible-node",
 		NodeType:      "Doc",
-		DomainID:      "luat_thue_hkd",
+		DomainID:      "sample-policy",
 		OwnerTenantID: actor.TenantID,
 		OwnerAppID:    actor.AppID,
 		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
 		Properties: map[string]any{
-			"summary":       "Hộ kinh doanh bán hàng online",
-			"loai_van_ban":  "Luat",
-			"tinh_trang":    "con_hieu_luc",
+			"summary":       "Returns workflow for marketplace sellers",
+			"document_class": "policy",
+			"record_status":  "active",
 			"domain_marker": "visible",
 		},
-		StatusValue: "con_hieu_luc",
+		StatusValue: "active",
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}, now)
 	mustInsertNode(t, store, write.NodeRecord{
 		ID:            "hidden-acl-node",
 		NodeType:      "Doc",
-		DomainID:      "luat_thue_hkd",
+		DomainID:      "sample-policy",
 		OwnerTenantID: "22222222-2222-2222-2222-222222222222",
 		OwnerAppID:    "22222222-aaaa-2222-aaaa-222222222222",
 		ACLVisibleTo:  []string{"22222222-2222-2222-2222-222222222222:22222222-aaaa-2222-aaaa-222222222222"},
 		Properties: map[string]any{
-			"summary":      "Hộ kinh doanh không được thấy",
-			"loai_van_ban": "Luat",
-			"tinh_trang":   "con_hieu_luc",
+			"summary":        "Hidden workflow document",
+			"document_class": "policy",
+			"record_status":  "active",
 		},
-		StatusValue: "con_hieu_luc",
+		StatusValue: "active",
 		CreatedAt:   now.Add(time.Minute),
 		UpdatedAt:   now.Add(time.Minute),
 	}, now.Add(time.Minute))
@@ -247,9 +247,9 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 		DomainID:      "shared-domain",
 		OwnerTenantID: "22222222-2222-2222-2222-222222222222",
 		OwnerAppID:    "22222222-bbbb-2222-bbbb-222222222222",
-		ACLVisibleTo:  []string{"22222222-2222-2222-2222-222222222222:22222222-bbbb-2222-bbbb-222222222222"},
+		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
 		Properties: map[string]any{
-			"summary": "Hộ kinh doanh trong domain chia sẻ",
+			"summary": "Returns workflow knowledge article",
 		},
 		CreatedAt: now.Add(3 * time.Minute),
 		UpdatedAt: now.Add(3 * time.Minute),
@@ -257,12 +257,12 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 	mustInsertNode(t, store, write.NodeRecord{
 		ID:            "deleted-visible-node",
 		NodeType:      "Doc",
-		DomainID:      "luat_thue_hkd",
+		DomainID:      "sample-policy",
 		OwnerTenantID: actor.TenantID,
 		OwnerAppID:    actor.AppID,
 		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
 		Properties: map[string]any{
-			"summary": "Hộ kinh doanh đã xoá",
+			"summary": "Archived workflow document",
 		},
 		IsDeleted: true,
 		CreatedAt: now.Add(4 * time.Minute),
@@ -271,16 +271,16 @@ func newSearchFixture(t *testing.T) (*Service, *recordingAuditLogger, access.Ide
 	mustInsertNode(t, store, write.NodeRecord{
 		ID:            "mixed-lifecycle-node",
 		NodeType:      "Doc",
-		DomainID:      "luat_thue_hkd",
+		DomainID:      "sample-policy",
 		OwnerTenantID: actor.TenantID,
 		OwnerAppID:    actor.AppID,
 		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
 		Properties: map[string]any{
 			"summary":       "Mixed lifecycle node",
-			"loai_van_ban":  "ThongTu",
+			"document_class": "guide",
 			"domain_marker": "mixed",
 		},
-		StatusValue: "khong_hieu_luc",
+		StatusValue: "inactive",
 		CreatedAt:   now.Add(5 * time.Minute),
 		UpdatedAt:   now.Add(5 * time.Minute),
 	}, now.Add(5*time.Minute))

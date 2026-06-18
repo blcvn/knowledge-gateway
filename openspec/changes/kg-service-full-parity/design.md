@@ -32,7 +32,7 @@ Without a parity-focused follow-up, the repository can remain functionally green
 ## Non-Goals
 
 - Redesign the public API surface.
-- Revisit the bootstrap/legal seed ontology behavior unless required by backend parity.
+- Revisit the bootstrap sample ontology behavior unless required by backend parity.
 - Add new product capabilities beyond the TDD target architecture.
 
 ## Key Decisions

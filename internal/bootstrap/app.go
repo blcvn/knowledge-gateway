@@ -131,7 +131,7 @@ func (a *App) initAccess() {
 		AppID:    "11111111-admin-1111-admin-111111111111",
 		AppType:  "admin_tool",
 	}
-	bootstrapLegalOntology(ontologyService, bootstrapIdentity)
+	bootstrapSampleOntology(ontologyService, bootstrapIdentity)
 	ontologyStore.Seed(nil, nil, nil, nil, ontology.SeedCrossDomainRules(), nil, nil)
 	writeStore := write.NewMemoryStore()
 	sessionManager := &postgres.SessionManager{}

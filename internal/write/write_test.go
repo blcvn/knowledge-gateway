@@ -115,8 +115,8 @@ func TestCreateNodeRejectsCrossTenantWriteWithoutGrant(t *testing.T) {
 
 	_, err := svc.CreateNode(actor, NodeCreateRequest{
 		DomainID:   "shared-domain",
-		NodeType:   "HopDongMau",
-		Properties: map[string]any{"ten": "Hop dong bi chan"},
+		NodeType:   "SharedDocument",
+		Properties: map[string]any{"title": "Blocked shared document"},
 	})
 	if err == nil {
 		t.Fatal("CreateNode() error = nil, want forbidden")
@@ -190,8 +190,8 @@ func TestCrossTenantWriteGrantAllowsAndRevokeDeniesMutation(t *testing.T) {
 
 	created, err := svc.CreateNode(writeActor, NodeCreateRequest{
 		DomainID:   "shared-domain",
-		NodeType:   "HopDongMau",
-		Properties: map[string]any{"ten": "Hop dong duoc cap quyen"},
+		NodeType:   "SharedDocument",
+		Properties: map[string]any{"title": "Granted shared document"},
 	})
 	if err != nil {
 		t.Fatalf("CreateNode() with grant error = %v", err)
@@ -205,8 +205,8 @@ func TestCrossTenantWriteGrantAllowsAndRevokeDeniesMutation(t *testing.T) {
 	}
 	_, err = svc.CreateNode(writeActor, NodeCreateRequest{
 		DomainID:   "shared-domain",
-		NodeType:   "HopDongMau",
-		Properties: map[string]any{"ten": "Hop dong bi chan lai"},
+		NodeType:   "SharedDocument",
+		Properties: map[string]any{"title": "Blocked again"},
 	})
 	if err == nil {
 		t.Fatal("CreateNode() after revoke error = nil, want forbidden")
@@ -501,7 +501,7 @@ func TestIngestDocumentCreatesLookupJob(t *testing.T) {
 	job, err := svc.IngestDocument(actor, IngestDocumentRequest{
 		FileURL:    "s3://bucket/doc.pdf",
 		LoaiVanBan: "NghiDinh",
-		DomainID:   "luat_thue_hkd",
+		DomainID:   "sample-policy",
 	})
 	if err != nil {
 		t.Fatalf("IngestDocument() error = %v", err)
@@ -522,7 +522,7 @@ func TestIngestDocumentCreatesLookupJob(t *testing.T) {
 func TestIngestDocumentHandlerReturnsAccepted(t *testing.T) {
 	svc, _ := newTestService(t)
 	handler := NewHandler(svc)
-	req := httptest.NewRequest(http.MethodPost, "/v1/kg/write/ingest/document", strings.NewReader(`{"file_url":"s3://bucket/doc.pdf","loai_van_ban":"NghiDinh","domain_id":"luat_thue_hkd"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/kg/write/ingest/document", strings.NewReader(`{"file_url":"s3://bucket/doc.pdf","loai_van_ban":"NghiDinh","domain_id":"sample-policy"}`))
 	req = req.WithContext(access.ContextWithIdentity(req.Context(), access.Identity{
 		TenantID: "11111111-1111-1111-1111-111111111111",
 		AppID:    "11111111-admin-1111-admin-111111111111",

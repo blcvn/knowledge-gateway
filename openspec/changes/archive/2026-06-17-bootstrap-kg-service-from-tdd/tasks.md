@@ -1,5 +1,7 @@
 # Tasks
 
+> Historical archive note: completed legal-seed tasks below reflect the original bootstrap program snapshot. They should not be interpreted as the active default scope of the shared `kg-service` repository.
+
 ## Milestone: `migrations/`
 
 ### Phase A Foundation
