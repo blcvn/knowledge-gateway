@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kg-service
+  namespace: __KG_NAMESPACE__
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kg-service
+  template:
+    metadata:
+      labels:
+        app: kg-service
+    spec:
+      containers:
+        - name: kg-service
+          image: __KG_IMAGE__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+              name: http
+          env:
+            - name: KG_HTTP_HOST
+              value: 0.0.0.0
+            - name: KG_HTTP_PORT
+              value: "8082"
+            - name: KG_POSTGRES_HOST
+              value: __KG_POSTGRES_HOST__
+            - name: KG_POSTGRES_PORT
+              value: "__KG_POSTGRES_PORT__"
+            - name: KG_POSTGRES_USER
+              value: __KG_POSTGRES_USER__
+            - name: KG_POSTGRES_PASSWORD
+              value: __KG_POSTGRES_PASSWORD__
+            - name: KG_POSTGRES_DATABASE
+              value: __KG_POSTGRES_DATABASE__
+            - name: KG_POSTGRES_SSLMODE
+              value: __KG_POSTGRES_SSLMODE__
+            - name: KG_REDIS_HOST
+              value: __KG_REDIS_HOST__
+            - name: KG_REDIS_PORT
+              value: "__KG_REDIS_PORT__"
+            - name: KG_REDIS_DB
+              value: "__KG_REDIS_DB__"
+            - name: KG_RUNTIME_PROFILE
+              value: __KG_RUNTIME_PROFILE__
+            - name: EMBEDDING_PROVIDER
+              value: __KG_EMBEDDING_PROVIDER__
+            - name: VECTOR_ADAPTER
+              value: __KG_VECTOR_ADAPTER__
+            - name: KG_VECTOR_ENDPOINT
+              value: __KG_VECTOR_ENDPOINT__
+            - name: KG_VECTOR_COLLECTION
+              value: __KG_VECTOR_COLLECTION__
+            - name: GRAPH_ADAPTER
+              value: __KG_GRAPH_ADAPTER__
+            - name: KG_GRAPH_ENDPOINT
+              value: __KG_GRAPH_ENDPOINT__
+            - name: FTS_ADAPTER
+              value: __KG_FTS_ADAPTER__
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20

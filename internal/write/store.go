@@ -11,19 +11,21 @@ var ErrDuplicateExternalRef = errors.New("duplicate external_ref")
 var ErrNodeNotFound = errors.New("node not found")
 
 type MemoryStore struct {
-	mu           sync.RWMutex
-	nodes        map[string]NodeRecord
-	externalRefs map[string]string
-	rels         map[string]RelationshipRecord
-	outbox       []OutboxEvent
+	mu                 sync.RWMutex
+	nodes              map[string]NodeRecord
+	externalRefs       map[string]string
+	rels               map[string]RelationshipRecord
+	outbox             []OutboxEvent
+	projectionVersions map[string]map[string]ProjectionVersionRecord
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		nodes:        map[string]NodeRecord{},
-		externalRefs: map[string]string{},
-		rels:         map[string]RelationshipRecord{},
-		outbox:       []OutboxEvent{},
+		nodes:              map[string]NodeRecord{},
+		externalRefs:       map[string]string{},
+		rels:               map[string]RelationshipRecord{},
+		outbox:             []OutboxEvent{},
+		projectionVersions: map[string]map[string]ProjectionVersionRecord{},
 	}
 }
 
@@ -182,5 +184,39 @@ func (s *MemoryStore) ListOutboxEvents() []OutboxEvent {
 	defer s.mu.RUnlock()
 	result := make([]OutboxEvent, len(s.outbox))
 	copy(result, s.outbox)
+	return result
+}
+
+func (s *MemoryStore) UpsertProjectionVersion(_ context.Context, record ProjectionVersionRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := record.EntityKind
+	if s.projectionVersions[key] == nil {
+		s.projectionVersions[key] = map[string]ProjectionVersionRecord{}
+	}
+	s.projectionVersions[key][record.EntityID] = record
+	return nil
+}
+
+func (s *MemoryStore) GetProjectionVersion(entityID, entityKind string) (ProjectionVersionRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if kindVersions, ok := s.projectionVersions[entityKind]; ok {
+		if record, ok := kindVersions[entityID]; ok {
+			return record, true
+		}
+	}
+	return ProjectionVersionRecord{}, false
+}
+
+func (s *MemoryStore) ListProjectionVersions() []ProjectionVersionRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make([]ProjectionVersionRecord, 0)
+	for _, kindVersions := range s.projectionVersions {
+		for _, record := range kindVersions {
+			result = append(result, record)
+		}
+	}
 	return result
 }

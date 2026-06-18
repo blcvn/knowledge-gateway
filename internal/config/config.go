@@ -70,5 +70,8 @@ type EmbeddingConfig struct {
 }
 
 type AdapterConfig struct {
-	Kind string
+	Kind       string
+	Endpoint   string
+	Database   string
+	Collection string
 }

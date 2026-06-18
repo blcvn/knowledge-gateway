@@ -21,6 +21,7 @@ type NodeResponse struct {
 	OwnerTenantID string         `json:"owner_tenant_id"`
 	OwnerAppID    string         `json:"owner_app_id"`
 	Visibility    string         `json:"visibility"`
+	SyncVersion   int64          `json:"_kg_sync_version,omitempty"`
 	Properties    map[string]any `json:"properties"`
 	Relationships []string       `json:"relationships"`
 	CreatedAt     time.Time      `json:"created_at"`

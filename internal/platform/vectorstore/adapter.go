@@ -6,6 +6,8 @@ type VectorAdapter interface {
 	Upsert(ctx context.Context, doc VectorDocument) error
 	Delete(ctx context.Context, nodeID string) error
 	ANN(ctx context.Context, query []float64, filter VectorFilter, opts ANNOptions) ([]VectorResult, error)
+	Snapshot(ctx context.Context) ([]VectorDocument, error)
+	ReadSyncVersion(ctx context.Context, entityID string) (int64, error)
 }
 
 type VectorDocument struct {
@@ -18,6 +20,7 @@ type VectorDocument struct {
 	IsDeleted      bool           `json:"is_deleted"`
 	StatusValue    string         `json:"status_value,omitempty"`
 	AuthorityScore *int           `json:"authority_score,omitempty"`
+	SyncVersion    int64          `json:"_kg_sync_version,omitempty"`
 	DomainProps    map[string]any `json:"domain_props"`
 	Embedding      []float64      `json:"embedding,omitempty"`
 }

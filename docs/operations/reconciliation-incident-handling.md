@@ -15,6 +15,9 @@ Use this runbook when reconciliation reports drift that is not self-healing afte
 - Confirm whether the source record changed recently.
 - Compare source row, graph projection, and vector payload for the same node or relationship ID.
 - Distinguish projection drift from intentional deletions or lifecycle transitions.
+- If only graph state is stale, follow the graph-only repair path in [Replica Recovery Runbook](./replica-recovery.md).
+- If only vector state is stale, follow the vector-only repair path in [Replica Recovery Runbook](./replica-recovery.md).
+- If versions differ across PostgreSQL, graph, and vector stores, follow the mixed-version repair path in [Replica Recovery Runbook](./replica-recovery.md).
 
 ## Recovery Steps
 
@@ -27,4 +30,3 @@ Use this runbook when reconciliation reports drift that is not self-healing afte
 
 - Escalate if source-of-truth rows and worker replay both look correct but drift persists.
 - Escalate if the same issue reappears after two repair attempts.
-

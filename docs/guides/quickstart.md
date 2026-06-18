@@ -12,8 +12,8 @@ This guide gets you from a fresh checkout to the first authenticated `kg-service
 ## Run The Service
 
 ```bash
-go test ./...
-go run ./cmd/kg-service
+make test
+make run
 ```
 
 In another terminal:
@@ -85,6 +85,7 @@ Search results are filtered by the caller's visibility and by deletion state.
 ## What To Read Next
 
 - Go to [Integration Workflows](./integration.md) for tenant/app onboarding and ontology-first data modeling.
+- Go to [Tenant And App Setup](./tenant-app-setup.md) when you want a dedicated checklist for creating tenants, apps, and grants.
 - Go to [MCP Integration](./mcp.md) if your consumer is tool-oriented or agent-style.
 - Go to [API Reference](../api/README.md) for route inventory, conventions, and endpoint grouping.
 

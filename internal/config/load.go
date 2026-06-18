@@ -34,9 +34,17 @@ func Load() (Config, error) {
 			ProxyURL: stringEnv("EMBEDDING_PROXY_URL", ""),
 			CacheTTL: time.Duration(intEnv("EMBEDDING_CACHE_TTL_S", 0)) * time.Second,
 		},
-		Vector: AdapterConfig{Kind: stringEnv("VECTOR_ADAPTER", "memory")},
-		Graph:  AdapterConfig{Kind: stringEnv("GRAPH_ADAPTER", "memory")},
-		FTS:    AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
+		Vector: AdapterConfig{
+			Kind:       stringEnv("VECTOR_ADAPTER", "memory"),
+			Endpoint:   stringEnv("KG_VECTOR_ENDPOINT", ""),
+			Collection: stringEnv("KG_VECTOR_COLLECTION", "kg_vectors"),
+		},
+		Graph: AdapterConfig{
+			Kind:     stringEnv("GRAPH_ADAPTER", "memory"),
+			Endpoint: stringEnv("KG_GRAPH_ENDPOINT", ""),
+			Database: stringEnv("KG_GRAPH_DATABASE", ""),
+		},
+		FTS: AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
 	}
 
 	return cfg, cfg.Validate()

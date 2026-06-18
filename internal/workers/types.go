@@ -33,18 +33,20 @@ type GraphNode struct {
 	Visibility    string         `json:"visibility,omitempty"`
 	StatusValue   string         `json:"status_value,omitempty"`
 	IsDeleted     bool           `json:"is_deleted"`
+	SyncVersion   int64          `json:"_kg_sync_version,omitempty"`
 	Properties    map[string]any `json:"properties"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 }
 
 type GraphRelationship struct {
-	ID         string         `json:"id"`
-	RelType    string         `json:"rel_type"`
-	FromNodeID string         `json:"from_node_id"`
-	ToNodeID   string         `json:"to_node_id"`
-	DomainID   string         `json:"domain_id"`
-	Properties map[string]any `json:"properties"`
+	ID          string         `json:"id"`
+	RelType     string         `json:"rel_type"`
+	FromNodeID  string         `json:"from_node_id"`
+	ToNodeID    string         `json:"to_node_id"`
+	DomainID    string         `json:"domain_id"`
+	SyncVersion int64          `json:"_kg_sync_version,omitempty"`
+	Properties  map[string]any `json:"properties"`
 }
 
 type VectorDocument struct {
@@ -57,6 +59,7 @@ type VectorDocument struct {
 	IsDeleted      bool           `json:"is_deleted"`
 	StatusValue    string         `json:"status_value,omitempty"`
 	AuthorityScore *int           `json:"authority_score,omitempty"`
+	SyncVersion    int64          `json:"_kg_sync_version,omitempty"`
 	DomainProps    map[string]any `json:"domain_props"`
 	Embedding      []float64      `json:"embedding,omitempty"`
 }
@@ -109,6 +112,7 @@ type ReconciliationIssue struct {
 type ReconciliationReport struct {
 	GraphDriftCount  int                   `json:"graph_drift_count"`
 	VectorDriftCount int                   `json:"vector_drift_count"`
+	ProjectionVersionDriftCount int        `json:"projection_version_drift_count"`
 	Issues           []ReconciliationIssue `json:"issues"`
 	Overall          string                `json:"overall"`
 }

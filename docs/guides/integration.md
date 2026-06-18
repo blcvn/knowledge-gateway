@@ -25,6 +25,7 @@ Notes:
 - The app create and rotate-key flows are the only times plaintext API keys are returned.
 - The bootstrap repo also ships seeded keys for local testing; those are conveniences, not a production pattern.
 - JSON body fields named `tenant_id` or `app_id` are not trusted from clients because middleware strips them before handlers run.
+- If you want a shorter operational checklist, use [Tenant And App Setup](./tenant-app-setup.md).
 
 ## 3. Model Ontology Before Writing Data
 
@@ -102,6 +103,8 @@ For bootstrap evaluation and local demos:
 - Use `GET /v1/kg/integrity/missing-bridges?tenant_id=...` to inspect bridge gaps.
 
 These routes are useful when writes succeed but read/search behavior does not look right.
+
+If you are validating a deployed environment, pair these requests with the deployment flow in [Deployment Guide](./deployment.md) and the repeatable checks in [Testing Guide](./testing.md).
 
 ## Bootstrap Examples You Can Use Immediately
 

@@ -41,14 +41,26 @@ func (c Config) Validate() error {
 		errs = append(errs, fmt.Errorf("embedding provider must be deterministic or http: %s", c.Embedding.Provider))
 	}
 	switch c.Vector.Kind {
-	case "", "memory", "pgvector":
+	case "", "memory", "pgvector", "qdrant", "milvus":
 	default:
-		errs = append(errs, fmt.Errorf("vector adapter must be memory or pgvector: %s", c.Vector.Kind))
+		errs = append(errs, fmt.Errorf("vector adapter must be memory, pgvector, qdrant, or milvus: %s", c.Vector.Kind))
+	}
+	switch c.Vector.Kind {
+	case "qdrant", "milvus":
+		if c.Vector.Endpoint == "" {
+			errs = append(errs, fmt.Errorf("vector adapter %s requires KG_VECTOR_ENDPOINT", c.Vector.Kind))
+		}
 	}
 	switch c.Graph.Kind {
-	case "", "memory", "neo4j":
+	case "", "memory", "neo4j", "memgraph", "nebula":
 	default:
-		errs = append(errs, fmt.Errorf("graph adapter must be memory or neo4j: %s", c.Graph.Kind))
+		errs = append(errs, fmt.Errorf("graph adapter must be memory, neo4j, memgraph, or nebula: %s", c.Graph.Kind))
+	}
+	switch c.Graph.Kind {
+	case "neo4j", "memgraph", "nebula":
+		if c.Graph.Endpoint == "" {
+			errs = append(errs, fmt.Errorf("graph adapter %s requires KG_GRAPH_ENDPOINT", c.Graph.Kind))
+		}
 	}
 	switch c.FTS.Kind {
 	case "", "memory", "postgres":

@@ -33,7 +33,7 @@ func (s vectorAdapterSearchAccessStub) ResolveVisibleOwners(identity access.Iden
 }
 
 type recordingVectorAdapter struct {
-	lastQuery []float64
+	lastQuery  []float64
 	lastFilter vectorstore.VectorFilter
 	lastOpts   vectorstore.ANNOptions
 	results    []vectorstore.VectorResult
@@ -70,6 +70,14 @@ func (a *recordingVectorAdapter) ANN(ctx context.Context, query []float64, filte
 	return append([]vectorstore.VectorResult(nil), a.results...), nil
 }
 
+func (a *recordingVectorAdapter) Snapshot(ctx context.Context) ([]vectorstore.VectorDocument, error) {
+	return nil, nil
+}
+
+func (a *recordingVectorAdapter) ReadSyncVersion(ctx context.Context, entityID string) (int64, error) {
+	return 0, nil
+}
+
 func TestSemanticSearchUsesVectorAdapterANN(t *testing.T) {
 	adapter := &recordingVectorAdapter{
 		results: []vectorstore.VectorResult{
@@ -95,9 +103,9 @@ func TestSemanticSearchUsesVectorAdapterANN(t *testing.T) {
 			cfg:    &ontology.StatusFieldConfig{DomainID: "d1", StatusFieldName: "status_value", ValidStatusValues: []string{"active"}},
 		},
 		accessResolver: vectorAdapterSearchAccessStub{owners: []access.VisibleOwner{{TenantID: "tenant-a", AppID: "app-a"}}},
-		vectorAdapter:   adapter,
-		embedding:       vector.DirectRouter{Provider: vector.NewDeterministicProvider(8)},
-		profiles: vectorAdapterSearchResolver{},
+		vectorAdapter:  adapter,
+		embedding:      vector.DirectRouter{Provider: vector.NewDeterministicProvider(8)},
+		profiles:       vectorAdapterSearchResolver{},
 	}
 
 	resp, err := svc.SemanticSearch(access.Identity{TenantID: "tenant-a", AppID: "app-a"}, SemanticSearchRequest{

@@ -19,6 +19,12 @@ func TestLoadUsesEnvironment(t *testing.T) {
 	t.Setenv("KG_REDIS_HOST", "cache.internal")
 	t.Setenv("KG_REDIS_PORT", "6380")
 	t.Setenv("KG_REDIS_DB", "2")
+	t.Setenv("VECTOR_ADAPTER", "qdrant")
+	t.Setenv("KG_VECTOR_ENDPOINT", "http://qdrant.internal:6333")
+	t.Setenv("KG_VECTOR_COLLECTION", "kg_vectors_test")
+	t.Setenv("GRAPH_ADAPTER", "neo4j")
+	t.Setenv("KG_GRAPH_ENDPOINT", "bolt://neo4j.internal:7687")
+	t.Setenv("FTS_ADAPTER", "postgres")
 
 	cfg, err := Load()
 	if err != nil {
@@ -40,6 +46,24 @@ func TestLoadUsesEnvironment(t *testing.T) {
 	if cfg.Redis.DB != 2 {
 		t.Fatalf("Redis DB = %d", cfg.Redis.DB)
 	}
+	if cfg.Vector.Kind != "qdrant" {
+		t.Fatalf("Vector kind = %q", cfg.Vector.Kind)
+	}
+	if cfg.Vector.Endpoint != "http://qdrant.internal:6333" {
+		t.Fatalf("Vector endpoint = %q", cfg.Vector.Endpoint)
+	}
+	if cfg.Vector.Collection != "kg_vectors_test" {
+		t.Fatalf("Vector collection = %q", cfg.Vector.Collection)
+	}
+	if cfg.Graph.Kind != "neo4j" {
+		t.Fatalf("Graph kind = %q", cfg.Graph.Kind)
+	}
+	if cfg.Graph.Endpoint != "bolt://neo4j.internal:7687" {
+		t.Fatalf("Graph endpoint = %q", cfg.Graph.Endpoint)
+	}
+	if cfg.FTS.Kind != "postgres" {
+		t.Fatalf("FTS kind = %q", cfg.FTS.Kind)
+	}
 }
 
 func TestValidateRejectsEmptyHost(t *testing.T) {
@@ -56,6 +80,29 @@ func TestValidateRejectsEmptyHost(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want non-nil")
+	}
+}
+
+func TestValidateRequiresBackendEndpoints(t *testing.T) {
+	cfg := Config{
+		HTTP: HTTPConfig{Host: "0.0.0.0", Port: 8082},
+		Postgres: PostgresConfig{
+			Host:     "127.0.0.1",
+			Port:     5432,
+			User:     "postgres",
+			Database: "kg_service",
+		},
+		Redis:  RedisConfig{Host: "127.0.0.1", Port: 6379},
+		Vector: AdapterConfig{Kind: "qdrant"},
+		Graph:  AdapterConfig{Kind: "neo4j"},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want non-nil")
+	}
+	if got := err.Error(); got == "" {
+		t.Fatal("Validate() returned empty error")
 	}
 }
 

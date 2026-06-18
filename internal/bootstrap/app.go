@@ -170,11 +170,11 @@ func (a *App) initAccess() error {
 	if err != nil {
 		return err
 	}
-	a.vectorAdapter, err = buildVectorAdapter(a.config.Vector.Kind, a.pgDB)
+	a.vectorAdapter, err = buildVectorAdapter(a.config, a.pgDB)
 	if err != nil {
 		return err
 	}
-	a.graphAdapter, err = buildGraphAdapter(a.config.Graph.Kind)
+	a.graphAdapter, err = buildGraphAdapter(a.config)
 	if err != nil {
 		return err
 	}

@@ -62,6 +62,7 @@ func AssertVectorAdapterConformance(t *testing.T, adapter vectorstore.VectorAdap
 		OwnerTenantID: "t",
 		OwnerAppID:    "a",
 		ACLVisibleTo:  []string{"t:a"},
+		SyncVersion:   1,
 		Embedding:     []float64{1, 0},
 	}))
 	must(adapter.Upsert(context.Background(), vectorstore.VectorDocument{
@@ -82,6 +83,20 @@ func AssertVectorAdapterConformance(t *testing.T, adapter vectorstore.VectorAdap
 	}
 	if len(results) != 1 || results[0].Document.NodeID != "a" {
 		t.Fatalf("ANN results = %#v, want node a", results)
+	}
+	snapshot, err := adapter.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if len(snapshot) == 0 {
+		t.Fatal("Snapshot() returned no documents")
+	}
+	version, err := adapter.ReadSyncVersion(context.Background(), "a")
+	if err != nil {
+		t.Fatalf("ReadSyncVersion() error = %v", err)
+	}
+	if version == 0 {
+		t.Fatal("ReadSyncVersion() returned zero version")
 	}
 	must(adapter.Delete(context.Background(), "a"))
 	results, err = adapter.ANN(context.Background(), []float64{1, 0}, vectorstore.VectorFilter{DomainIDs: []string{"d"}}, vectorstore.ANNOptions{TopK: 10})
@@ -189,6 +204,7 @@ func AssertGraphAdapterConformance(t *testing.T, adapter graphstore.GraphAdapter
 		OwnerTenantID: "t",
 		OwnerAppID:    "a",
 		ACLVisibleTo:  []string{"t:a"},
+		SyncVersion:   1,
 		Properties: map[string]any{
 			"title": "alpha",
 		},
@@ -228,6 +244,13 @@ func AssertGraphAdapterConformance(t *testing.T, adapter graphstore.GraphAdapter
 	}
 	if got := results[0]["id"]; got != "a" {
 		t.Fatalf("ExecuteQuery() id = %#v, want a", got)
+	}
+	version, err := adapter.ReadSyncVersion(context.Background(), "a")
+	if err != nil {
+		t.Fatalf("ReadSyncVersion() error = %v", err)
+	}
+	if version == 0 {
+		t.Fatal("ReadSyncVersion() returned zero version")
 	}
 	must(adapter.DeleteNode(context.Background(), "b"))
 	results, err = adapter.ExecuteQuery(context.Background(), graphstore.GraphQuery{

@@ -4,7 +4,7 @@ Bootstrap workspace for the multi-tenant, domain-agnostic KG Service described i
 
 ## Current Scope
 
-- Go service bootstrap with stdlib HTTP server in [cmd/kg-service/main.go](/Users/anhdt/vnpay/knowledge/kg-service/cmd/kg-service/main.go)
+- Go service bootstrap with [`main.go`](/Users/anhdt/vnpay/knowledge/kg-service/main.go) delegating to a repository-owned command package in [cmd](/Users/anhdt/vnpay/knowledge/kg-service/cmd)
 - Initial PostgreSQL-oriented schema migrations in [migrations](/Users/anhdt/vnpay/knowledge/kg-service/migrations)
 - In-memory access and ontology bootstrap layers used to implement the first protected API slices
 - Shared HTTP envelopes and status-code helpers aligned with the OpenSpec API conventions
@@ -15,6 +15,7 @@ Bootstrap workspace for the multi-tenant, domain-agnostic KG Service described i
 - Application developers: [docs/guides/integration.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/guides/integration.md)
 - MCP and agent consumers: [docs/guides/mcp.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/guides/mcp.md)
 - Common integration failures: [docs/guides/troubleshooting.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/guides/troubleshooting.md)
+- Deployment and verification: [docs/deployment/README.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/deployment/README.md)
 - Current API surface: [docs/api/README.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/api/README.md)
 - Service operators: [docs/operations](/Users/anhdt/vnpay/knowledge/kg-service/docs/operations)
 
@@ -76,8 +77,8 @@ Bootstrap workspace for the multi-tenant, domain-agnostic KG Service described i
 ## Local Run
 
 ```bash
-go test ./...
-go run ./cmd/kg-service
+make test
+make run
 ```
 
 Default HTTP address: `0.0.0.0:8082`
@@ -99,5 +100,6 @@ The repo currently uses in-memory stores and an in-process TTL cache abstraction
 
 - TDD: [docs/KG_Service_TDD_v1.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/KG_Service_TDD_v1.md)
 - User guides index: [docs/guides/README.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/guides/README.md)
+- Deployment guides: [docs/deployment/README.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/deployment/README.md)
 - API reference: [docs/api/README.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/api/README.md)
 - Operations runbooks: [docs/operations](/Users/anhdt/vnpay/knowledge/kg-service/docs/operations)
