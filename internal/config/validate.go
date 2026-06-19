@@ -61,6 +61,9 @@ func (c Config) Validate() error {
 		if c.Graph.Endpoint == "" {
 			errs = append(errs, fmt.Errorf("graph adapter %s requires KG_GRAPH_ENDPOINT", c.Graph.Kind))
 		}
+		if c.Graph.Kind == "nebula" && c.Graph.Database == "" {
+			errs = append(errs, fmt.Errorf("graph adapter %s requires KG_GRAPH_DATABASE", c.Graph.Kind))
+		}
 	}
 	switch c.FTS.Kind {
 	case "", "memory", "postgres":

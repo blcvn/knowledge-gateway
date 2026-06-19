@@ -57,6 +57,8 @@ spec:
               value: __KG_GRAPH_ADAPTER__
             - name: KG_GRAPH_ENDPOINT
               value: __KG_GRAPH_ENDPOINT__
+            - name: KG_GRAPH_DATABASE
+              value: __KG_GRAPH_DATABASE__
             - name: FTS_ADAPTER
               value: __KG_FTS_ADAPTER__
           readinessProbe:

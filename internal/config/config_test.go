@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -24,6 +25,7 @@ func TestLoadUsesEnvironment(t *testing.T) {
 	t.Setenv("KG_VECTOR_COLLECTION", "kg_vectors_test")
 	t.Setenv("GRAPH_ADAPTER", "neo4j")
 	t.Setenv("KG_GRAPH_ENDPOINT", "bolt://neo4j.internal:7687")
+	t.Setenv("KG_GRAPH_DATABASE", "neo4j")
 	t.Setenv("FTS_ADAPTER", "postgres")
 
 	cfg, err := Load()
@@ -60,6 +62,9 @@ func TestLoadUsesEnvironment(t *testing.T) {
 	}
 	if cfg.Graph.Endpoint != "bolt://neo4j.internal:7687" {
 		t.Fatalf("Graph endpoint = %q", cfg.Graph.Endpoint)
+	}
+	if cfg.Graph.Database != "neo4j" {
+		t.Fatalf("Graph database = %q", cfg.Graph.Database)
 	}
 	if cfg.FTS.Kind != "postgres" {
 		t.Fatalf("FTS kind = %q", cfg.FTS.Kind)
@@ -106,6 +111,31 @@ func TestValidateRequiresBackendEndpoints(t *testing.T) {
 	}
 }
 
+func TestValidateRequiresNebulaGraphDatabase(t *testing.T) {
+	cfg := Config{
+		HTTP: HTTPConfig{Host: "0.0.0.0", Port: 8082},
+		Postgres: PostgresConfig{
+			Host:     "127.0.0.1",
+			Port:     5432,
+			User:     "postgres",
+			Database: "kg_service",
+		},
+		Redis: RedisConfig{Host: "127.0.0.1", Port: 6379},
+		Graph: AdapterConfig{
+			Kind:     "nebula",
+			Endpoint: "nebula://nebula:9669",
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "KG_GRAPH_DATABASE") {
+		t.Fatalf("Validate() error = %q, want KG_GRAPH_DATABASE", err)
+	}
+}
+
 func TestStringEnvFallsBackOnEmpty(t *testing.T) {
 	t.Setenv("KG_EMPTY_VALUE", "   ")
 	if got := stringEnv("KG_EMPTY_VALUE", "fallback"); got != "fallback" {
@@ -117,10 +147,63 @@ func TestEnvHelpersUseFallbackWhenUnset(t *testing.T) {
 	os.Unsetenv("KG_UNKNOWN_INT")
 	os.Unsetenv("KG_UNKNOWN_DURATION")
 
-	if got := intEnv("KG_UNKNOWN_INT", 7); got != 7 {
-		t.Fatalf("intEnv() = %d", got)
+	gotInt, err := intEnv("KG_UNKNOWN_INT", 7)
+	if err != nil {
+		t.Fatalf("intEnv() error = %v", err)
 	}
-	if got := durationEnv("KG_UNKNOWN_DURATION", time.Minute); got != time.Minute {
-		t.Fatalf("durationEnv() = %v", got)
+	if gotInt != 7 {
+		t.Fatalf("intEnv() = %d", gotInt)
+	}
+	gotDuration, err := durationEnv("KG_UNKNOWN_DURATION", time.Minute)
+	if err != nil {
+		t.Fatalf("durationEnv() error = %v", err)
+	}
+	if gotDuration != time.Minute {
+		t.Fatalf("durationEnv() = %v", gotDuration)
+	}
+}
+
+func TestEnvHelpersUseFallbackWhenBlank(t *testing.T) {
+	t.Setenv("KG_BLANK_INT", "   ")
+	t.Setenv("KG_BLANK_DURATION", " ")
+
+	gotInt, err := intEnv("KG_BLANK_INT", 7)
+	if err != nil {
+		t.Fatalf("intEnv() error = %v", err)
+	}
+	if gotInt != 7 {
+		t.Fatalf("intEnv() = %d, want 7", gotInt)
+	}
+
+	gotDuration, err := durationEnv("KG_BLANK_DURATION", time.Minute)
+	if err != nil {
+		t.Fatalf("durationEnv() error = %v", err)
+	}
+	if gotDuration != time.Minute {
+		t.Fatalf("durationEnv() = %v, want %v", gotDuration, time.Minute)
+	}
+}
+
+func TestLoadRejectsInvalidIntegerEnv(t *testing.T) {
+	t.Setenv("KG_HTTP_PORT", "eightythree")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "KG_HTTP_PORT must be an integer") {
+		t.Fatalf("Load() error = %q, want KG_HTTP_PORT parse error", err)
+	}
+}
+
+func TestLoadRejectsInvalidDurationEnv(t *testing.T) {
+	t.Setenv("KG_POSTGRES_CONN_MAX_LIFETIME", "tomorrow")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "KG_POSTGRES_CONN_MAX_LIFETIME must be a duration") {
+		t.Fatalf("Load() error = %q, want KG_POSTGRES_CONN_MAX_LIFETIME parse error", err)
 	}
 }

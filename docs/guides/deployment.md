@@ -13,6 +13,7 @@ This guide is for application teams who want to run `kg-service` in a specific e
 - `KG_BASE_URL` for the deployed service, such as `http://127.0.0.1:8082`
 - `KG_API_KEY` for a valid bootstrap or tenant app key
 - `KG_RUNTIME_PROFILE` for profile-aware Compose or operator validation
+- The full operator env contract is documented in [docs/deployment/environment.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/deployment/environment.md)
 
 ## Docker Compose
 
@@ -47,6 +48,8 @@ Useful variables:
 - `KG_VECTOR_ENDPOINT`
 - `KG_VECTOR_COLLECTION`
 
+See the environment inventory for defaults and when each variable is conditionally required.
+
 ## VM
 
 Use the VM path when you run the binary under a system service.
@@ -70,4 +73,3 @@ After the service is reachable:
 3. Save the returned API key.
 4. Call `GET /v1/access/resolve` with that key.
 5. Create access grants when a second app must see the same domain.
-

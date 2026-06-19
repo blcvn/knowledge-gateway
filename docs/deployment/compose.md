@@ -8,7 +8,7 @@ Use Docker Compose when you want the fastest self-contained deployment path for 
 - Redis for the current bootstrap runtime
 - `kg-service` built from the repository Dockerfile
 - a one-shot migration container that applies the SQL schema before the app starts
-- a selected runtime profile via `KG_RUNTIME_PROFILE`, defaulting to `pgvector-memgraph`
+- a selected runtime profile via `KG_RUNTIME_PROFILE`
 
 There are now two dedicated Compose entrypoints:
 
@@ -19,16 +19,18 @@ There are now two dedicated Compose entrypoints:
 
 - Docker with Compose v2
 - Access to the repository files on the machine that runs Compose
+- `KG_RUNTIME_PROFILE` exported before running `make deploy-compose`
 
 ## Start The Stack
 
 ```bash
+KG_RUNTIME_PROFILE=pgvector-memgraph \
 make deploy-compose
 ```
 
-The script runs the Compose file under `deploy/compose/` and waits for the application stack to come up.
+The script runs the Compose file under `deploy/compose/` with `docker compose up -d --build`.
 
-To switch runtime profiles, set `KG_RUNTIME_PROFILE` before running the script. Supported profiles are documented in `docs/deployment/README.md`.
+To switch runtime profiles, set `KG_RUNTIME_PROFILE` before running the script. Supported profiles and related variables are documented in [Environment Variables](./environment.md).
 
 For the integration smoke stack, run `make deploy-compose-integration`.
 
@@ -48,3 +50,4 @@ To validate a deployed profile end to end, use `scripts/validate-runtime-profile
 
 - The Compose path now selects a named runtime profile instead of silently booting memory adapters.
 - The migration container applies the repository SQL schema before the service starts.
+- The integration smoke stack under `make deploy-compose-integration` uses its own fixed profile and does not require you to export `KG_RUNTIME_PROFILE`.

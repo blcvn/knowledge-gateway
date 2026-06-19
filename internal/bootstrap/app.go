@@ -165,7 +165,9 @@ func (a *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	payload := map[string]any{
 		"service": "kg-service",
 		"postgres": map[string]any{
-			"dsn": a.pg.DSN,
+			"max_open_conns":    a.pg.MaxOpenConns,
+			"max_idle_conns":    a.pg.MaxIdleConns,
+			"conn_max_lifetime": a.pg.ConnMaxLifetime,
 		},
 		"redis": map[string]any{
 			"address": a.redis.Address,

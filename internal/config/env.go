@@ -23,32 +23,42 @@ func stringEnv(key, fallback string) string {
 	return value
 }
 
-func intEnv(key string, fallback int) int {
+func intEnv(key string, fallback int) (int, error) {
 	value, ok := os.LookupEnv(key)
 	if !ok {
-		return fallback
+		return fallback, nil
 	}
 
-	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
-		panic(fmt.Sprintf("invalid integer for %s: %v", key, err))
+		return fallback, fmt.Errorf("%s must be an integer: %w", key, err)
 	}
 
-	return parsed
+	return parsed, nil
 }
 
-func durationEnv(key string, fallback time.Duration) time.Duration {
+func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	value, ok := os.LookupEnv(key)
 	if !ok {
-		return fallback
+		return fallback, nil
 	}
 
-	parsed, err := time.ParseDuration(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := time.ParseDuration(value)
 	if err != nil {
-		panic(fmt.Sprintf("invalid duration for %s: %v", key, err))
+		return fallback, fmt.Errorf("%s must be a duration: %w", key, err)
 	}
 
-	return parsed
+	return parsed, nil
 }
 
 func boolEnv(key string, fallback bool) bool {

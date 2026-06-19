@@ -15,6 +15,7 @@ Use the VM path when you want to run `kg-service` on a standalone host under you
 - access to the target VM
 - reachable Postgres and Redis endpoints
 - the SQL schema applied before the service starts
+- `KG_RUNTIME_PROFILE` exported before running `make deploy-vm`
 
 ## Build And Run
 
@@ -24,7 +25,7 @@ make deploy-vm
 
 The script builds the binary when needed and starts it with the current environment.
 
-Set `KG_RUNTIME_PROFILE` before starting the service to choose the graph and vector adapter pair.
+Set `KG_RUNTIME_PROFILE` before starting the service to choose the graph and vector adapter pair. Use [Environment Variables](./environment.md) for the full list of shared and profile-specific variables.
 
 ## Apply Schema
 
