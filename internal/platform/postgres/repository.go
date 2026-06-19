@@ -199,6 +199,19 @@ func (r *Repository) ListOutboxEvents() []write.OutboxEvent {
 	return result
 }
 
+func (r *Repository) GetOutboxEventByID(id string) (write.OutboxEvent, bool) {
+	row := r.queryRow(context.Background(), `
+		SELECT id, aggregate_type, aggregate_id, event_type, payload, status, retry_count, created_at, processed_at
+		FROM kg_outbox_events
+		WHERE id = $1
+	`, id)
+	event, err := scanOutboxEvent(row)
+	if err != nil {
+		return write.OutboxEvent{}, false
+	}
+	return event, true
+}
+
 func (r *Repository) insertNode(ctx context.Context, node write.NodeRecord) error {
 	_, err := r.exec(ctx, `
 		INSERT INTO kg_nodes (
@@ -249,8 +262,8 @@ func (r *Repository) UpsertProjectionVersion(ctx context.Context, record write.P
 			vector_backend, vector_version, vector_synced_at
 		) VALUES (
 			$1, $2, $3, $4, $5,
-			$6, $7, NOW(),
-			$8, $9, NOW()
+			$6, $7, $8,
+			$9, $10, $11
 		)
 		ON CONFLICT (entity_id, entity_kind) DO UPDATE SET
 			source_version = EXCLUDED.source_version,
@@ -262,19 +275,20 @@ func (r *Repository) UpsertProjectionVersion(ctx context.Context, record write.P
 			vector_backend = EXCLUDED.vector_backend,
 			vector_version = EXCLUDED.vector_version,
 			vector_synced_at = EXCLUDED.vector_synced_at
-	`, record.EntityID, record.EntityKind, record.SourceVersion, record.SourceEventID, record.SourceUpdatedAt, record.GraphBackend, nullInt64(record.GraphVersion), record.VectorBackend, nullInt64(record.VectorVersion))
+	`, record.EntityID, record.EntityKind, record.SourceVersion, record.SourceEventID, record.SourceUpdatedAt, record.GraphBackend, nullInt64(record.GraphVersion), nullTime(record.LastGraphSyncedAt), record.VectorBackend, nullInt64(record.VectorVersion), nullTime(record.LastVectorSyncedAt))
 	return err
 }
 
 func (r *Repository) GetProjectionVersion(entityID, entityKind string) (write.ProjectionVersionRecord, bool) {
 	row := r.queryRow(context.Background(), `
 		SELECT entity_id, entity_kind, source_version, source_event_id, source_updated_at,
-		       COALESCE(graph_backend, ''), COALESCE(graph_version, 0),
-		       COALESCE(vector_backend, ''), COALESCE(vector_version, 0)
+		       COALESCE(graph_backend, ''), COALESCE(graph_version, 0), graph_synced_at,
+		       COALESCE(vector_backend, ''), COALESCE(vector_version, 0), vector_synced_at
 		FROM kg_projection_versions
 		WHERE entity_id = $1 AND entity_kind = $2
 	`, entityID, entityKind)
 	var record write.ProjectionVersionRecord
+	var graphSyncedAt, vectorSyncedAt sql.NullTime
 	if err := row.Scan(
 		&record.EntityID,
 		&record.EntityKind,
@@ -283,10 +297,18 @@ func (r *Repository) GetProjectionVersion(entityID, entityKind string) (write.Pr
 		&record.SourceUpdatedAt,
 		&record.GraphBackend,
 		&record.GraphVersion,
+		&graphSyncedAt,
 		&record.VectorBackend,
 		&record.VectorVersion,
+		&vectorSyncedAt,
 	); err != nil {
 		return write.ProjectionVersionRecord{}, false
+	}
+	if graphSyncedAt.Valid {
+		record.LastGraphSyncedAt = graphSyncedAt.Time
+	}
+	if vectorSyncedAt.Valid {
+		record.LastVectorSyncedAt = vectorSyncedAt.Time
 	}
 	return record, true
 }
@@ -294,8 +316,8 @@ func (r *Repository) GetProjectionVersion(entityID, entityKind string) (write.Pr
 func (r *Repository) ListProjectionVersions() []write.ProjectionVersionRecord {
 	rows, err := r.query(context.Background(), `
 		SELECT entity_id, entity_kind, source_version, source_event_id, source_updated_at,
-		       COALESCE(graph_backend, ''), COALESCE(graph_version, 0),
-		       COALESCE(vector_backend, ''), COALESCE(vector_version, 0)
+		       COALESCE(graph_backend, ''), COALESCE(graph_version, 0), graph_synced_at,
+		       COALESCE(vector_backend, ''), COALESCE(vector_version, 0), vector_synced_at
 		FROM kg_projection_versions
 		ORDER BY entity_kind, entity_id
 	`)
@@ -306,6 +328,7 @@ func (r *Repository) ListProjectionVersions() []write.ProjectionVersionRecord {
 	result := make([]write.ProjectionVersionRecord, 0)
 	for rows.Next() {
 		var record write.ProjectionVersionRecord
+		var graphSyncedAt, vectorSyncedAt sql.NullTime
 		if err := rows.Scan(
 			&record.EntityID,
 			&record.EntityKind,
@@ -314,10 +337,18 @@ func (r *Repository) ListProjectionVersions() []write.ProjectionVersionRecord {
 			&record.SourceUpdatedAt,
 			&record.GraphBackend,
 			&record.GraphVersion,
+			&graphSyncedAt,
 			&record.VectorBackend,
 			&record.VectorVersion,
+			&vectorSyncedAt,
 		); err != nil {
 			continue
+		}
+		if graphSyncedAt.Valid {
+			record.LastGraphSyncedAt = graphSyncedAt.Time
+		}
+		if vectorSyncedAt.Valid {
+			record.LastVectorSyncedAt = vectorSyncedAt.Time
 		}
 		result = append(result, record)
 	}
@@ -467,6 +498,13 @@ func nullString(value string) any {
 
 func nullInt64(value int64) any {
 	if value == 0 {
+		return nil
+	}
+	return value
+}
+
+func nullTime(value time.Time) any {
+	if value.IsZero() {
 		return nil
 	}
 	return value

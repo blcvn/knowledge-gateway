@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"kg-service/internal/config"
 	"kg-service/internal/ontology"
 	"kg-service/internal/platform/fts"
 	"kg-service/internal/platform/graphstore"
@@ -21,6 +22,7 @@ import (
 
 type Repository interface {
 	ListOutboxEvents() []write.OutboxEvent
+	GetOutboxEventByID(id string) (write.OutboxEvent, bool)
 	GetNodeByID(id string) (write.NodeRecord, bool)
 	GetRelationshipByID(id string) (write.RelationshipRecord, bool)
 	write.OutboxReader
@@ -36,44 +38,79 @@ type OntologyResolver interface {
 }
 
 type Runtime struct {
-	store         Repository
-	ontology      OntologyResolver
-	cache         *rediscache.Client
-	embedding     vector.EmbeddingRouter
-	profiles      ontology.SearchProfileResolver
-	graphAdapter  graphstore.GraphAdapter
-	vectorAdapter vectorstore.VectorAdapter
-	ftsAdapter    fts.FTSAdapter
-	graph         *GraphStore
-	vector        *VectorStore
-	mu            sync.Mutex
-	outbox        map[string]EventEnvelope
-	maxRetries    int
+	store              Repository
+	ontology           OntologyResolver
+	cache              *rediscache.Client
+	embedding          vector.EmbeddingRouter
+	profiles           ontology.SearchProfileResolver
+	graphAdapter       graphstore.GraphAdapter
+	vectorAdapter      vectorstore.VectorAdapter
+	ftsAdapter         fts.FTSAdapter
+	graph              *GraphStore
+	vector             *VectorStore
+	mu                 sync.Mutex
+	outbox             map[string]EventEnvelope
+	maxRetries         int
+	lagToleranceWindow time.Duration
 }
+
+type RuntimeOption func(*Runtime)
 
 type projectionVersionWriter interface {
 	UpsertProjectionVersion(context.Context, write.ProjectionVersionRecord) error
 }
 
-func NewRuntime(store Repository, ontologyResolver OntologyResolver, cache *rediscache.Client) *Runtime {
+func WithLagToleranceWindow(window time.Duration) RuntimeOption {
+	return func(r *Runtime) {
+		if window > 0 {
+			r.lagToleranceWindow = window
+		}
+	}
+}
+
+func WithMaxRetries(maxRetries int) RuntimeOption {
+	return func(r *Runtime) {
+		if maxRetries > 0 {
+			r.maxRetries = maxRetries
+		}
+	}
+}
+
+func NewRuntime(store Repository, ontologyResolver OntologyResolver, cache *rediscache.Client, opts ...RuntimeOption) *Runtime {
 	deterministic := vector.NewDeterministicProvider(8)
 	router := vector.DirectRouter{Provider: deterministic}
 	profileResolver, _ := ontologyResolver.(ontology.SearchProfileResolver)
 	runtime := &Runtime{
-		store:         store,
-		ontology:      ontologyResolver,
-		cache:         cache,
-		embedding:     router,
-		profiles:      profileResolver,
-		vectorAdapter: vectorstore.NewInMemoryVectorAdapter(),
-		ftsAdapter:    fts.NewInMemoryFTSAdapter(),
-		graph:         &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
-		vector:        &VectorStore{Documents: map[string]VectorDocument{}},
-		outbox:        map[string]EventEnvelope{},
-		maxRetries:    3,
+		store:              store,
+		ontology:           ontologyResolver,
+		cache:              cache,
+		embedding:          router,
+		profiles:           profileResolver,
+		vectorAdapter:      vectorstore.NewInMemoryVectorAdapter(),
+		ftsAdapter:         fts.NewInMemoryFTSAdapter(),
+		graph:              &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
+		vector:             &VectorStore{Documents: map[string]VectorDocument{}},
+		outbox:             map[string]EventEnvelope{},
+		maxRetries:         3,
+		lagToleranceWindow: 30 * time.Second,
 	}
 	runtime.graphAdapter = runtimeGraphAdapter{graph: runtime.graph}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(runtime)
+		}
+	}
 	return runtime
+}
+
+func NewRuntimeFromConfig(store Repository, ontologyResolver OntologyResolver, cache *rediscache.Client, cfg config.Config) *Runtime {
+	return NewRuntime(
+		store,
+		ontologyResolver,
+		cache,
+		WithLagToleranceWindow(time.Duration(cfg.SyncLagToleranceMs)*time.Millisecond),
+		WithMaxRetries(cfg.SyncLagStuckRetries),
+	)
 }
 
 func (r *Runtime) Graph() *GraphStore {
@@ -261,39 +298,108 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 	}
 
 	for id, source := range sourceNodes {
-		graphNode, ok := graphNodes[id]
 		ledger, ledgerOk := r.store.GetProjectionVersion(id, "kg_node")
-		if !ok {
-			report.GraphDriftCount++
-			report.VectorDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "missing_projection", Details: "node missing from graph/vector projections"})
-			continue
-		}
 		expectedVersion := int64(source.DomainVersion)
 		if ledgerOk && ledger.SourceVersion > 0 {
 			expectedVersion = ledger.SourceVersion
 		}
-		if expectedVersion != 0 && graphNode.SyncVersion != expectedVersion {
-			report.GraphDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "stale_projection_version", Details: "graph node sync version does not match source version"})
+		if graphNode, ok := graphNodes[id]; ok {
+			if graphNode.IsDeleted != source.IsDeleted || graphNode.StatusValue != source.StatusValue || graphNode.NodeType != source.NodeType || graphNode.DomainID != source.DomainID {
+				report.GraphDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_mismatch", Details: "graph projection does not match source node"})
+			}
+			if !reflect.DeepEqual(stripSyncVersionMetadata(graphNode.Properties), source.Properties) || !reflect.DeepEqual(graphNode.ACLVisibleTo, nodeACLVisibleTo(source)) {
+				report.GraphDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_payload_mismatch", Details: "graph node payload does not match source node"})
+			}
+			lagClass := classifyLag(
+				graphNode.SyncVersion,
+				expectedVersion,
+				ledger.SourceEventID,
+				ledger.LastGraphSyncedAt,
+				r.store.GetOutboxEventByID,
+				r.maxRetries,
+				r.lagToleranceWindow,
+			)
+			switch lagClass {
+			case SyncLagClassStuck:
+				report.GraphDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_lag_stuck", Details: "graph node sync version does not match source version"})
+			case SyncLagClassLagging:
+				report.GraphLaggingCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_lag_lagging", Details: "graph node sync version is behind source version"})
+			case SyncLagClassInFlight:
+				report.GraphInFlightCount++
+			}
+		} else {
+			lagClass := classifyLag(
+				0,
+				expectedVersion,
+				ledger.SourceEventID,
+				ledger.LastGraphSyncedAt,
+				r.store.GetOutboxEventByID,
+				r.maxRetries,
+				r.lagToleranceWindow,
+			)
+			switch lagClass {
+			case SyncLagClassStuck:
+				report.GraphDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_lag_stuck", Details: "graph node missing from graph projection"})
+			case SyncLagClassLagging:
+				report.GraphLaggingCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_lag_lagging", Details: "graph node missing from graph projection"})
+			case SyncLagClassInFlight:
+				report.GraphInFlightCount++
+			}
 		}
-		if graphNode.IsDeleted != source.IsDeleted || graphNode.StatusValue != source.StatusValue || graphNode.NodeType != source.NodeType || graphNode.DomainID != source.DomainID {
-			report.GraphDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_mismatch", Details: "graph projection does not match source node"})
-		}
-		if !reflect.DeepEqual(stripSyncVersionMetadata(graphNode.Properties), source.Properties) || !reflect.DeepEqual(graphNode.ACLVisibleTo, nodeACLVisibleTo(source)) {
-			report.GraphDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_payload_mismatch", Details: "graph node payload does not match source node"})
-		}
-		if doc, ok := vectorDocs[id]; !ok || doc.IsDeleted != source.IsDeleted || doc.StatusValue != source.StatusValue || doc.NodeType != source.NodeType || doc.DomainID != source.DomainID {
-			report.VectorDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_mismatch", Details: "vector projection does not match source node"})
-		} else if !reflect.DeepEqual(stripSyncVersionMetadata(doc.DomainProps), source.Properties) || !reflect.DeepEqual(doc.ACLVisibleTo, nodeACLVisibleTo(source)) {
-			report.VectorDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_payload_mismatch", Details: "vector document payload does not match source node"})
-		} else if expectedVersion != 0 && doc.SyncVersion != expectedVersion {
-			report.VectorDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "stale_projection_version", Details: "vector document sync version does not match source version"})
+		if doc, ok := vectorDocs[id]; ok {
+			if doc.IsDeleted != source.IsDeleted || doc.StatusValue != source.StatusValue || doc.NodeType != source.NodeType || doc.DomainID != source.DomainID {
+				report.VectorDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_mismatch", Details: "vector projection does not match source node"})
+			}
+			if !reflect.DeepEqual(stripSyncVersionMetadata(doc.DomainProps), source.Properties) || !reflect.DeepEqual(doc.ACLVisibleTo, nodeACLVisibleTo(source)) {
+				report.VectorDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_payload_mismatch", Details: "vector document payload does not match source node"})
+			}
+			lagClass := classifyLag(
+				doc.SyncVersion,
+				expectedVersion,
+				ledger.SourceEventID,
+				ledger.LastVectorSyncedAt,
+				r.store.GetOutboxEventByID,
+				r.maxRetries,
+				r.lagToleranceWindow,
+			)
+			switch lagClass {
+			case SyncLagClassStuck:
+				report.VectorDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_lag_stuck", Details: "vector document sync version does not match source version"})
+			case SyncLagClassLagging:
+				report.VectorLaggingCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_lag_lagging", Details: "vector document sync version is behind source version"})
+			case SyncLagClassInFlight:
+				report.VectorInFlightCount++
+			}
+		} else {
+			lagClass := classifyLag(
+				0,
+				expectedVersion,
+				ledger.SourceEventID,
+				ledger.LastVectorSyncedAt,
+				r.store.GetOutboxEventByID,
+				r.maxRetries,
+				r.lagToleranceWindow,
+			)
+			switch lagClass {
+			case SyncLagClassStuck:
+				report.VectorDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_lag_stuck", Details: "vector document missing from vector projection"})
+			case SyncLagClassLagging:
+				report.VectorLaggingCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "vector_lag_lagging", Details: "vector document missing from vector projection"})
+			case SyncLagClassInFlight:
+				report.VectorInFlightCount++
+			}
 		}
 	}
 	for id := range graphNodes {
@@ -311,26 +417,58 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 	for id, sourceRel := range sourceRelationships {
 		graphRel, ok := graphRelationships[id]
 		ledger, ledgerOk := r.store.GetProjectionVersion(id, "kg_relationship")
-		if !ok {
-			report.GraphDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "missing_relationship", Details: "relationship missing from graph projection"})
-			continue
-		}
 		expectedVersion := int64(sourceRel.DomainVersion)
 		if ledgerOk && ledger.SourceVersion > 0 {
 			expectedVersion = ledger.SourceVersion
 		}
-		if expectedVersion != 0 && graphRel.SyncVersion != expectedVersion {
-			report.GraphDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "stale_projection_version", Details: "graph relationship sync version does not match source version"})
-		}
-		if graphRel.RelType != sourceRel.RelType || graphRel.FromNodeID != sourceRel.FromNodeID || graphRel.ToNodeID != sourceRel.ToNodeID {
-			report.GraphDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "relationship_mismatch", Details: "graph relationship differs from source"})
-		}
-		if !reflect.DeepEqual(stripSyncVersionMetadata(graphRel.Properties), sourceRel.Properties) {
-			report.GraphDriftCount++
-			report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "relationship_payload_mismatch", Details: "graph relationship payload does not match source"})
+		if ok {
+			if graphRel.RelType != sourceRel.RelType || graphRel.FromNodeID != sourceRel.FromNodeID || graphRel.ToNodeID != sourceRel.ToNodeID {
+				report.GraphDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "relationship_mismatch", Details: "graph relationship differs from source"})
+			}
+			if !reflect.DeepEqual(stripSyncVersionMetadata(graphRel.Properties), sourceRel.Properties) {
+				report.GraphDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "relationship_payload_mismatch", Details: "graph relationship payload does not match source"})
+			}
+			lagClass := classifyLag(
+				graphRel.SyncVersion,
+				expectedVersion,
+				ledger.SourceEventID,
+				ledger.LastGraphSyncedAt,
+				r.store.GetOutboxEventByID,
+				r.maxRetries,
+				r.lagToleranceWindow,
+			)
+			switch lagClass {
+			case SyncLagClassStuck:
+				report.GraphDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_lag_stuck", Details: "graph relationship sync version does not match source version"})
+			case SyncLagClassLagging:
+				report.GraphLaggingCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_lag_lagging", Details: "graph relationship sync version is behind source version"})
+			case SyncLagClassInFlight:
+				report.GraphInFlightCount++
+			}
+		} else {
+			lagClass := classifyLag(
+				0,
+				expectedVersion,
+				ledger.SourceEventID,
+				ledger.LastGraphSyncedAt,
+				r.store.GetOutboxEventByID,
+				r.maxRetries,
+				r.lagToleranceWindow,
+			)
+			switch lagClass {
+			case SyncLagClassStuck:
+				report.GraphDriftCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_lag_stuck", Details: "graph relationship missing from graph projection"})
+			case SyncLagClassLagging:
+				report.GraphLaggingCount++
+				report.Issues = append(report.Issues, ReconciliationIssue{ID: id, Kind: "graph_lag_lagging", Details: "graph relationship missing from graph projection"})
+			case SyncLagClassInFlight:
+				report.GraphInFlightCount++
+			}
 		}
 	}
 	for id := range graphRelationships {
@@ -367,11 +505,43 @@ func (r *Runtime) Reconcile() ReconciliationReport {
 	}
 
 	if report.GraphDriftCount == 0 && report.VectorDriftCount == 0 && report.ProjectionVersionDriftCount == 0 {
-		report.Overall = "pass"
+		if report.GraphLaggingCount > 0 || report.VectorLaggingCount > 0 {
+			report.Overall = "warn"
+		} else {
+			report.Overall = "pass"
+		}
 	} else {
 		report.Overall = "fail"
 	}
 	return report
+}
+
+func (r *Runtime) EntitySyncStatus(entityID, entityKind string) EntitySyncStatus {
+	record, ok := r.store.GetProjectionVersion(entityID, entityKind)
+	if !ok {
+		return EntitySyncStatus{
+			EntityID:   entityID,
+			EntityKind: entityKind,
+		}
+	}
+	eventByID := func(id string) (write.OutboxEvent, bool) {
+		return r.store.GetOutboxEventByID(id)
+	}
+	status := EntitySyncStatus{
+		EntityID:           record.EntityID,
+		EntityKind:         record.EntityKind,
+		SourceVersion:      record.SourceVersion,
+		GraphVersion:       record.GraphVersion,
+		GraphLagClass:      classifyLag(record.GraphVersion, record.SourceVersion, record.SourceEventID, record.LastGraphSyncedAt, eventByID, r.maxRetries, r.lagToleranceWindow),
+		LastGraphSyncedAt:  record.LastGraphSyncedAt,
+		VectorVersion:      record.VectorVersion,
+		VectorLagClass:     classifyLag(record.VectorVersion, record.SourceVersion, record.SourceEventID, record.LastVectorSyncedAt, eventByID, r.maxRetries, r.lagToleranceWindow),
+		LastVectorSyncedAt: record.LastVectorSyncedAt,
+	}
+	if entityKind == "kg_relationship" && record.VectorBackend == "" && record.VectorVersion == 0 {
+		status.VectorLagClass = SyncLagClassSynced
+	}
+	return status
 }
 
 func (r *Runtime) handleEvent(event write.OutboxEvent) error {
@@ -382,10 +552,11 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 		if !ok {
 			return errors.New("node not found")
 		}
-		if err := r.projectNode(node); err != nil {
+		graphSynced, vectorSynced, err := r.projectNode(node)
+		r.updateProjectionVersion(event, node.DomainVersion, node.ID, node.CreatedAt, int64(node.DomainVersion), int64(node.DomainVersion), graphSynced, vectorSynced)
+		if err != nil {
 			return err
 		}
-		r.updateProjectionVersion(event, node.DomainVersion, node.ID, node.CreatedAt, int64(node.DomainVersion), int64(node.DomainVersion))
 		return r.applyStatusCascade(node.DomainID, node.ID)
 	case "NODE_DELETED":
 		nodeID, _ := event.Payload["node_id"].(string)
@@ -403,10 +574,11 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 		if r.ftsAdapter != nil {
 			_ = r.ftsAdapter.Delete(context.Background(), nodeID)
 		}
-		if err := r.projectNode(node); err != nil {
+		graphSynced, vectorSynced, err := r.projectNode(node)
+		r.updateProjectionVersion(event, node.DomainVersion, node.ID, node.UpdatedAt, int64(node.DomainVersion), int64(node.DomainVersion), graphSynced, vectorSynced)
+		if err != nil {
 			return err
 		}
-		r.updateProjectionVersion(event, node.DomainVersion, node.ID, node.UpdatedAt, int64(node.DomainVersion), int64(node.DomainVersion))
 		return nil
 	case "RELATIONSHIP_UPSERTED", "RELATIONSHIP_DELETED":
 		relID, _ := event.Payload["relationship_id"].(string)
@@ -424,11 +596,16 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 			SyncVersion: sourceVersion,
 			Properties:  cloneMap(rel.Properties),
 		}
+		var graphErr error
+		graphSynced := true
 		if r.graphAdapter != nil {
 			if event.EventType == "RELATIONSHIP_DELETED" {
-				_ = r.graphAdapter.DeleteRelationship(context.Background(), relID)
+				if err := r.graphAdapter.DeleteRelationship(context.Background(), relID); err != nil {
+					graphSynced = false
+					graphErr = err
+				}
 			} else {
-				_ = r.graphAdapter.UpsertRelationship(context.Background(), graphstore.GraphRelationship{
+				if err := r.graphAdapter.UpsertRelationship(context.Background(), graphstore.GraphRelationship{
 					ID:          relPayload.ID,
 					RelType:     relPayload.RelType,
 					FromNodeID:  relPayload.FromNodeID,
@@ -436,12 +613,18 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 					DomainID:    relPayload.DomainID,
 					SyncVersion: sourceVersion,
 					Properties:  cloneMap(relPayload.Properties),
-				})
+				}); err != nil {
+					graphSynced = false
+					graphErr = err
+				}
 			}
 		}
 		r.graph.Rels[rel.ID] = relPayload
 		r.graph.Rels[rel.ID].Properties["_kg_sync_version"] = sourceVersion
-		r.updateProjectionVersion(event, rel.DomainVersion, rel.ID, rel.CreatedAt, int64(rel.DomainVersion), 0)
+		r.updateProjectionVersion(event, rel.DomainVersion, rel.ID, rel.CreatedAt, int64(rel.DomainVersion), 0, graphSynced, false)
+		if graphErr != nil {
+			return graphErr
+		}
 		return r.applyStatusCascade(rel.DomainID, rel.FromNodeID)
 	case "ACCESS_GRANT_CHANGED":
 		return r.handleAccessGrantChanged(event.Payload)
@@ -450,7 +633,7 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 	}
 }
 
-func (r *Runtime) projectNode(node write.NodeRecord) error {
+func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 	acl := nodeACLVisibleTo(node)
 	r.graph.Nodes[node.ID] = GraphNode{
 		ID:            node.ID,
@@ -466,8 +649,10 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 		Properties:    cloneMap(node.Properties),
 	}
 	r.graph.Nodes[node.ID].Properties["_kg_sync_version"] = int64(node.DomainVersion)
+	graphSynced := true
+	var graphErr error
 	if r.graphAdapter != nil {
-		_ = r.graphAdapter.UpsertNode(context.Background(), graphstore.GraphNode{
+		if err := r.graphAdapter.UpsertNode(context.Background(), graphstore.GraphNode{
 			ID:            node.ID,
 			NodeType:      node.NodeType,
 			DomainID:      node.DomainID,
@@ -481,11 +666,14 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 			Properties:    cloneMap(node.Properties),
 			CreatedAt:     node.CreatedAt,
 			UpdatedAt:     node.UpdatedAt,
-		})
+		}); err != nil {
+			graphSynced = false
+			graphErr = err
+		}
 	}
 	cfg, err := r.ontology.GetStatusFieldConfig(node.DomainID)
 	if err != nil {
-		return err
+		cfg = nil
 	}
 	resolvedProfile := ontology.ResolvedSearchProfile{}
 	if r.profiles != nil {
@@ -500,7 +688,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 	}
 	embedding, err := embeddingProvider.Embed(context.Background(), text)
 	if err != nil {
-		return err
+		return graphSynced, false, err
 	}
 	doc := VectorDocument{
 		NodeID:        node.ID,
@@ -522,6 +710,8 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 			}
 		}
 	}
+	vectorSynced := true
+	var vectorErr error
 	if r.vectorAdapter != nil {
 		if err := r.vectorAdapter.Upsert(context.Background(), vectorstore.VectorDocument{
 			NodeID:         doc.NodeID,
@@ -537,17 +727,26 @@ func (r *Runtime) projectNode(node write.NodeRecord) error {
 			DomainProps:    cloneMap(doc.DomainProps),
 			Embedding:      append([]float64(nil), doc.Embedding...),
 		}); err != nil {
-			return err
+			vectorSynced = false
+			vectorErr = err
 		}
 	}
-	r.vector.Documents[node.ID] = doc
-	r.vector.Documents[node.ID].DomainProps["_kg_sync_version"] = int64(node.DomainVersion)
+	if vectorSynced {
+		r.vector.Documents[node.ID] = doc
+		r.vector.Documents[node.ID].DomainProps["_kg_sync_version"] = int64(node.DomainVersion)
+	}
 	if !node.IsDeleted && r.ftsAdapter != nil {
 		if err := r.ftsAdapter.Index(context.Background(), buildFTSDocument(node, acl, doc.AuthorityScore)); err != nil {
-			return err
+			return graphSynced, vectorSynced, err
 		}
 	}
-	return nil
+	if vectorErr != nil {
+		return graphSynced, vectorSynced, vectorErr
+	}
+	if graphErr != nil {
+		return graphSynced, vectorSynced, graphErr
+	}
+	return graphSynced, vectorSynced, nil
 }
 
 func (r *Runtime) applyStatusCascade(domainID, fromNodeID string) error {
@@ -618,24 +817,37 @@ func (r *Runtime) handleAccessGrantChanged(payload map[string]any) error {
 	return nil
 }
 
-func (r *Runtime) updateProjectionVersion(event write.OutboxEvent, sourceVersion int, entityID string, sourceUpdatedAt time.Time, graphVersion, vectorVersion int64) {
+func (r *Runtime) updateProjectionVersion(event write.OutboxEvent, sourceVersion int, entityID string, sourceUpdatedAt time.Time, graphVersion, vectorVersion int64, graphSynced, vectorSynced bool) {
 	writer, ok := any(r.store).(projectionVersionWriter)
 	if !ok || writer == nil || sourceVersion == 0 {
 		return
 	}
-	record := write.ProjectionVersionRecord{
-		EntityID:        entityID,
-		EntityKind:      "kg_node",
-		SourceVersion:   int64(sourceVersion),
-		SourceEventID:   event.ID,
-		SourceUpdatedAt: sourceUpdatedAt,
-		GraphBackend:    "graph",
-		GraphVersion:    graphVersion,
-		VectorBackend:   "vector",
-		VectorVersion:   vectorVersion,
+	record, hasExisting := r.store.GetProjectionVersion(entityID, event.AggregateType)
+	if !hasExisting {
+		record = write.ProjectionVersionRecord{}
 	}
+	record.EntityID = entityID
+	record.EntityKind = "kg_node"
 	if event.AggregateType == "kg_relationship" {
 		record.EntityKind = "kg_relationship"
+	}
+	record.SourceVersion = int64(sourceVersion)
+	record.SourceEventID = event.ID
+	record.SourceUpdatedAt = sourceUpdatedAt
+	record.GraphBackend = "graph"
+	if graphSynced {
+		record.GraphVersion = graphVersion
+	}
+	record.VectorBackend = "vector"
+	now := time.Now().UTC()
+	if graphSynced {
+		record.LastGraphSyncedAt = now
+	}
+	if vectorSynced {
+		record.VectorVersion = vectorVersion
+	}
+	if vectorSynced {
+		record.LastVectorSyncedAt = now
 	}
 	_ = writer.UpsertProjectionVersion(context.Background(), record)
 }
@@ -662,6 +874,30 @@ func cloneMap(in map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+func classifyLag(replicaVersion, sourceVersion int64, sourceEventID string, lastSyncedAt time.Time, getEvent func(id string) (write.OutboxEvent, bool), maxRetries int, lagToleranceWindow time.Duration) SyncLagClass {
+	if replicaVersion == sourceVersion {
+		return SyncLagClassSynced
+	}
+	if getEvent != nil {
+		if event, ok := getEvent(sourceEventID); ok {
+			if event.RetryCount >= maxRetries {
+				return SyncLagClassStuck
+			}
+			if time.Since(event.CreatedAt) > lagToleranceWindow {
+				return SyncLagClassLagging
+			}
+			return SyncLagClassInFlight
+		}
+	}
+	if lastSyncedAt.IsZero() {
+		return SyncLagClassStuck
+	}
+	if time.Since(lastSyncedAt) <= lagToleranceWindow {
+		return SyncLagClassInFlight
+	}
+	return SyncLagClassStuck
 }
 
 func buildFTSDocument(node write.NodeRecord, acl []string, authorityScore *int) fts.FTSDocument {

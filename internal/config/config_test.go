@@ -27,6 +27,9 @@ func TestLoadUsesEnvironment(t *testing.T) {
 	t.Setenv("KG_GRAPH_ENDPOINT", "bolt://neo4j.internal:7687")
 	t.Setenv("KG_GRAPH_DATABASE", "neo4j")
 	t.Setenv("FTS_ADAPTER", "postgres")
+	t.Setenv("SYNC_LAG_TOLERANCE_MS", "45000")
+	t.Setenv("SYNC_LAG_STUCK_RETRIES", "5")
+	t.Setenv("SYNC_ETA_DEFAULT_MS", "7000")
 
 	cfg, err := Load()
 	if err != nil {
@@ -68,6 +71,15 @@ func TestLoadUsesEnvironment(t *testing.T) {
 	}
 	if cfg.FTS.Kind != "postgres" {
 		t.Fatalf("FTS kind = %q", cfg.FTS.Kind)
+	}
+	if cfg.SyncLagToleranceMs != 45000 {
+		t.Fatalf("SyncLagToleranceMs = %d", cfg.SyncLagToleranceMs)
+	}
+	if cfg.SyncEtaDefaultMs != 7000 {
+		t.Fatalf("SyncEtaDefaultMs = %d", cfg.SyncEtaDefaultMs)
+	}
+	if cfg.SyncLagStuckRetries != 5 {
+		t.Fatalf("SyncLagStuckRetries = %d", cfg.SyncLagStuckRetries)
 	}
 }
 

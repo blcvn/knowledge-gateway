@@ -109,10 +109,35 @@ type ReconciliationIssue struct {
 	Details string `json:"details"`
 }
 
+type SyncLagClass string
+
+const (
+	SyncLagClassSynced   SyncLagClass = "SYNCED"
+	SyncLagClassInFlight SyncLagClass = "IN_FLIGHT"
+	SyncLagClassLagging  SyncLagClass = "LAGGING"
+	SyncLagClassStuck    SyncLagClass = "STUCK"
+)
+
+type EntitySyncStatus struct {
+	EntityID           string       `json:"entity_id"`
+	EntityKind         string       `json:"entity_kind"`
+	SourceVersion      int64        `json:"source_version"`
+	GraphVersion       int64        `json:"graph_version"`
+	GraphLagClass      SyncLagClass `json:"graph_lag_class"`
+	LastGraphSyncedAt  time.Time    `json:"last_graph_synced_at,omitempty"`
+	VectorVersion      int64        `json:"vector_version"`
+	VectorLagClass     SyncLagClass `json:"vector_lag_class"`
+	LastVectorSyncedAt time.Time    `json:"last_vector_synced_at,omitempty"`
+}
+
 type ReconciliationReport struct {
-	GraphDriftCount  int                   `json:"graph_drift_count"`
-	VectorDriftCount int                   `json:"vector_drift_count"`
-	ProjectionVersionDriftCount int        `json:"projection_version_drift_count"`
-	Issues           []ReconciliationIssue `json:"issues"`
-	Overall          string                `json:"overall"`
+	GraphDriftCount             int                   `json:"graph_drift_count"`
+	VectorDriftCount            int                   `json:"vector_drift_count"`
+	ProjectionVersionDriftCount int                   `json:"projection_version_drift_count"`
+	GraphLaggingCount           int                   `json:"graph_lagging_count"`
+	VectorLaggingCount          int                   `json:"vector_lagging_count"`
+	GraphInFlightCount          int                   `json:"graph_in_flight_count"`
+	VectorInFlightCount         int                   `json:"vector_in_flight_count"`
+	Issues                      []ReconciliationIssue `json:"issues"`
+	Overall                     string                `json:"overall"`
 }

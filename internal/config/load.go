@@ -40,6 +40,18 @@ func Load() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	syncLagToleranceMs, err := intEnv("SYNC_LAG_TOLERANCE_MS", 30000)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	syncLagStuckRetries, err := intEnv("SYNC_LAG_STUCK_RETRIES", 3)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	syncEtaDefaultMs, err := intEnv("SYNC_ETA_DEFAULT_MS", 5000)
+	if err != nil {
+		errs = append(errs, err)
+	}
 
 	cfg := Config{
 		HTTP: HTTPConfig{
@@ -85,11 +97,14 @@ func Load() (Config, error) {
 			Endpoint: stringEnv("KG_GRAPH_ENDPOINT", ""),
 			Database: stringEnv("KG_GRAPH_DATABASE", ""),
 		},
-		FTS: AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
+		FTS:                 AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
 		Worker: WorkerConfig{
 			Enabled:        boolEnv("KG_WORKER_ENABLED", true),
 			PollIntervalMs: intEnv("KG_WORKER_POLL_INTERVAL_MS", 500),
 		},
+		SyncLagToleranceMs:  syncLagToleranceMs,
+		SyncLagStuckRetries: syncLagStuckRetries,
+		SyncEtaDefaultMs:    syncEtaDefaultMs,
 	}
 
 	errs = append(errs, cfg.Validate())

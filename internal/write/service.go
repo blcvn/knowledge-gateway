@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,27 +46,48 @@ type AuditLogger interface {
 }
 
 type Service struct {
-	store          Repository
-	ontology       OntologyResolver
-	accessResolver AccessResolver
-	sessionManager SessionManager
-	auditLogger    AuditLogger
-	ingestMu       sync.RWMutex
-	ingestJobs     map[string]IngestJobResponse
-	now            func() time.Time
+	store               Repository
+	ontology            OntologyResolver
+	accessResolver      AccessResolver
+	sessionManager      SessionManager
+	auditLogger         AuditLogger
+	syncEtaDefaultMs    int
+	syncLagToleranceMs  int
+	syncLagStuckRetries int
+	ingestMu            sync.RWMutex
+	ingestJobs          map[string]IngestJobResponse
+	now                 func() time.Time
 }
 
 func NewService(store Repository, ontology OntologyResolver, accessResolver AccessResolver, sessionManager SessionManager, auditLogger AuditLogger) *Service {
 	return &Service{
-		store:          store,
-		ontology:       ontology,
-		accessResolver: accessResolver,
-		sessionManager: sessionManager,
-		auditLogger:    auditLogger,
-		ingestJobs:     map[string]IngestJobResponse{},
+		store:               store,
+		ontology:            ontology,
+		accessResolver:      accessResolver,
+		sessionManager:      sessionManager,
+		auditLogger:         auditLogger,
+		syncEtaDefaultMs:    5000,
+		syncLagToleranceMs:  30000,
+		syncLagStuckRetries: 3,
+		ingestJobs:          map[string]IngestJobResponse{},
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
+	}
+}
+
+func (s *Service) SetSyncETAConfig(defaultMs int) {
+	if defaultMs > 0 {
+		s.syncEtaDefaultMs = defaultMs
+	}
+}
+
+func (s *Service) SetSyncLagConfig(toleranceMs, stuckRetries int) {
+	if toleranceMs > 0 {
+		s.syncLagToleranceMs = toleranceMs
+	}
+	if stuckRetries > 0 {
+		s.syncLagStuckRetries = stuckRetries
 	}
 }
 
@@ -121,6 +144,33 @@ func (s *Service) GetIngestJob(actor access.Identity, jobID string) (IngestJobRe
 		return IngestJobResponse{}, ErrNotFound
 	}
 	return job, nil
+}
+
+func (s *Service) EntitySyncStatus(entityID, entityKind string) (map[string]any, error) {
+	record, ok := s.store.GetProjectionVersion(entityID, entityKind)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	events := s.store.ListOutboxEvents()
+	eventByID := make(map[string]OutboxEvent, len(events))
+	for _, event := range events {
+		eventByID[event.ID] = event
+	}
+	status := map[string]any{
+		"entity_id":             entityID,
+		"entity_kind":           entityKind,
+		"source_version":        record.SourceVersion,
+		"graph_version":         record.GraphVersion,
+		"graph_lag_class":       classifyReplicaLag(record.GraphVersion, record.SourceVersion, record.SourceEventID, record.LastGraphSyncedAt, eventByID, s.syncLagStuckRetries, time.Duration(s.syncLagToleranceMs)*time.Millisecond),
+		"last_graph_synced_at":  record.LastGraphSyncedAt,
+		"vector_version":        record.VectorVersion,
+		"vector_lag_class":      classifyReplicaLag(record.VectorVersion, record.SourceVersion, record.SourceEventID, record.LastVectorSyncedAt, eventByID, s.syncLagStuckRetries, time.Duration(s.syncLagToleranceMs)*time.Millisecond),
+		"last_vector_synced_at": record.LastVectorSyncedAt,
+	}
+	if entityKind == "kg_relationship" && record.VectorBackend == "" && record.VectorVersion == 0 {
+		status["vector_lag_class"] = "SYNCED"
+	}
+	return status, nil
 }
 
 func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (NodeCreateResponse, error) {
@@ -238,7 +288,7 @@ func (s *Service) CreateNodeWithContext(ctx context.Context, actor access.Identi
 		NodeID:        nodeID,
 		DomainVersion: version.Version,
 		Status:        "processing",
-		SyncETAMs:     800,
+		SyncETAMs:     estimateSyncETA(s.store, req.DomainID, s.syncEtaDefaultMs),
 	}, nil
 }
 
@@ -534,6 +584,77 @@ func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor acces
 		RelationshipID: relID,
 		Status:         "processing",
 	}, nil
+}
+
+type syncETAReader interface {
+	ListProjectionVersions() []ProjectionVersionRecord
+	GetNodeByID(id string) (NodeRecord, bool)
+}
+
+func estimateSyncETA(store syncETAReader, domainID string, defaultMs int) int {
+	if store == nil || defaultMs <= 0 {
+		return defaultMs
+	}
+	records := make([]ProjectionVersionRecord, 0, 30)
+	for _, record := range store.ListProjectionVersions() {
+		if record.EntityKind != "kg_node" || record.SourceVersion == 0 || record.LastGraphSyncedAt.IsZero() || record.SourceUpdatedAt.IsZero() {
+			continue
+		}
+		node, ok := store.GetNodeByID(record.EntityID)
+		if !ok || node.DomainID != domainID {
+			continue
+		}
+		records = append(records, record)
+	}
+	if len(records) < 5 {
+		return defaultMs
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].SourceUpdatedAt.After(records[j].SourceUpdatedAt)
+	})
+	if len(records) > 30 {
+		records = records[:30]
+	}
+	lags := make([]float64, 0, len(records))
+	for _, record := range records {
+		lag := record.LastGraphSyncedAt.Sub(record.SourceUpdatedAt).Milliseconds()
+		if lag > 0 {
+			lags = append(lags, float64(lag))
+		}
+	}
+	if len(lags) < 5 {
+		return defaultMs
+	}
+	sort.Float64s(lags)
+	mid := len(lags) / 2
+	median := lags[mid]
+	if len(lags)%2 == 0 {
+		median = (lags[mid-1] + lags[mid]) / 2
+	}
+	return int(math.Ceil(median * 1.5))
+}
+
+func classifyReplicaLag(replicaVersion, sourceVersion int64, sourceEventID string, lastSyncedAt time.Time, events map[string]OutboxEvent, maxRetries int, lagToleranceWindow time.Duration) string {
+	if replicaVersion == sourceVersion {
+		return "SYNCED"
+	}
+	event, ok := events[sourceEventID]
+	if ok {
+		if event.RetryCount >= maxRetries {
+			return "STUCK"
+		}
+		if time.Since(event.CreatedAt) > lagToleranceWindow {
+			return "LAGGING"
+		}
+		return "IN_FLIGHT"
+	}
+	if lastSyncedAt.IsZero() {
+		return "STUCK"
+	}
+	if time.Since(lastSyncedAt) <= lagToleranceWindow {
+		return "IN_FLIGHT"
+	}
+	return "STUCK"
 }
 
 func (s *Service) recordWriteAudit(actor access.Identity, ownerTenantID, ownerAppID, action, resourceType, resourceID, outcome, reason string, metadata map[string]any) {

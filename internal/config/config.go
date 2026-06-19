@@ -6,14 +6,17 @@ import (
 )
 
 type Config struct {
-	HTTP      HTTPConfig
-	Postgres  PostgresConfig
-	Redis     RedisConfig
-	Embedding EmbeddingConfig
-	Vector    AdapterConfig
-	Graph     AdapterConfig
-	FTS       AdapterConfig
+	HTTP                HTTPConfig
+	Postgres            PostgresConfig
+	Redis               RedisConfig
+	Embedding           EmbeddingConfig
+	Vector              AdapterConfig
+	Graph               AdapterConfig
+	FTS                 AdapterConfig
 	Worker    WorkerConfig
+	SyncLagToleranceMs  int
+	SyncLagStuckRetries int
+	SyncEtaDefaultMs    int
 }
 
 type HTTPConfig struct {

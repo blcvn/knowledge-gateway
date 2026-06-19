@@ -33,6 +33,7 @@ type SearchService interface {
 
 type WriteService interface {
 	CreateNode(actor access.Identity, req write.NodeCreateRequest) (write.NodeCreateResponse, error)
+	EntitySyncStatus(entityID, entityKind string) (map[string]any, error)
 }
 
 type OntologyResolver interface {
@@ -100,6 +101,7 @@ func (s *Service) ListTools() []ToolSpec {
 		{Name: "kg_list_templates", Description: "List visible active query templates for a domain."},
 		{Name: "kg_get_node", Description: "Fetch a visible node and its relationships."},
 		{Name: "kg_write_node", Description: "Create a node through the write path."},
+		{Name: "kg_entity_sync_status", Description: "Inspect sync status for a node or relationship."},
 		{Name: "kg_check_access", Description: "Inspect effective visible owners and domains."},
 		{Name: "kg_integrity", Description: "Inspect tenant integrity and bridge gaps."},
 	}
@@ -117,6 +119,8 @@ func (s *Service) CallTool(actor access.Identity, name string, args map[string]a
 		return s.callGetNode(actor, args)
 	case "kg_write_node":
 		return s.callWriteNode(actor, args)
+	case "kg_entity_sync_status":
+		return s.callEntitySyncStatus(actor, args)
 	case "kg_search":
 		return s.callSearch(actor, args, false)
 	case "kg_search_rag":
@@ -215,6 +219,23 @@ func (s *Service) callWriteNode(actor access.Identity, args map[string]any) (any
 		return nil, toToolError(callErr)
 	}
 	return result, nil
+}
+
+func (s *Service) callEntitySyncStatus(actor access.Identity, args map[string]any) (any, *JSONRPCError) {
+	entityID, err := requireString(args, "entity_id")
+	if err != nil {
+		return nil, err
+	}
+	entityKind, err := requireString(args, "entity_kind")
+	if err != nil {
+		return nil, err
+	}
+	status, callErr := s.writeService.EntitySyncStatus(entityID, entityKind)
+	if callErr != nil {
+		return nil, toToolError(callErr)
+	}
+	_ = actor
+	return status, nil
 }
 
 func (s *Service) callSearch(actor access.Identity, args map[string]any, rag bool) (any, *JSONRPCError) {

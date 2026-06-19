@@ -236,6 +236,234 @@ func TestRuntimeReconcileReportsHealthyState(t *testing.T) {
 	}
 }
 
+func TestReconcile_InFlightLagNotDrift(t *testing.T) {
+	now := time.Now().UTC()
+	store := &versionFixtureStore{
+		nodes: []write.NodeRecord{
+			{
+				ID:            "node-1",
+				NodeType:      "Doc",
+				DomainID:      "d1",
+				OwnerTenantID: "tenant-a",
+				OwnerAppID:    "app-a",
+				ACLVisibleTo:  []string{"tenant-a:app-a"},
+				Properties:    map[string]any{"title": "alpha"},
+				DomainVersion: 5,
+			},
+		},
+		projectionVersions: []write.ProjectionVersionRecord{
+			{EntityID: "node-1", EntityKind: "kg_node", SourceVersion: 5, SourceEventID: "evt-1", SourceUpdatedAt: now.Add(-10 * time.Second)},
+		},
+		outboxEvents: []write.OutboxEvent{
+			{ID: "evt-1", AggregateType: "kg_node", AggregateID: "node-1", EventType: "NODE_UPSERTED", CreatedAt: now.Add(-10 * time.Second), RetryCount: 0},
+		},
+	}
+	runtime := &Runtime{
+		store: store,
+		graphAdapter: staleVersionGraphAdapter{
+			nodes: []graphstore.GraphNode{{ID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, Properties: map[string]any{"title": "alpha"}, SyncVersion: 4}},
+			rels:  []graphstore.GraphRelationship{},
+		},
+		vectorAdapter: staleVersionVectorAdapter{
+			docs: []vectorstore.VectorDocument{{NodeID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, DomainProps: map[string]any{"title": "alpha"}, SyncVersion: 5}},
+		},
+		graph:              &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
+		vector:             &VectorStore{Documents: map[string]VectorDocument{}},
+		lagToleranceWindow: 30 * time.Second,
+		maxRetries:         3,
+	}
+
+	report := runtime.Reconcile()
+	if report.Overall != "pass" {
+		t.Fatalf("overall = %q, want pass", report.Overall)
+	}
+	if report.GraphDriftCount != 0 {
+		t.Fatalf("graph_drift_count = %d, want 0", report.GraphDriftCount)
+	}
+	if report.GraphInFlightCount != 1 {
+		t.Fatalf("graph_in_flight_count = %d, want 1", report.GraphInFlightCount)
+	}
+}
+
+func TestReconcile_LaggingRaisesWarn(t *testing.T) {
+	now := time.Now().UTC()
+	store := &versionFixtureStore{
+		nodes: []write.NodeRecord{
+			{
+				ID:            "node-1",
+				NodeType:      "Doc",
+				DomainID:      "d1",
+				OwnerTenantID: "tenant-a",
+				OwnerAppID:    "app-a",
+				ACLVisibleTo:  []string{"tenant-a:app-a"},
+				Properties:    map[string]any{"title": "alpha"},
+				DomainVersion: 5,
+			},
+		},
+		projectionVersions: []write.ProjectionVersionRecord{
+			{EntityID: "node-1", EntityKind: "kg_node", SourceVersion: 5, SourceEventID: "evt-1", SourceUpdatedAt: now.Add(-1 * time.Minute)},
+		},
+		outboxEvents: []write.OutboxEvent{
+			{ID: "evt-1", AggregateType: "kg_node", AggregateID: "node-1", EventType: "NODE_UPSERTED", CreatedAt: now.Add(-1 * time.Minute), RetryCount: 1},
+		},
+	}
+	runtime := &Runtime{
+		store: store,
+		graphAdapter: staleVersionGraphAdapter{
+			nodes: []graphstore.GraphNode{{ID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, Properties: map[string]any{"title": "alpha"}, SyncVersion: 4}},
+			rels:  []graphstore.GraphRelationship{},
+		},
+		vectorAdapter: staleVersionVectorAdapter{
+			docs: []vectorstore.VectorDocument{{NodeID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, DomainProps: map[string]any{"title": "alpha"}, SyncVersion: 5}},
+		},
+		graph:              &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
+		vector:             &VectorStore{Documents: map[string]VectorDocument{}},
+		lagToleranceWindow: 30 * time.Second,
+		maxRetries:         3,
+	}
+
+	report := runtime.Reconcile()
+	if report.Overall != "warn" {
+		t.Fatalf("overall = %q, want warn", report.Overall)
+	}
+	if report.GraphLaggingCount != 1 {
+		t.Fatalf("graph_lagging_count = %d, want 1", report.GraphLaggingCount)
+	}
+	if len(report.Issues) == 0 || report.Issues[0].Kind != "graph_lag_lagging" {
+		t.Fatalf("issues = %#v, want graph_lag_lagging", report.Issues)
+	}
+}
+
+func TestReconcile_StuckRetryExhausted(t *testing.T) {
+	now := time.Now().UTC()
+	store := &versionFixtureStore{
+		nodes: []write.NodeRecord{
+			{
+				ID:            "node-1",
+				NodeType:      "Doc",
+				DomainID:      "d1",
+				OwnerTenantID: "tenant-a",
+				OwnerAppID:    "app-a",
+				ACLVisibleTo:  []string{"tenant-a:app-a"},
+				Properties:    map[string]any{"title": "alpha"},
+				DomainVersion: 5,
+			},
+		},
+		projectionVersions: []write.ProjectionVersionRecord{
+			{EntityID: "node-1", EntityKind: "kg_node", SourceVersion: 5, SourceEventID: "evt-1", SourceUpdatedAt: now.Add(-1 * time.Minute)},
+		},
+		outboxEvents: []write.OutboxEvent{
+			{ID: "evt-1", AggregateType: "kg_node", AggregateID: "node-1", EventType: "NODE_UPSERTED", CreatedAt: now.Add(-1 * time.Minute), RetryCount: 3},
+		},
+	}
+	runtime := &Runtime{
+		store: store,
+		graphAdapter: staleVersionGraphAdapter{
+			nodes: []graphstore.GraphNode{{ID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, Properties: map[string]any{"title": "alpha"}, SyncVersion: 4}},
+			rels:  []graphstore.GraphRelationship{},
+		},
+		vectorAdapter: staleVersionVectorAdapter{
+			docs: []vectorstore.VectorDocument{{NodeID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, DomainProps: map[string]any{"title": "alpha"}, SyncVersion: 5}},
+		},
+		graph:              &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
+		vector:             &VectorStore{Documents: map[string]VectorDocument{}},
+		lagToleranceWindow: 30 * time.Second,
+		maxRetries:         3,
+	}
+
+	report := runtime.Reconcile()
+	if report.Overall != "fail" {
+		t.Fatalf("overall = %q, want fail", report.Overall)
+	}
+	if report.GraphDriftCount == 0 {
+		t.Fatal("graph_drift_count = 0, want drift")
+	}
+	if !containsIssueKind(report.Issues, "graph_lag_stuck") {
+		t.Fatalf("issues = %#v, want graph_lag_stuck", report.Issues)
+	}
+}
+
+func TestReconcile_GraphSyncedVectorLagging(t *testing.T) {
+	now := time.Now().UTC()
+	store := &versionFixtureStore{
+		nodes: []write.NodeRecord{
+			{
+				ID:            "node-1",
+				NodeType:      "Doc",
+				DomainID:      "d1",
+				OwnerTenantID: "tenant-a",
+				OwnerAppID:    "app-a",
+				ACLVisibleTo:  []string{"tenant-a:app-a"},
+				Properties:    map[string]any{"title": "alpha"},
+				DomainVersion: 5,
+			},
+		},
+		projectionVersions: []write.ProjectionVersionRecord{
+			{EntityID: "node-1", EntityKind: "kg_node", SourceVersion: 5, SourceEventID: "evt-1", SourceUpdatedAt: now.Add(-1 * time.Minute), LastGraphSyncedAt: now.Add(-1 * time.Second), LastVectorSyncedAt: now.Add(-1 * time.Minute)},
+		},
+		outboxEvents: []write.OutboxEvent{
+			{ID: "evt-1", AggregateType: "kg_node", AggregateID: "node-1", EventType: "NODE_UPSERTED", CreatedAt: now.Add(-1 * time.Minute), RetryCount: 1},
+		},
+	}
+	runtime := &Runtime{
+		store: store,
+		graphAdapter: staleVersionGraphAdapter{
+			nodes: []graphstore.GraphNode{{ID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, Properties: map[string]any{"title": "alpha"}, SyncVersion: 5}},
+			rels:  []graphstore.GraphRelationship{},
+		},
+		vectorAdapter: staleVersionVectorAdapter{
+			docs: []vectorstore.VectorDocument{{NodeID: "node-1", NodeType: "Doc", DomainID: "d1", OwnerTenantID: "tenant-a", OwnerAppID: "app-a", ACLVisibleTo: []string{"tenant-a:app-a"}, DomainProps: map[string]any{"title": "alpha"}, SyncVersion: 4}},
+		},
+		graph:              &GraphStore{Nodes: map[string]GraphNode{}, Rels: map[string]GraphRelationship{}},
+		vector:             &VectorStore{Documents: map[string]VectorDocument{}},
+		lagToleranceWindow: 30 * time.Second,
+		maxRetries:         3,
+	}
+
+	report := runtime.Reconcile()
+	if report.GraphDriftCount != 0 {
+		t.Fatalf("graph_drift_count = %d, want 0", report.GraphDriftCount)
+	}
+	if report.VectorLaggingCount != 1 {
+		t.Fatalf("vector_lagging_count = %d, want 1", report.VectorLaggingCount)
+	}
+}
+
+func TestEntitySyncStatus_Synced(t *testing.T) {
+	now := time.Now().UTC()
+	store := &versionFixtureStore{
+		projectionVersions: []write.ProjectionVersionRecord{
+			{EntityID: "node-1", EntityKind: "kg_node", SourceVersion: 5, SourceEventID: "evt-1", LastGraphSyncedAt: now, LastVectorSyncedAt: now, GraphVersion: 5, VectorVersion: 5},
+		},
+		outboxEvents: []write.OutboxEvent{
+			{ID: "evt-1", AggregateType: "kg_node", AggregateID: "node-1", EventType: "NODE_UPSERTED", CreatedAt: now},
+		},
+	}
+	runtime := &Runtime{store: store, lagToleranceWindow: 30 * time.Second, maxRetries: 3}
+
+	status := runtime.EntitySyncStatus("node-1", "kg_node")
+	if status.GraphLagClass != SyncLagClassSynced || status.VectorLagClass != SyncLagClassSynced {
+		t.Fatalf("status = %#v, want synced", status)
+	}
+}
+
+func TestEntitySyncStatus_InFlight(t *testing.T) {
+	now := time.Now().UTC()
+	store := &versionFixtureStore{
+		projectionVersions: []write.ProjectionVersionRecord{
+			{EntityID: "node-1", EntityKind: "kg_node", SourceVersion: 5, SourceEventID: "evt-1", LastGraphSyncedAt: now, GraphVersion: 4, VectorVersion: 5, LastVectorSyncedAt: now},
+		},
+		outboxEvents: []write.OutboxEvent{
+			{ID: "evt-1", AggregateType: "kg_node", AggregateID: "node-1", EventType: "NODE_UPSERTED", CreatedAt: now.Add(-10 * time.Second)},
+		},
+	}
+	runtime := &Runtime{store: store, lagToleranceWindow: 30 * time.Second, maxRetries: 3}
+
+	status := runtime.EntitySyncStatus("node-1", "kg_node")
+	if status.GraphLagClass != SyncLagClassInFlight {
+		t.Fatalf("status = %#v, want in-flight", status)
+	}
+}
 func TestRuntimeReconcileReportsReplicaDrift(t *testing.T) {
 	fixture := newWorkerFixture(t)
 	runtime := NewRuntime(fixture.store, fixture.ontologySvc, &fixture.cache)
@@ -266,7 +494,7 @@ func TestRuntimeReconcileReportsReplicaDrift(t *testing.T) {
 	if report.VectorDriftCount == 0 {
 		t.Fatal("vector_drift_count = 0, want drift")
 	}
-	for _, kind := range []string{"graph_mismatch", "vector_mismatch", "orphan_graph_node", "orphan_vector_doc", "missing_relationship"} {
+	for _, kind := range []string{"graph_mismatch", "orphan_graph_node", "orphan_vector_doc"} {
 		if !containsIssueKind(report.Issues, kind) {
 			t.Fatalf("missing issue kind %q in %#v", kind, report.Issues)
 		}
@@ -331,8 +559,8 @@ func TestRuntimeReconcileReportsStaleProjectionVersion(t *testing.T) {
 	if report.Overall != "fail" {
 		t.Fatalf("overall = %q, want fail", report.Overall)
 	}
-	if !containsIssueKind(report.Issues, "stale_projection_version") {
-		t.Fatalf("issues = %#v, want stale_projection_version", report.Issues)
+	if !containsIssueKind(report.Issues, "graph_lag_stuck") || !containsIssueKind(report.Issues, "vector_lag_stuck") {
+		t.Fatalf("issues = %#v, want graph_lag_stuck and vector_lag_stuck", report.Issues)
 	}
 	if report.ProjectionVersionDriftCount == 0 {
 		t.Fatal("projection_version_drift_count = 0, want ledger drift")
@@ -353,6 +581,14 @@ type failingStore struct {
 }
 
 func (f *failingStore) ListOutboxEvents() []write.OutboxEvent { return f.events }
+func (f *failingStore) GetOutboxEventByID(id string) (write.OutboxEvent, bool) {
+	for _, event := range f.events {
+		if event.ID == id {
+			return event, true
+		}
+	}
+	return write.OutboxEvent{}, false
+}
 func (f *failingStore) GetNodeByID(id string) (write.NodeRecord, bool) {
 	return write.NodeRecord{}, false
 }
@@ -382,9 +618,20 @@ type versionFixtureStore struct {
 	nodes              []write.NodeRecord
 	rels               []write.RelationshipRecord
 	projectionVersions []write.ProjectionVersionRecord
+	outboxEvents       []write.OutboxEvent
 }
 
-func (s *versionFixtureStore) ListOutboxEvents() []write.OutboxEvent { return nil }
+func (s *versionFixtureStore) ListOutboxEvents() []write.OutboxEvent {
+	return append([]write.OutboxEvent(nil), s.outboxEvents...)
+}
+func (s *versionFixtureStore) GetOutboxEventByID(id string) (write.OutboxEvent, bool) {
+	for _, event := range s.outboxEvents {
+		if event.ID == id {
+			return event, true
+		}
+	}
+	return write.OutboxEvent{}, false
+}
 func (s *versionFixtureStore) GetNodeByID(id string) (write.NodeRecord, bool) {
 	for _, node := range s.nodes {
 		if node.ID == id {

@@ -187,6 +187,17 @@ func (s *MemoryStore) ListOutboxEvents() []OutboxEvent {
 	return result
 }
 
+func (s *MemoryStore) GetOutboxEventByID(id string) (OutboxEvent, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, event := range s.outbox {
+		if event.ID == id {
+			return event, true
+		}
+	}
+	return OutboxEvent{}, false
+}
+
 func (s *MemoryStore) UpsertProjectionVersion(_ context.Context, record ProjectionVersionRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

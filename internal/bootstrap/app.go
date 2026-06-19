@@ -218,6 +218,8 @@ func (a *App) initAccess() error {
 	}
 	log.Printf("embedding router chain: %s", strings.Join(embeddingChain(a.config), " -> "))
 	writeService := write.NewService(writeRepo, ontologyService, accessResolver, sessionManager, service)
+	writeService.SetSyncETAConfig(a.config.SyncEtaDefaultMs)
+	writeService.SetSyncLagConfig(a.config.SyncLagToleranceMs, a.config.SyncLagStuckRetries)
 	readService := read.NewService(writeRepo, ontologyService, accessResolver, service)
 	searchService := search.NewService(writeRepo, ontologyService, accessResolver, service, ontologyService)
 	searchService.SetEmbeddingRouter(a.embeddingRouter)

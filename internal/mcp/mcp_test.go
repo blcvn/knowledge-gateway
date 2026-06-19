@@ -58,7 +58,7 @@ func TestMCPConnectListAndCallTools(t *testing.T) {
 	var listPayload map[string]any
 	mustDecodeJSON(t, listResp.Body.Bytes(), &listPayload)
 	result := listPayload["result"].(map[string]any)
-	if !containsTool(result["tools"].([]any), "kg_list_templates") {
+	if !containsTool(result["tools"].([]any), "kg_list_templates") || !containsTool(result["tools"].([]any), "kg_entity_sync_status") {
 		t.Fatalf("tools = %#v", result["tools"])
 	}
 
@@ -97,6 +97,42 @@ func TestMCPConnectListAndCallTools(t *testing.T) {
 	mustDecodeJSON(t, searchResp.Body.Bytes(), &listPayload)
 	if listPayload["error"] != nil {
 		t.Fatalf("kg_search error = %#v", listPayload["error"])
+	}
+}
+
+func TestMCPCallEntitySyncStatus(t *testing.T) {
+	fixture := newParityFixture(t)
+	handler := fixture.mcpHandler
+
+	connectReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/connect", nil)
+	connectReq = connectReq.WithContext(access.ContextWithIdentity(connectReq.Context(), fixture.actor))
+	connectRec := httptest.NewRecorder()
+	handler.Connect(connectRec, connectReq)
+	sessionID := extractSessionID(connectRec.Body.String())
+	if sessionID == "" {
+		t.Fatalf("session body = %s", connectRec.Body.String())
+	}
+
+	resp := callMCP(t, handler, sessionID, JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      99,
+		Method:  "tools/call",
+		Params: map[string]any{
+			"name": "kg_entity_sync_status",
+			"arguments": map[string]any{
+				"entity_id":   fixture.bridgeID,
+				"entity_kind": "kg_node",
+			},
+		},
+	})
+	var payload map[string]any
+	mustDecodeJSON(t, resp.Body.Bytes(), &payload)
+	if payload["error"] != nil {
+		t.Fatalf("kg_entity_sync_status error = %#v", payload["error"])
+	}
+	result := payload["result"].(map[string]any)
+	if result["graph_lag_class"] != "SYNCED" || result["vector_lag_class"] != "SYNCED" {
+		t.Fatalf("result = %#v", result)
 	}
 }
 
@@ -403,6 +439,8 @@ type parityFixture struct {
 	integrityHandler integrity.Handler
 	mcpHandler       Handler
 	actor            access.Identity
+	bridgeID         string
+	createdID        string
 }
 
 func newParityFixture(t *testing.T) parityFixture {
@@ -477,6 +515,20 @@ func newParityFixture(t *testing.T) parityFixture {
 		t.Fatalf("CreateNode() error = %v", err)
 	}
 	_ = created
+	now := time.Now().UTC()
+	_ = writeStore.UpsertProjectionVersion(context.Background(), write.ProjectionVersionRecord{
+		EntityID:           bridge.NodeID,
+		EntityKind:         "kg_node",
+		SourceVersion:      int64(bridge.DomainVersion),
+		SourceEventID:      "evt-bridge",
+		SourceUpdatedAt:    now.Add(-2 * time.Second),
+		GraphBackend:       "graph",
+		GraphVersion:       int64(bridge.DomainVersion),
+		LastGraphSyncedAt:  now.Add(-1 * time.Second),
+		VectorBackend:      "vector",
+		VectorVersion:      int64(bridge.DomainVersion),
+		LastVectorSyncedAt: now.Add(-1 * time.Second),
+	})
 
 	readSvc := read.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
 	searchSvc := search.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
@@ -489,6 +541,8 @@ func newParityFixture(t *testing.T) parityFixture {
 		integrityHandler: integrity.NewHandler(integritySvc),
 		mcpHandler:       NewHandler(mcpSvc),
 		actor:            actor,
+		bridgeID:         bridge.NodeID,
+		createdID:        created.NodeID,
 	}
 }
 
