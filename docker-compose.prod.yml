@@ -1,0 +1,153 @@
+# VNP Memory Platform — Production Compose
+#
+# Full stack in containers (app + infra). No Go required on the host.
+#
+# Deploy workflow:
+#   1. Dev/CI:  docker build -f apps/memory/Dockerfile -t vnp-memory:latest .
+#               docker save -o vnp-memory.tar vnp-memory:latest
+#   2. Server:  scp vnp-memory.tar docker-compose.prod.yml .env.prod.example user@host:/opt/knowledge-gateway/
+#   3. Server:  cp .env.prod.example .env   # edit passwords
+#               docker load -i vnp-memory.tar
+#               docker compose -f docker-compose.prod.yml --env-file .env up -d
+#   4. Verify:  curl http://localhost:8083/healthz
+#
+# Or use Makefile on a machine with make:
+#   make memory-prod-build && make memory-prod-package
+#   make memory-prod-up    # on server after load + .env
+
+name: vnp-memory-prod
+
+services:
+  vnp-memory:
+    image: ${VNP_MEMORY_IMAGE:-vnp-memory:latest}
+    container_name: vnp-prod-memory
+    restart: unless-stopped
+    ports:
+      - "${VNP_MEMORY_REST_PORT:-8080}:8080"
+      - "${VNP_MEMORY_MCP_PORT:-8082}:8082"
+      - "${VNP_MEMORY_HEALTH_PORT:-8083}:8083"
+    environment:
+      VNP_MEMORY_SERVER_REST_PORT: "8080"
+      VNP_MEMORY_SERVER_MCP_PORT: "8082"
+      VNP_MEMORY_SERVER_HEALTH_PORT: "8083"
+      VNP_MEMORY_SERVER_LOG_LEVEL: "${VNP_MEMORY_LOG_LEVEL:-info}"
+      VNP_MEMORY_AUTH_DEV_MODE: "${VNP_MEMORY_AUTH_DEV_MODE:-false}"
+      VNP_MEMORY_POSTGRES_DSN: "postgres://vnp:${POSTGRES_PASSWORD}@postgres:5432/vnp_memory?sslmode=disable"
+      VNP_MEMORY_POSTGRES_MAX_CONNS: "${VNP_MEMORY_POSTGRES_MAX_CONNS:-50}"
+      VNP_MEMORY_POSTGRES_MIN_CONNS: "${VNP_MEMORY_POSTGRES_MIN_CONNS:-5}"
+      VNP_MEMORY_NEO4J_URI: "bolt://neo4j:7687"
+      VNP_MEMORY_NEO4J_USER: "neo4j"
+      VNP_MEMORY_NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
+      VNP_MEMORY_QDRANT_ADDR: "qdrant:6334"
+      VNP_MEMORY_REDIS_ADDR: "redis:6379"
+      VNP_MEMORY_NATS_MODE: "embedded"
+      VNP_MEMORY_NATS_STORE_DIR: "/app/data/nats"
+      VNP_MEMORY_MINIO_ENDPOINT: "minio:9000"
+      VNP_MEMORY_MINIO_ACCESS_KEY: "${MINIO_ROOT_USER}"
+      VNP_MEMORY_MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD}"
+      VNP_MEMORY_MINIO_BUCKET: "${VNP_MEMORY_MINIO_BUCKET:-vnp-memory}"
+    volumes:
+      - vnp_prod_nats_data:/app/data/nats
+      - vnp_prod_ov_data:/app/data/vikingfs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    networks:
+      - vnp-prod-net
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: vnp-prod-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vnp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: vnp_memory
+    volumes:
+      - vnp_prod_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vnp -d vnp_memory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vnp-prod-net
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: vnp-prod-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - vnp_prod_neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - vnp-prod-net
+
+  qdrant:
+    image: qdrant/qdrant:v1.14.0
+    container_name: vnp-prod-qdrant
+    restart: unless-stopped
+    volumes:
+      - vnp_prod_qdrant_data:/qdrant/storage
+    networks:
+      - vnp-prod-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: vnp-prod-redis
+    restart: unless-stopped
+    volumes:
+      - vnp_prod_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - vnp-prod-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: vnp-prod-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - vnp_prod_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vnp-prod-net
+
+volumes:
+  vnp_prod_pg_data:
+  vnp_prod_neo4j_data:
+  vnp_prod_qdrant_data:
+  vnp_prod_redis_data:
+  vnp_prod_minio_data:
+  vnp_prod_nats_data:
+  vnp_prod_ov_data:
+
+networks:
+  vnp-prod-net:
+    driver: bridge

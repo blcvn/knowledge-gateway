@@ -20,7 +20,10 @@ func New(repo *repository.Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) ListDocuments(ctx context.Context) ([]repository.DocumentSummary, error) {
+func (s *Service) ListDocuments(ctx context.Context, projectID string) ([]repository.DocumentSummary, error) {
+	if strings.TrimSpace(projectID) != "" {
+		return s.repo.ListDocumentsByProject(ctx, strings.TrimSpace(projectID))
+	}
 	return s.repo.ListDocuments(ctx)
 }
 

@@ -18,10 +18,13 @@ type Repository struct {
 }
 
 type DocumentSummary struct {
-	DocumentID  string    `json:"document_id"`
-	NodeCount   int64     `json:"node_count"`
-	EdgeCount   int64     `json:"edge_count"`
-	LastUpdated time.Time `json:"last_updated"`
+	DocumentID   string    `json:"document_id"`
+	NodeCount    int64     `json:"node_count"`
+	EdgeCount    int64     `json:"edge_count"`
+	LastUpdated  time.Time `json:"last_updated"`
+	DocumentType string    `json:"document_type,omitempty"`
+	FeatureID    string    `json:"feature_id,omitempty"`
+	FeatureName  string    `json:"feature_name,omitempty"`
 }
 
 type RequirementNode struct {
@@ -97,6 +100,95 @@ func (r *Repository) ListDocuments(ctx context.Context) ([]DocumentSummary, erro
 			EdgeCount:   edgeCountByDocument[row.DocumentID],
 			LastUpdated: parseNullableTime(row.LastUpdated),
 		})
+	}
+	return summaries, nil
+}
+
+func (r *Repository) ListDocumentsByProject(ctx context.Context, projectID string) ([]DocumentSummary, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return nil, fmt.Errorf("project_id is required")
+	}
+
+	type workspaceDocRow struct {
+		DocumentID  string
+		FeatureID   string
+		FeatureName string
+		DocType     string
+	}
+	var workspaceDocs []workspaceDocRow
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT fd.id AS document_id, fd.feature_id, f.name AS feature_name, fd.type AS doc_type
+		FROM feature_documents fd
+		JOIN features f ON f.id = fd.feature_id
+		WHERE f.project_id = ? AND fd.deleted_at IS NULL
+		ORDER BY f.name ASC, fd.type ASC
+	`, projectID).Scan(&workspaceDocs).Error; err != nil {
+		return nil, fmt.Errorf("list workspace documents for project %q: %w", projectID, err)
+	}
+
+	if len(workspaceDocs) == 0 {
+		return []DocumentSummary{}, nil
+	}
+
+	docIDs := make([]string, 0, len(workspaceDocs))
+	for _, row := range workspaceDocs {
+		docIDs = append(docIDs, row.DocumentID)
+	}
+
+	type nodeSummaryRow struct {
+		DocumentID  string
+		NodeCount   int64
+		LastUpdated sql.NullString
+	}
+	type edgeCountRow struct {
+		DocumentID string
+		EdgeCount  int64
+	}
+
+	var nodeRows []nodeSummaryRow
+	if err := r.db.WithContext(ctx).
+		Model(&RequirementNodeModel{}).
+		Select("document_id, COUNT(*) AS node_count, MAX(updated_at) AS last_updated").
+		Where("document_id IN ?", docIDs).
+		Group("document_id").
+		Scan(&nodeRows).Error; err != nil {
+		return nil, fmt.Errorf("list KG node counts for project %q: %w", projectID, err)
+	}
+
+	var edgeRows []edgeCountRow
+	if err := r.db.WithContext(ctx).
+		Model(&DependencyEdgeModel{}).
+		Select("document_id, COUNT(*) AS edge_count").
+		Where("document_id IN ?", docIDs).
+		Group("document_id").
+		Scan(&edgeRows).Error; err != nil {
+		return nil, fmt.Errorf("list KG edge counts for project %q: %w", projectID, err)
+	}
+
+	nodeByDoc := make(map[string]nodeSummaryRow, len(nodeRows))
+	for _, row := range nodeRows {
+		nodeByDoc[row.DocumentID] = row
+	}
+	edgeByDoc := make(map[string]int64, len(edgeRows))
+	for _, row := range edgeRows {
+		edgeByDoc[row.DocumentID] = row.EdgeCount
+	}
+
+	summaries := make([]DocumentSummary, 0, len(workspaceDocs))
+	for _, row := range workspaceDocs {
+		summary := DocumentSummary{
+			DocumentID:   row.DocumentID,
+			FeatureID:    row.FeatureID,
+			FeatureName:  row.FeatureName,
+			DocumentType: row.DocType,
+			EdgeCount:    edgeByDoc[row.DocumentID],
+		}
+		if nodeRow, ok := nodeByDoc[row.DocumentID]; ok {
+			summary.NodeCount = nodeRow.NodeCount
+			summary.LastUpdated = parseNullableTime(nodeRow.LastUpdated)
+		}
+		summaries = append(summaries, summary)
 	}
 	return summaries, nil
 }

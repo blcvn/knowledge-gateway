@@ -25,7 +25,8 @@ func New(port int, svc *service.Service, readTimeout, writeTimeout time.Duration
 	mux.HandleFunc("/v1/kg/documents", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			documents, err := svc.ListDocuments(r.Context())
+			projectID := strings.TrimSpace(r.URL.Query().Get("project_id"))
+			documents, err := svc.ListDocuments(r.Context(), projectID)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
