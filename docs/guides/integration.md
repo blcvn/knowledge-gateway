@@ -60,8 +60,11 @@ Write-path expectations:
 
 - node creation and document ingest currently return `202 Accepted`
 - relationship creation returns `201 Created`
+- application-facing writes persist only to `relationshipdb`
+- graph, vector, and full-text stores are projection targets maintained asynchronously by jobs/workers
 - writes are still subject to visibility and ontology validation
 - downstream projection behavior is bootstrap-oriented today, so treat async status as local evaluation behavior rather than a finalized production SLA
+- scope-aware writes check existing graph identity before linking records so different knowledge graphs stay separated, for example distinct code graph projects or repos
 
 ## 5. Read And Search Data
 
@@ -70,6 +73,20 @@ Recommended read flow:
 1. List active templates with `GET /v1/kg/read/templates?domain_id=...`.
 2. Execute a template with `POST /v1/kg/read/template/{domain_id}/{template_name}`.
 3. Fetch a known node directly with `GET /v1/kg/read/nodes/{id}` when you need full node details.
+
+Read-mode guidance:
+
+- use `mode=non-realtime` when you want projection-backed graph reads only
+- use `mode=realtime` when freshness matters; the service checks graph sync version against `relationshipdb` and falls back to `relationshipdb` if the graph projection is behind
+- pass `app_id` on node reads or template reads when the graph scope must be resolved for a specific app
+
+Example realtime node read:
+
+```bash
+curl -s \
+  -H "Authorization: Bearer ${KG_API_KEY}" \
+  "${KG_BASE_URL}/v1/kg/read/nodes/<node_id>?app_id=<app_id>&mode=realtime"
+```
 
 Recommended search flow:
 
@@ -81,6 +98,7 @@ Visibility rules to remember:
 
 - read and search results are filtered by the caller's visible owners and domains
 - deleted content is excluded from normal search results
+- search queries are served from vector or full-text projection stores, not from `relationshipdb`
 - if a domain or node is not visible, the caller may see empty results or authorization failure depending on the endpoint
 
 ## 6. Share Access Across Tenants Or Apps

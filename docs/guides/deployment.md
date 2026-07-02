@@ -21,7 +21,8 @@ Use Compose when you want the fastest local bootstrap loop.
 
 - Start the integration smoke stack with `make deploy-compose-integration`
 - Start the runtime validation stack with `make deploy-compose-runtime-validation`
-- Stop the stacks with `make compose-down-integration` or `make compose-down-runtime-validation`
+- Start the dedicated CodeGraph stack with `make deploy-compose-codegraph-runtime`
+- Stop the stacks with `make compose-down-integration`, `make compose-down-runtime-validation`, or `make compose-down-codegraph-runtime`
 
 For the runtime validation stack, ensure the selected profile matches the graph/vector pair you want to exercise.
 
@@ -29,6 +30,12 @@ Example:
 
 ```bash
 KG_RUNTIME_PROFILE=qdrant-nebula make deploy-compose-runtime-validation
+```
+
+For local CodeGraph validation, export the HTTP embedding variables and run:
+
+```bash
+KG_API_KEY=kgsk_test_alpha_admin make validate-codegraph-runtime
 ```
 
 ## Kubernetes

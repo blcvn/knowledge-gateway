@@ -13,7 +13,7 @@ type Config struct {
 	Vector              AdapterConfig
 	Graph               AdapterConfig
 	FTS                 AdapterConfig
-	Worker    WorkerConfig
+	RateLimit           RateLimitConfig
 	SyncLagToleranceMs  int
 	SyncLagStuckRetries int
 	SyncEtaDefaultMs    int
@@ -100,12 +100,8 @@ type AdapterConfig struct {
 	Collection string
 }
 
-// WorkerConfig controls the background outbox-polling worker that projects
-// write events into the vector, graph, and FTS adapters.
-type WorkerConfig struct {
-	// Enabled turns the worker on or off (KG_WORKER_ENABLED, default true).
-	Enabled bool
-	// PollIntervalMs is how often the worker polls the outbox in milliseconds
-	// (KG_WORKER_POLL_INTERVAL_MS, default 500).
-	PollIntervalMs int
+type RateLimitConfig struct {
+	FreePerMinute       int
+	ProPerMinute        int
+	EnterprisePerMinute int
 }

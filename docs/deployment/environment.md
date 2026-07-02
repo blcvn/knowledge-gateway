@@ -11,8 +11,8 @@ This page is the operator-facing inventory of supported environment variables fo
 | `KG_HTTP_PORT` | HTTP bind port for the service listener. Must be an integer. | `8082` | Optional |
 | `EMBEDDING_PROVIDER` | Embedding provider implementation. Supported values: `deterministic`, `http`. | `deterministic` | Optional |
 | `EMBEDDING_URL` | Base URL for the HTTP embedding provider. | none | Required when `EMBEDDING_PROVIDER=http` |
-| `EMBEDDING_MODEL` | Model identifier sent to the HTTP embedding provider. | none | Optional |
-| `EMBEDDING_API_KEY` | API key for the HTTP embedding provider. | none | Optional |
+| `EMBEDDING_MODEL` | Model identifier sent to the HTTP embedding provider. | none | Required when `EMBEDDING_PROVIDER=http` |
+| `EMBEDDING_API_KEY` | API key for the HTTP embedding provider. | none | Required when `EMBEDDING_PROVIDER=http` |
 | `EMBEDDING_PROXY_URL` | Proxy endpoint layered in front of the embedding provider. | none | Optional |
 | `EMBEDDING_CACHE_TTL_S` | Embedding cache TTL in seconds. Must be an integer. | `0` | Optional |
 
@@ -65,8 +65,25 @@ The deploy scripts derive adapter kinds from `KG_RUNTIME_PROFILE` and may also s
 | `KG_BASE_URL` | Base URL used by validation scripts such as `make integration-test` and `make validate-runtime-profile`. | none | Required for validation against a deployed instance |
 | `KG_API_KEY` | API key used by authenticated validation flows. | none | Required for authenticated validation |
 
+## CodeGraph Compose Validation Notes
+
+Use these values together when running `make deploy-compose-codegraph-runtime` or `make validate-codegraph-runtime`:
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `EMBEDDING_PROVIDER` | Must be `http` for the dedicated CodeGraph Compose path. | `http` | Required by the CodeGraph Compose path |
+| `EMBEDDING_URL` | HTTP embedding endpoint used by the CodeGraph stack. See `tests/llm/embedding-vnp.txt` for local test reference values. | none | Required |
+| `EMBEDDING_MODEL` | HTTP embedding model used by the CodeGraph stack. See `tests/llm/embedding-vnp.txt` for local test reference values. | none | Required |
+| `EMBEDDING_API_KEY` | Local secret for the HTTP embedding provider. Use a placeholder in repo-owned examples and inject the real secret from your shell or external env file. | none | Required |
+| `KG_API_KEY` | Existing tenant admin key to reuse for the bootstrap, sync, and query validation steps. When omitted, the script can create and persist a tenant admin app using `KG_PLATFORM_API_KEY`. | none | Optional |
+| `KG_BASE_URL` | Base URL targeted by the CodeGraph validation script after the Compose stack boots. | `http://127.0.0.1:8082` | Optional |
+| `KG_PLATFORM_API_KEY` | Platform admin key used to create a tenant/app on the first CodeGraph validation run. | `kgsk_platform_admin` | Optional |
+| `KG_RUNTIME_STATE_FILE` | Local state file where the validation script stores the generated tenant/app identity for reruns. | `codegraph-sync/.state/codegraph-runtime-bootstrap.json` | Optional |
+
 ## Notes
 
 - `make deploy-compose-integration` uses its own fixed runtime profile in the Compose manifest and does not require `KG_RUNTIME_PROFILE`.
+- `make deploy-compose-codegraph-runtime` fixes `KG_RUNTIME_PROFILE=qdrant-memgraph` and expects Postgres, Memgraph, and Qdrant to be started by the dedicated Compose manifest.
+- `scripts/validate-codegraph-runtime.sh` accepts `--skip-compose`, `--skip-tenant-bootstrap`, `--skip-ontology-bootstrap`, `--skip-sync`, and `--skip-verify` for reruns.
 - Invalid integer and duration values fail startup with configuration errors instead of panicking the process.
 - `GET /healthz` is public, but it is limited to safe operational metadata and does not expose raw DSNs or secrets.

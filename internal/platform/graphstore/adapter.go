@@ -16,6 +16,14 @@ type GraphAdapter interface {
 	ReadSyncVersion(ctx context.Context, entityID string) (int64, error)
 }
 
+type BatchGraphAdapter interface {
+	GraphAdapter
+	UpsertNodesBatch(ctx context.Context, nodes []GraphNode) error
+	DeleteNodesBatch(ctx context.Context, nodes []GraphNode) error
+	UpsertRelationshipsBatch(ctx context.Context, rels []GraphRelationship) error
+	DeleteRelationshipsBatch(ctx context.Context, rels []GraphRelationship) error
+}
+
 type GraphNode struct {
 	ID            string         `json:"id"`
 	NodeType      string         `json:"node_type"`

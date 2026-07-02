@@ -20,14 +20,25 @@ func NewPgVectorAdapter(db *sql.DB) *PgVectorAdapter {
 }
 
 func (a *PgVectorAdapter) Upsert(ctx context.Context, doc VectorDocument) error {
+	return a.UpsertBatch(ctx, []VectorDocument{doc})
+}
+
+func (a *PgVectorAdapter) UpsertBatch(ctx context.Context, docs []VectorDocument) error {
 	if a == nil || a.db == nil {
 		return errors.New("pgvector adapter is not configured")
 	}
-	payload, err := json.Marshal(doc.DomainProps)
-	if err != nil {
-		return err
+	if len(docs) == 0 {
+		return nil
 	}
-	_, err = a.db.ExecContext(ctx, `
+	embeddingLen := len(docs[0].Embedding)
+	for _, doc := range docs {
+		if len(doc.Embedding) != embeddingLen {
+			return fmt.Errorf("pgvector batch upsert requires consistent embedding dimensions: got %d want %d for node_id=%s", len(doc.Embedding), embeddingLen, doc.NodeID)
+		}
+	}
+	var builder strings.Builder
+	args := make([]any, 0, len(docs)*12)
+	builder.WriteString(`
 INSERT INTO kg_vector_documents (
     node_id,
     node_type,
@@ -43,9 +54,48 @@ INSERT INTO kg_vector_documents (
     embedding,
     created_at,
     updated_at
-) VALUES (
-    $1, $2, $3, $4, NULLIF($5, ''), $6, $7, NULLIF($8, ''), $9, $10, $11::jsonb, $12::vector, NOW(), NOW()
-)
+) VALUES
+`)
+	for i, doc := range docs {
+		if i > 0 {
+			builder.WriteString(",\n")
+		}
+		payload, err := json.Marshal(doc.DomainProps)
+		if err != nil {
+			return err
+		}
+		base := len(args) + 1
+		builder.WriteString(fmt.Sprintf(
+			"($%d, $%d, $%d, $%d, NULLIF($%d, ''), $%d, $%d, NULLIF($%d, ''), $%d, $%d, $%d::jsonb, $%d::vector, NOW(), NOW())",
+			base,
+			base+1,
+			base+2,
+			base+3,
+			base+4,
+			base+5,
+			base+6,
+			base+7,
+			base+8,
+			base+9,
+			base+10,
+			base+11,
+		))
+		args = append(args,
+			doc.NodeID,
+			doc.NodeType,
+			doc.DomainID,
+			doc.OwnerTenantID,
+			doc.OwnerAppID,
+			doc.ACLVisibleTo,
+			doc.IsDeleted,
+			doc.StatusValue,
+			doc.AuthorityScore,
+			doc.SyncVersion,
+			payload,
+			vectorLiteral(doc.Embedding),
+		)
+	}
+	builder.WriteString(`
 ON CONFLICT (node_id) DO UPDATE SET
     node_type = EXCLUDED.node_type,
     domain_id = EXCLUDED.domain_id,
@@ -59,7 +109,9 @@ ON CONFLICT (node_id) DO UPDATE SET
     domain_props = EXCLUDED.domain_props,
     embedding = EXCLUDED.embedding,
     updated_at = NOW()
-`, doc.NodeID, doc.NodeType, doc.DomainID, doc.OwnerTenantID, doc.OwnerAppID, doc.ACLVisibleTo, doc.IsDeleted, doc.StatusValue, doc.AuthorityScore, doc.SyncVersion, payload, vectorLiteral(doc.Embedding))
+WHERE kg_vector_documents.sync_version <= EXCLUDED.sync_version
+`)
+	_, err := a.db.ExecContext(ctx, builder.String(), args...)
 	return err
 }
 
@@ -68,6 +120,29 @@ func (a *PgVectorAdapter) Delete(ctx context.Context, nodeID string) error {
 		return errors.New("pgvector adapter is not configured")
 	}
 	_, err := a.db.ExecContext(ctx, `DELETE FROM kg_vector_documents WHERE node_id = $1`, nodeID)
+	return err
+}
+
+func (a *PgVectorAdapter) DeleteBatch(ctx context.Context, docs []VectorDocument) error {
+	if a == nil || a.db == nil {
+		return errors.New("pgvector adapter is not configured")
+	}
+	if len(docs) == 0 {
+		return nil
+	}
+	var builder strings.Builder
+	args := make([]any, 0, len(docs)*2)
+	builder.WriteString(`DELETE FROM kg_vector_documents d USING (VALUES `)
+	for i, doc := range docs {
+		if i > 0 {
+			builder.WriteString(", ")
+		}
+		base := len(args) + 1
+		builder.WriteString(fmt.Sprintf("($%d, $%d)", base, base+1))
+		args = append(args, doc.NodeID, doc.SyncVersion)
+	}
+	builder.WriteString(`) AS incoming(node_id, sync_version) WHERE d.node_id = incoming.node_id AND COALESCE(d.sync_version, 0) <= incoming.sync_version`)
+	_, err := a.db.ExecContext(ctx, builder.String(), args...)
 	return err
 }
 

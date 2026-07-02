@@ -13,6 +13,7 @@ import (
 	"kg-service/internal/httpapi/respond"
 	"kg-service/internal/integrity"
 	"kg-service/internal/mcp"
+	"kg-service/internal/observability"
 	"kg-service/internal/ontology"
 	"kg-service/internal/platform/fts"
 	"kg-service/internal/platform/graphstore"
@@ -37,6 +38,7 @@ type App struct {
 	accessMiddleware access.Middleware
 	accessStore      *access.MemoryStore
 	integrityHandler integrity.Handler
+	metricsHandler   observability.Handler
 	mcpHandler       mcp.Handler
 	ontologyHandler  ontology.Handler
 	readHandler      read.Handler
@@ -48,7 +50,7 @@ type App struct {
 	graphAdapter    graphstore.GraphAdapter
 	ftsAdapter      fts.FTSAdapter
 	searchResolver  ontology.SearchProfileResolver
-	runtime         *workers.Runtime
+	runtimeWorker   *workers.Runtime
 }
 
 func New(cfg config.Config) (*App, error) {
@@ -130,6 +132,10 @@ func (a *App) routes() {
 	a.httpMux.Handle("GET /v1/access/audit", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.accessHandler.ListAudit)))
 	a.httpMux.Handle("GET /v1/kg/integrity/tenant/{tenant_id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.integrityHandler.TenantIntegrity)))
 	a.httpMux.Handle("GET /v1/kg/integrity/missing-bridges", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.integrityHandler.MissingBridges)))
+	a.httpMux.Handle("GET /v1/kg/integrity/orphans", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.integrityHandler.OrphanScan)))
+	a.httpMux.Handle("POST /v1/kg/integrity/repair/rebuild", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.integrityHandler.RebuildProjection)))
+	a.httpMux.Handle("POST /v1/kg/integrity/repair/purge-orphans", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.integrityHandler.PurgeOrphans)))
+	a.httpMux.Handle("GET /v1/kg/metrics", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.metricsHandler.Metrics)))
 	a.httpMux.Handle("GET /v1/mcp/connect", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.mcpHandler.Connect)))
 	a.httpMux.Handle("POST /v1/mcp/messages/{session_id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.mcpHandler.Message)))
 	a.httpMux.Handle("POST /v1/tenants/{tenant_id}/ontology/domains", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.ontologyHandler.CreateDomain)))
@@ -152,13 +158,25 @@ func (a *App) routes() {
 	a.httpMux.Handle("POST /v1/kg/search/rag", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.RagSearch)))
 	a.httpMux.Handle("POST /v1/kg/search/fulltext", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.FullTextSearch)))
 	a.httpMux.Handle("POST /v1/kg/search/hybrid", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.searchHandler.HybridSearch)))
-	a.httpMux.Handle("POST /v1/kg/write/nodes", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.CreateNode)))
-	a.httpMux.Handle("PUT /v1/kg/write/nodes/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.UpdateNode)))
-	a.httpMux.Handle("DELETE /v1/kg/write/nodes/{id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.DeleteNode)))
-	a.httpMux.Handle("POST /v1/kg/write/relationships", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.CreateRelationship)))
-	a.httpMux.Handle("POST /v1/kg/write/ingest/document", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.IngestDocument)))
-	a.httpMux.Handle("GET /v1/kg/write/ingest/jobs/{job_id}", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.writeHandler.GetIngestJob)))
+	a.httpMux.Handle("POST /v1/kg/search/graph", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.readHandler.GraphSearch)))
+	a.httpMux.Handle("POST /v1/kg/write/nodes", a.writeRoute(http.HandlerFunc(a.writeHandler.CreateNode)))
+	a.httpMux.Handle("POST /v1/kg/write/sync-sessions", a.writeRoute(http.HandlerFunc(a.writeHandler.OpenSyncSession)))
+	a.httpMux.Handle("POST /v1/kg/write/sync-sessions/{id}/commit", a.writeRoute(http.HandlerFunc(a.writeHandler.CommitSyncSession)))
+	a.httpMux.Handle("DELETE /v1/kg/write/sync-sessions/{id}", a.writeRoute(http.HandlerFunc(a.writeHandler.AbandonSyncSession)))
+	a.httpMux.Handle("POST /v1/kg/write/nodes/bulk", a.writeRoute(http.HandlerFunc(a.writeHandler.CreateNodesBulk)))
+	a.httpMux.Handle("PUT /v1/kg/write/nodes/{id}", a.writeRoute(http.HandlerFunc(a.writeHandler.UpdateNode)))
+	a.httpMux.Handle("DELETE /v1/kg/write/nodes/{id}", a.writeRoute(http.HandlerFunc(a.writeHandler.DeleteNode)))
+	a.httpMux.Handle("POST /v1/kg/write/relationships", a.writeRoute(http.HandlerFunc(a.writeHandler.CreateRelationship)))
+	a.httpMux.Handle("POST /v1/kg/write/relationships/bulk", a.writeRoute(http.HandlerFunc(a.writeHandler.CreateRelationshipsBulk)))
+	a.httpMux.Handle("DELETE /v1/kg/write/relationships/bulk", a.writeRoute(http.HandlerFunc(a.writeHandler.DeleteRelationshipsBulk)))
+	a.httpMux.Handle("DELETE /v1/kg/write/nodes:by-external-ref-prefix", a.writeRoute(http.HandlerFunc(a.writeHandler.DeleteNodesByExternalRefPrefix)))
+	a.httpMux.Handle("POST /v1/kg/write/ingest/document", a.writeRoute(http.HandlerFunc(a.writeHandler.IngestDocument)))
+	a.httpMux.Handle("GET /v1/kg/write/ingest/jobs/{job_id}", a.writeRoute(http.HandlerFunc(a.writeHandler.GetIngestJob)))
 	a.httpMux.Handle("GET /v1/access/resolve", a.accessMiddleware.RequireIdentity(http.HandlerFunc(a.accessHandler.GetResolve)))
+}
+
+func (a *App) writeRoute(next http.Handler) http.Handler {
+	return a.accessMiddleware.RequireIdentity(write.NewMiddleware().Trace(next))
 }
 
 func (a *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +204,11 @@ func (a *App) initAccess() error {
 	identityResolver := access.NewIdentityResolver(store, &a.redis)
 	accessResolver := access.NewAccessResolver(store, store, &a.redis)
 	service := access.NewService(store, &a.redis)
-	rateLimiter := access.NewRateLimiter(store)
+	rateLimiter := access.NewRateLimiter(store, map[string]int{
+		"free":       a.config.RateLimit.FreePerMinute,
+		"pro":        a.config.RateLimit.ProPerMinute,
+		"enterprise": a.config.RateLimit.EnterprisePerMinute,
+	})
 	ontologyStore := ontology.NewMemoryStore()
 	ontologyService := ontology.NewService(ontologyStore, accessResolver)
 	a.searchResolver = ontologyService
@@ -220,32 +242,62 @@ func (a *App) initAccess() error {
 	writeService := write.NewService(writeRepo, ontologyService, accessResolver, sessionManager, service)
 	writeService.SetSyncETAConfig(a.config.SyncEtaDefaultMs)
 	writeService.SetSyncLagConfig(a.config.SyncLagToleranceMs, a.config.SyncLagStuckRetries)
+	writeService.SetFTSBackendKind(a.config.FTS.Kind)
+	runtimeWorker := workers.NewRuntimeFromConfig(writeRepo, ontologyService, &a.redis, a.config)
+	runtimeWorker.SetEmbeddingRouter(a.embeddingRouter)
+	runtimeWorker.SetGraphAdapter(a.graphAdapter)
+	runtimeWorker.SetVectorAdapter(a.vectorAdapter)
+	runtimeWorker.SetFTSAdapter(a.ftsAdapter)
+	workers.WithSessionManager(sessionManager)(runtimeWorker)
+	a.runtimeWorker = runtimeWorker
+	go a.runProjectionWorker()
+	go a.runSessionCleanupWorker()
 	readService := read.NewService(writeRepo, ontologyService, accessResolver, service)
+	readService.SetGraphAdapter(a.graphAdapter)
 	searchService := search.NewService(writeRepo, ontologyService, accessResolver, service, ontologyService)
 	searchService.SetEmbeddingRouter(a.embeddingRouter)
 	searchService.SetVectorAdapter(a.vectorAdapter)
 	searchService.SetFTSAdapter(a.ftsAdapter)
 	searchService.SetSearchProfileResolver(a.searchResolver)
-
-	// Wire the outbox-polling worker with the SAME adapters used by the search
-	// service so that written nodes are immediately searchable.
-	runtime := workers.NewRuntime(writeRepo, ontologyService, &a.redis)
-	runtime.SetEmbeddingRouter(a.embeddingRouter)
-	runtime.SetVectorAdapter(a.vectorAdapter)
-	runtime.SetFTSAdapter(a.ftsAdapter)
-	runtime.SetGraphAdapter(a.graphAdapter)
-	runtime.SetSearchProfileResolver(a.searchResolver)
-	a.runtime = runtime
-	integrityService := integrity.NewService(writeRepo, ontologyStore)
-	mcpService := mcp.NewService(readService, searchService, writeService, ontologyService, accessResolver, integrityService)
+	integrityService := integrity.NewService(writeRepo, ontologyStore, runtimeWorker)
+	mcpService := mcp.NewService(readService, searchService, writeService, ontologyService, accessResolver, integrityService, runtimeWorker)
 
 	a.accessMiddleware = access.NewMiddleware(identityResolver, rateLimiter)
 	a.accessHandler = access.NewHandler(accessResolver, service)
 	a.integrityHandler = integrity.NewHandler(integrityService)
+	a.metricsHandler = observability.NewHandler(observability.NewService(writeRepo, runtimeWorker))
 	a.mcpHandler = mcp.NewHandler(mcpService, rateLimiter)
 	a.ontologyHandler = ontology.NewHandler(ontologyService)
 	a.readHandler = read.NewHandler(readService)
 	a.searchHandler = search.NewHandler(searchService)
 	a.writeHandler = write.NewHandler(writeService)
 	return nil
+}
+
+func (a *App) runProjectionWorker() {
+	if a.runtimeWorker == nil {
+		return
+	}
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for range ticker.C {
+		report := a.runtimeWorker.PollOnce()
+		if report.Processed > 0 || report.Failed > 0 || report.DeadLetter > 0 {
+			if len(report.SampleErrors) > 0 {
+				log.Printf("projection worker report: processed=%d failed=%d dead_letter=%d sample_errors=%v",
+					report.Processed, report.Failed, report.DeadLetter, report.SampleErrors)
+			} else {
+				log.Printf("projection worker report: processed=%d failed=%d dead_letter=%d",
+					report.Processed, report.Failed, report.DeadLetter)
+			}
+		}
+	}
+}
+
+func (a *App) runSessionCleanupWorker() {
+	if a.runtimeWorker == nil {
+		return
+	}
+	ctx := context.Background()
+	a.runtimeWorker.RunSessionCleanupLoop(ctx)
 }

@@ -29,6 +29,10 @@ CREATE INDEX idx_kg_nodes_ref
     ON kg_nodes(external_ref)
     WHERE external_ref IS NOT NULL;
 
+CREATE UNIQUE INDEX idx_kg_nodes_external_ref_active
+    ON kg_nodes(external_ref)
+    WHERE external_ref IS NOT NULL AND NOT is_deleted;
+
 ALTER TABLE kg_nodes ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY kg_nodes_isolation ON kg_nodes
@@ -55,7 +59,7 @@ CREATE TABLE kg_relationships (
     rel_type TEXT NOT NULL,
     from_node_id UUID NOT NULL REFERENCES kg_nodes(id),
     to_node_id UUID NOT NULL REFERENCES kg_nodes(id),
-    domain_id TEXT NOT NULL REFERENCES domains(id),
+    domain_id TEXT NOT NULL,
     owner_tenant_id UUID NOT NULL REFERENCES tenants(id),
     owner_app_id UUID REFERENCES apps(id),
     properties JSONB NOT NULL DEFAULT '{}'::jsonb,

@@ -41,8 +41,10 @@ func (p HTTPEmbeddingProvider) Embed(ctx context.Context, text string) ([]float6
 		client = &http.Client{Timeout: timeout}
 	}
 	payload := map[string]any{
-		"model": p.Model,
-		"text":  text,
+		"input": []string{text},
+	}
+	if strings.TrimSpace(p.Model) != "" {
+		payload["model"] = p.Model
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -67,9 +69,30 @@ func (p HTTPEmbeddingProvider) Embed(ctx context.Context, text string) ([]float6
 	}
 	var out struct {
 		Embedding []float64 `json:"embedding"`
+		Data      []struct {
+			Embedding []float64 `json:"embedding"`
+		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err
 	}
-	return out.Embedding, nil
+	if len(out.Embedding) > 0 {
+		return out.Embedding, nil
+	}
+	if len(out.Data) > 0 && len(out.Data[0].Embedding) > 0 {
+		return out.Data[0].Embedding, nil
+	}
+	return nil, errors.New("embedding provider returned no embedding")
+}
+
+func (p HTTPEmbeddingProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	vectors := make([][]float64, 0, len(texts))
+	for _, text := range texts {
+		vec, err := p.Embed(ctx, text)
+		if err != nil {
+			return nil, err
+		}
+		vectors = append(vectors, vec)
+	}
+	return vectors, nil
 }

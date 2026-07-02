@@ -241,7 +241,7 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 	writeSvc := write.NewService(store, ontologySvc, accessResolver, sessionMgr, accessSvc)
 	readSvc := read.NewService(store, ontologySvc, accessResolver, accessSvc)
 	searchSvc := search.NewService(store, ontologySvc, accessResolver, accessSvc)
-	integritySvc := integrity.NewService(store, ontologyStore)
+	integritySvc := integrity.NewService(store, ontologyStore, nil)
 	runtime := workers.NewRuntime(store, ontologySvc, &cache)
 	searchSvc.SetVectorAdapter(runtime.VectorAdapter())
 	searchSvc.SetFTSAdapter(runtime.FTSAdapter())

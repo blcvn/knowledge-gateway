@@ -27,6 +27,85 @@ func TestMemgraphGraphAdapterRealBackendIntegration(t *testing.T) {
 	}))
 }
 
+func TestMemgraphGraphAdapterBatchBackendIntegration(t *testing.T) {
+	endpoint := requiredEnv(t, "KG_MEMGRAPH_ENDPOINT", "KG_GRAPH_ENDPOINT")
+	adapter := graphstore.NewMemgraphGraphAdapter(graphstore.CypherConfig{
+		Endpoint: endpoint,
+		Database: os.Getenv("KG_GRAPH_DATABASE"),
+	})
+
+	ctx := context.Background()
+	suffix := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_"))
+	suffix = strings.ReplaceAll(suffix, "-", "_")
+	suffix = fmt.Sprintf("%s_%d", suffix, time.Now().UnixNano())
+
+	nodeA := graphstore.GraphNode{
+		ID:            suffix + "_a",
+		NodeType:      "Doc",
+		DomainID:      "integration-domain",
+		OwnerTenantID: "tenant",
+		OwnerAppID:    "app",
+		ACLVisibleTo:  []string{"tenant:app"},
+		SyncVersion:   21,
+		Properties: map[string]any{
+			"title": suffix + "-alpha",
+		},
+	}
+	nodeB := graphstore.GraphNode{
+		ID:            suffix + "_b",
+		NodeType:      "Doc",
+		DomainID:      "integration-domain",
+		OwnerTenantID: "tenant",
+		OwnerAppID:    "app",
+		ACLVisibleTo:  []string{"tenant:app"},
+		SyncVersion:   22,
+		Properties: map[string]any{
+			"title": suffix + "-beta",
+		},
+	}
+	rel := graphstore.GraphRelationship{
+		ID:          suffix + "_rel",
+		RelType:     "LINKS",
+		FromNodeID:  nodeA.ID,
+		ToNodeID:    nodeB.ID,
+		DomainID:    "integration-domain",
+		SyncVersion: 23,
+		Properties: map[string]any{
+			"kind": "integration-batch",
+		},
+	}
+
+	must := func(err error) {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	must(adapter.UpsertNodesBatch(ctx, []graphstore.GraphNode{nodeA, nodeB}))
+	must(adapter.UpsertRelationshipsBatch(ctx, []graphstore.GraphRelationship{rel}))
+
+	t.Cleanup(func() {
+		_ = adapter.DeleteRelationshipsBatch(ctx, []graphstore.GraphRelationship{rel})
+		_ = adapter.DeleteNodesBatch(ctx, []graphstore.GraphNode{nodeB, nodeA})
+	})
+
+	nodes, err := adapter.ListNodes(ctx)
+	if err != nil {
+		t.Fatalf("ListNodes() error = %v", err)
+	}
+	if !hasNode(nodes, nodeA.ID) || !hasNode(nodes, nodeB.ID) {
+		t.Fatalf("ListNodes() missing batch integration nodes: %#v", nodes)
+	}
+
+	rels, err := adapter.ListRelationships(ctx)
+	if err != nil {
+		t.Fatalf("ListRelationships() error = %v", err)
+	}
+	if !hasRelationship(rels, rel.ID) {
+		t.Fatalf("ListRelationships() missing batch integration relationship: %#v", rels)
+	}
+}
+
 func requiredEnv(t *testing.T, keys ...string) string {
 	t.Helper()
 	for _, key := range keys {

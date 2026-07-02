@@ -1,6 +1,7 @@
 package integrity
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"time"
@@ -25,16 +26,24 @@ type OntologyResolver interface {
 	ListCrossDomainRules(domainID string) []ontology.CrossDomainRelRule
 }
 
+type Repairer interface {
+	ScanOrphans(ctx context.Context, tenantID string) (OrphanScanResponse, error)
+	RebuildProjection(ctx context.Context, tenantID string) (RepairReport, error)
+	PurgeOrphans(ctx context.Context, tenantID string) (RepairReport, error)
+}
+
 type Service struct {
 	store    ProjectionStore
 	ontology OntologyResolver
+	repairer Repairer
 	now      func() time.Time
 }
 
-func NewService(store ProjectionStore, ontology OntologyResolver) *Service {
+func NewService(store ProjectionStore, ontology OntologyResolver, repairer Repairer) *Service {
 	return &Service{
 		store:    store,
 		ontology: ontology,
+		repairer: repairer,
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -94,6 +103,45 @@ func (s *Service) MissingBridges(actor access.Identity, tenantID string) ([]Miss
 		result = append(result, s.missingBridgeItemsForNode(node)...)
 	}
 	return result, nil
+}
+
+func (s *Service) OrphanScan(actor access.Identity, tenantID string) (OrphanScanResponse, error) {
+	if tenantID == "" {
+		return OrphanScanResponse{}, ErrValidation
+	}
+	if !canInspectTenant(actor, tenantID) {
+		return OrphanScanResponse{}, ErrForbidden
+	}
+	if s.repairer == nil {
+		return OrphanScanResponse{}, nil
+	}
+	return s.repairer.ScanOrphans(context.Background(), tenantID)
+}
+
+func (s *Service) RebuildProjection(actor access.Identity, tenantID string) (RepairReport, error) {
+	if tenantID == "" {
+		return RepairReport{}, ErrValidation
+	}
+	if !canInspectTenant(actor, tenantID) {
+		return RepairReport{}, ErrForbidden
+	}
+	if s.repairer == nil {
+		return RepairReport{}, nil
+	}
+	return s.repairer.RebuildProjection(context.Background(), tenantID)
+}
+
+func (s *Service) PurgeOrphans(actor access.Identity, tenantID string) (RepairReport, error) {
+	if tenantID == "" {
+		return RepairReport{}, ErrValidation
+	}
+	if !canInspectTenant(actor, tenantID) {
+		return RepairReport{}, ErrForbidden
+	}
+	if s.repairer == nil {
+		return RepairReport{}, nil
+	}
+	return s.repairer.PurgeOrphans(context.Background(), tenantID)
 }
 
 func (s *Service) tenantNodes(tenantID string) []write.NodeRecord {

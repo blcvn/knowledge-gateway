@@ -32,14 +32,29 @@ func (h Handler) ListTemplates(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) ExecuteTemplate(w http.ResponseWriter, r *http.Request) {
 	var req TemplateExecutionRequest
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, respond.StatusFor(respond.CodeBadRequest), respond.CodeBadRequest, "Malformed JSON body", nil)
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
 		return
 	}
 
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.ExecuteTemplate(identity, r.PathValue("domain_id"), r.PathValue("template_name"), req.Params)
+	result, err := h.service.ExecuteTemplateWithOptions(identity, r.PathValue("domain_id"), r.PathValue("template_name"), req.Params, req.AppID, req.Mode)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, result)
+}
+
+func (h Handler) GraphSearch(w http.ResponseWriter, r *http.Request) {
+	var req GraphSearchRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	identity, _ := access.IdentityFromContext(r.Context())
+	result, err := h.service.GraphSearch(identity, req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -49,7 +64,7 @@ func (h Handler) ExecuteTemplate(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetNode(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	node, err := h.service.GetNode(identity, r.PathValue("id"))
+	node, err := h.service.GetNodeForAppWithMode(identity, r.URL.Query().Get("app_id"), r.PathValue("id"), r.URL.Query().Get("mode"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -57,12 +72,26 @@ func (h Handler) GetNode(w http.ResponseWriter, r *http.Request) {
 	respond.OK(w, node)
 }
 
+var ErrMalformedRequest = errors.New("malformed json body")
+
+func decodeJSON(r *http.Request, target any) error {
+	defer r.Body.Close()
+	if err := json.NewDecoder(r.Body).Decode(target); err != nil {
+		return ErrMalformedRequest
+	}
+	return nil
+}
+
 func writeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrMalformedRequest):
+		respond.Error(w, respond.StatusFor(respond.CodeBadRequest), respond.CodeBadRequest, "Malformed JSON body", nil)
 	case errors.Is(err, ErrForbidden):
 		respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 	case errors.Is(err, ErrNotFound):
 		respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
+	case errors.Is(err, ErrProjectionUnreadable):
+		respond.Error(w, respond.StatusFor(respond.CodeProjectionInconsistent), respond.CodeProjectionInconsistent, "Projection inconsistency", nil)
 	case errors.Is(err, ErrValidation):
 		respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
 	case errors.Is(err, ErrTimeout):

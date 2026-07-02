@@ -25,6 +25,13 @@ func (r DirectRouter) Embed(ctx context.Context, text string) ([]float64, error)
 	return r.Provider.Embed(ctx, text)
 }
 
+func (r DirectRouter) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	if r.Provider == nil {
+		return nil, nil
+	}
+	return r.Provider.EmbedBatch(ctx, texts)
+}
+
 func (r DirectRouter) Dimensions() int {
 	if r.Provider == nil {
 		return 0
@@ -60,6 +67,13 @@ func (r RoutingRouter) Embed(ctx context.Context, text string) ([]float64, error
 		return nil, nil
 	}
 	return r.Default.Embed(ctx, text)
+}
+
+func (r RoutingRouter) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	if r.Default == nil {
+		return nil, nil
+	}
+	return r.Default.EmbedBatch(ctx, texts)
 }
 
 func (r RoutingRouter) Dimensions() int {

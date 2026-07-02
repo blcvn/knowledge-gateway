@@ -53,13 +53,14 @@ func TestErrorWritesEnvelope(t *testing.T) {
 
 func TestStatusForMappings(t *testing.T) {
 	tests := map[string]int{
-		CodeBadRequest:       http.StatusBadRequest,
-		CodeUnauthorized:     http.StatusUnauthorized,
-		CodeForbidden:        http.StatusForbidden,
-		CodeNotFound:         http.StatusNotFound,
-		CodeValidationFailed: http.StatusUnprocessableEntity,
-		CodeRequestTimedOut:  http.StatusGatewayTimeout,
-		CodeInternal:         http.StatusInternalServerError,
+		CodeBadRequest:             http.StatusBadRequest,
+		CodeUnauthorized:           http.StatusUnauthorized,
+		CodeForbidden:              http.StatusForbidden,
+		CodeNotFound:               http.StatusNotFound,
+		CodeValidationFailed:       http.StatusUnprocessableEntity,
+		CodeProjectionInconsistent: http.StatusConflict,
+		CodeRequestTimedOut:        http.StatusGatewayTimeout,
+		CodeInternal:               http.StatusInternalServerError,
 	}
 
 	for code, want := range tests {

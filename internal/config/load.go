@@ -52,6 +52,18 @@ func Load() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	rateLimitFree, err := intEnv("KG_RATE_LIMIT_FREE", 15)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	rateLimitPro, err := intEnv("KG_RATE_LIMIT_PRO", 60)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	rateLimitEnterprise, err := intEnv("KG_RATE_LIMIT_ENTERPRISE", 240)
+	if err != nil {
+		errs = append(errs, err)
+	}
 
 	cfg := Config{
 		HTTP: HTTPConfig{
@@ -97,10 +109,11 @@ func Load() (Config, error) {
 			Endpoint: stringEnv("KG_GRAPH_ENDPOINT", ""),
 			Database: stringEnv("KG_GRAPH_DATABASE", ""),
 		},
-		FTS:                 AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
-		Worker: WorkerConfig{
-			Enabled:        boolEnv("KG_WORKER_ENABLED", true),
-			PollIntervalMs: intEnv("KG_WORKER_POLL_INTERVAL_MS", 500),
+		FTS: AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
+		RateLimit: RateLimitConfig{
+			FreePerMinute:       rateLimitFree,
+			ProPerMinute:        rateLimitPro,
+			EnterprisePerMinute: rateLimitEnterprise,
 		},
 		SyncLagToleranceMs:  syncLagToleranceMs,
 		SyncLagStuckRetries: syncLagStuckRetries,

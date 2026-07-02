@@ -26,6 +26,18 @@ func (p *countingProvider) Embed(_ context.Context, _ string) ([]float64, error)
 	return append([]float64(nil), p.result...), nil
 }
 
+func (p *countingProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	vectors := make([][]float64, 0, len(texts))
+	for range texts {
+		vec, err := p.Embed(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		vectors = append(vectors, vec)
+	}
+	return vectors, nil
+}
+
 func (p *countingProvider) Dimensions() int { return p.dimensions }
 func (p *countingProvider) ModelID() string { return p.modelID }
 

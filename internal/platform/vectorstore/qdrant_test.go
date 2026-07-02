@@ -20,15 +20,26 @@ type qdrantTestServer struct {
 	paths map[string]qdrantTestPoint
 }
 
+type qdrantRoundTripper struct {
+	handler http.Handler
+}
+
 type qdrantTestPoint struct {
 	Vector  []float64
 	Payload map[string]any
 }
 
-func newQdrantTestServer(t *testing.T) *httptest.Server {
+func newQdrantTestClient(t *testing.T, state *qdrantTestServer) *http.Client {
 	t.Helper()
-	state := &qdrantTestServer{paths: map[string]qdrantTestPoint{}}
-	return httptest.NewServer(http.HandlerFunc(state.handle))
+	return &http.Client{
+		Transport: qdrantRoundTripper{handler: http.HandlerFunc(state.handle)},
+	}
+}
+
+func (rt qdrantRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	rt.handler.ServeHTTP(recorder, req)
+	return recorder.Result(), nil
 }
 
 func (s *qdrantTestServer) handle(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +147,7 @@ func (s *qdrantTestServer) handleSearch(w http.ResponseWriter, r *http.Request) 
 			"vector":  result.Document.Embedding,
 		})
 	}
-	writeJSON(w, points)
+	writeJSON(w, map[string]any{"result": points})
 }
 
 func (s *qdrantTestServer) handleScroll(w http.ResponseWriter, r *http.Request) {
@@ -292,12 +303,13 @@ func cosine(a, b []float64) float64 {
 }
 
 func TestQdrantVectorAdapterConformance(t *testing.T) {
-	server := newQdrantTestServer(t)
-	defer server.Close()
+	state := &qdrantTestServer{paths: map[string]qdrantTestPoint{}}
+	client := newQdrantTestClient(t, state)
 
 	adapter := vectorstore.NewQdrantVectorAdapter(vectorstore.QdrantConfig{
-		Endpoint:   server.URL,
+		Endpoint:   "http://qdrant.test",
 		Collection: "kg_vectors",
+		Client:     client,
 	})
 	conformance.AssertVectorAdapterConformance(t, adapter)
 }

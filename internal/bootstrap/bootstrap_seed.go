@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"log"
 	"strings"
 
@@ -12,18 +13,44 @@ func bootstrapSampleOntology(service *ontology.Service, actor access.Identity) {
 	mustCreateDomain(service, actor, "sample-registry", "Sample Registry", access.PlatformTenantID)
 	mustCreateDomain(service, actor, "sample-policy", "Sample Policy", access.PlatformTenantID)
 	mustCreateDomain(service, actor, "shared-domain", "Shared Domain", "22222222-2222-2222-2222-222222222222")
+	mustCreateDomain(service, actor, "noi_bo_hop_dong", "Nội bộ Hợp đồng", "11111111-1111-1111-1111-111111111111")
+
+	domainOwners := make(map[string]string, len(ontology.SeedDomains()))
+	for _, d := range ontology.SeedDomains() {
+		domainOwners[d.ID] = d.OwnerTenantID
+	}
 
 	for _, schema := range ontology.SeedNodeTypes() {
-		mustCreateNodeType(service, actor, schema.DomainID, schema)
+		ownerTenantID := domainOwners[schema.DomainID]
+		if ownerTenantID == "" {
+			log.Printf("bootstrap node type %s.%s: domain %q not in SeedDomains — skipping", schema.DomainID, schema.NodeTypeName, schema.DomainID)
+			continue
+		}
+		mustCreateNodeType(service, actor, ownerTenantID, schema)
 	}
 	for _, schema := range ontology.SeedRelTypes() {
-		mustCreateRelType(service, actor, schema.DomainID, schema)
+		ownerTenantID := domainOwners[schema.DomainID]
+		if ownerTenantID == "" {
+			log.Printf("bootstrap rel type %s.%s: domain %q not in SeedDomains — skipping", schema.DomainID, schema.RelTypeName, schema.DomainID)
+			continue
+		}
+		mustCreateRelType(service, actor, ownerTenantID, schema)
 	}
 	for _, template := range ontology.SeedQueryTemplates() {
-		mustCreateQueryTemplate(service, actor, template.DomainID, template)
+		ownerTenantID := domainOwners[template.DomainID]
+		if ownerTenantID == "" {
+			log.Printf("bootstrap template %s.%s: domain %q not in SeedDomains — skipping", template.DomainID, template.TemplateName, template.DomainID)
+			continue
+		}
+		mustCreateQueryTemplate(service, actor, ownerTenantID, template)
 	}
 	for _, cfg := range ontology.SeedStatusFieldConfigs() {
-		mustUpsertStatusFieldConfig(service, actor, cfg.DomainID, cfg)
+		ownerTenantID := domainOwners[cfg.DomainID]
+		if ownerTenantID == "" {
+			log.Printf("bootstrap status config %s: domain %q not in SeedDomains — skipping", cfg.DomainID, cfg.DomainID)
+			continue
+		}
+		mustUpsertStatusFieldConfig(service, actor, ownerTenantID, cfg)
 	}
 	mustSeedQueryStrategy(service, ontology.QueryStrategy{
 		Key:      "default",
@@ -49,7 +76,10 @@ func bootstrapSampleOntology(service *ontology.Service, actor access.Identity) {
 
 func mustCreateDomain(service *ontology.Service, actor access.Identity, id, name, ownerTenantID string) {
 	if _, err := service.CreateDomain(actor, ownerTenantID, ontology.DomainCreateRequest{ID: id, Name: name, Status: "active", Visibility: "public"}); err != nil {
-		log.Printf("bootstrap domain %s: %v", id, err)
+		if isAlreadyExists(err) {
+			return
+		}
+		log.Printf("bootstrap domain %s owner=%s: %v", id, ownerTenantID, err)
 	}
 }
 
@@ -61,7 +91,10 @@ func mustCreateNodeType(service *ontology.Service, actor access.Identity, tenant
 		OptionalProps:   schema.OptionalProps,
 		ValidationRules: schema.ValidationRules,
 	}); err != nil {
-		log.Printf("bootstrap node type %s.%s: %v", schema.DomainID, schema.NodeTypeName, err)
+		if isAlreadyExists(err) {
+			return
+		}
+		log.Printf("bootstrap node type %s.%s tenant=%s: %v", schema.DomainID, schema.NodeTypeName, tenantID, err)
 	}
 }
 
@@ -74,7 +107,10 @@ func mustCreateRelType(service *ontology.Service, actor access.Identity, tenantI
 		RequiredProps: schema.RequiredProps,
 		OptionalProps: schema.OptionalProps,
 	}); err != nil {
-		log.Printf("bootstrap rel type %s.%s: %v", schema.DomainID, schema.RelTypeName, err)
+		if isAlreadyExists(err) {
+			return
+		}
+		log.Printf("bootstrap rel type %s.%s tenant=%s: %v", schema.DomainID, schema.RelTypeName, tenantID, err)
 	}
 }
 
@@ -86,11 +122,14 @@ func mustCreateQueryTemplate(service *ontology.Service, actor access.Identity, t
 		ReturnFields: template.ReturnFields,
 		Description:  template.Description,
 	}); err != nil {
-		log.Printf("bootstrap template %s.%s: %v", template.DomainID, template.TemplateName, err)
+		if isAlreadyExists(err) {
+			return
+		}
+		log.Printf("bootstrap template %s.%s tenant=%s: %v", template.DomainID, template.TemplateName, tenantID, err)
 		return
 	}
 	if _, err := service.ActivateQueryTemplate(actor, tenantID, template.DomainID, template.TemplateName); err != nil {
-		log.Printf("bootstrap activate template %s.%s: %v", template.DomainID, template.TemplateName, err)
+		log.Printf("bootstrap activate template %s.%s tenant=%s: %v", template.DomainID, template.TemplateName, tenantID, err)
 	}
 }
 
@@ -103,14 +142,21 @@ func mustUpsertStatusFieldConfig(service *ontology.Service, actor access.Identit
 		AuthorityFieldName:  cfg.AuthorityFieldName,
 		AuthorityValuesMap:  cfg.AuthorityValuesMap,
 	}); err != nil {
-		log.Printf("bootstrap status config %s: %v", cfg.DomainID, err)
+		log.Printf("bootstrap status config %s tenant=%s: %v", cfg.DomainID, tenantID, err)
 	}
 }
 
 func mustSeedQueryStrategy(service *ontology.Service, strategy ontology.QueryStrategy) {
 	if _, err := service.UpsertQueryStrategy(access.Identity{TenantID: access.PlatformTenantID, AppType: "admin_tool"}, access.PlatformTenantID, strategy); err != nil {
-		if !strings.Contains(err.Error(), "forbidden") {
-			log.Printf("bootstrap query strategy %s: %v", strategy.Key, err)
+		if errors.Is(err, ontology.ErrForbidden) {
+			return
 		}
+		log.Printf("bootstrap query strategy %s: %v", strategy.Key, err)
 	}
+}
+
+// isAlreadyExists reports whether err is a "validation: ... already exists" error.
+// These are safe to ignore on restart since the seed data is idempotent.
+func isAlreadyExists(err error) bool {
+	return errors.Is(err, ontology.ErrValidation) && strings.Contains(err.Error(), "already exists")
 }

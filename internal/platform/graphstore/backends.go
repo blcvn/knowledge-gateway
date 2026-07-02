@@ -27,6 +27,54 @@ func (a delegatedGraphAdapter) DeleteRelationship(ctx context.Context, relID str
 	return a.delegate.DeleteRelationship(ctx, relID)
 }
 
+func (a delegatedGraphAdapter) UpsertNodesBatch(ctx context.Context, nodes []GraphNode) error {
+	if batch, ok := a.delegate.(BatchGraphAdapter); ok {
+		return batch.UpsertNodesBatch(ctx, nodes)
+	}
+	for _, node := range nodes {
+		if err := a.delegate.UpsertNode(ctx, node); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a delegatedGraphAdapter) DeleteNodesBatch(ctx context.Context, nodes []GraphNode) error {
+	if batch, ok := a.delegate.(BatchGraphAdapter); ok {
+		return batch.DeleteNodesBatch(ctx, nodes)
+	}
+	for _, node := range nodes {
+		if err := a.delegate.DeleteNode(ctx, node.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a delegatedGraphAdapter) UpsertRelationshipsBatch(ctx context.Context, rels []GraphRelationship) error {
+	if batch, ok := a.delegate.(BatchGraphAdapter); ok {
+		return batch.UpsertRelationshipsBatch(ctx, rels)
+	}
+	for _, rel := range rels {
+		if err := a.delegate.UpsertRelationship(ctx, rel); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a delegatedGraphAdapter) DeleteRelationshipsBatch(ctx context.Context, rels []GraphRelationship) error {
+	if batch, ok := a.delegate.(BatchGraphAdapter); ok {
+		return batch.DeleteRelationshipsBatch(ctx, rels)
+	}
+	for _, rel := range rels {
+		if err := a.delegate.DeleteRelationship(ctx, rel.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a delegatedGraphAdapter) ExecuteQuery(ctx context.Context, query GraphQuery, params map[string]any) ([]map[string]any, error) {
 	return a.delegate.ExecuteQuery(ctx, query, params)
 }
@@ -49,7 +97,12 @@ type MemgraphGraphAdapter struct {
 }
 
 func NewMemgraphGraphAdapter(cfg CypherConfig) *MemgraphGraphAdapter {
-	delegate := GraphAdapter(NewNeo4jGraphAdapter(cfg))
+	// Memgraph community mode does not rely on Neo4j-style named databases.
+	// Keep the endpoint, but always use the default graph context so writes
+	// land in the same place manual mgconsole checks can read from.
+	delegate := GraphAdapter(NewNeo4jGraphAdapter(CypherConfig{
+		Endpoint: cfg.Endpoint,
+	}))
 	return &MemgraphGraphAdapter{delegatedGraphAdapter: delegatedGraphAdapter{delegate: delegate}, Endpoint: cfg.Endpoint}
 }
 

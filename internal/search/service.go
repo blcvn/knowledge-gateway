@@ -14,6 +14,7 @@ import (
 	"kg-service/internal/platform/fts"
 	"kg-service/internal/platform/vector"
 	"kg-service/internal/platform/vectorstore"
+	"kg-service/internal/write"
 )
 
 var (
@@ -175,7 +176,7 @@ func (s *Service) FullTextSearch(actor access.Identity, req FullTextSearchReques
 	if err != nil {
 		return FullTextSearchResponse{}, err
 	}
-	searchResults := materializeFTSResults(results, scope)
+	searchResults := materializeFTSResults(results, scope, s.sourceNodesByIDs(ftsResultNodeIDs(results)))
 	if len(searchResults) > req.TopK {
 		searchResults = searchResults[:req.TopK]
 	}
@@ -245,7 +246,7 @@ func (s *Service) HybridSearch(actor access.Identity, req HybridSearchRequest) (
 		return HybridSearchResponse{}, ftsErr
 	}
 
-	results := fuseHybridResults(semanticResults, materializeFTSResults(ftsResults, scope), req.SemanticWeight, req.TopK)
+	results := fuseHybridResults(semanticResults, materializeFTSResults(ftsResults, scope, s.sourceNodesByIDs(ftsResultNodeIDs(ftsResults))), req.SemanticWeight, req.TopK)
 	s.recordAudit(actor, "search", "hybrid_search", strings.Join(req.DomainIDs, ","), "allow", "", map[string]any{
 		"result_count": len(results),
 	})
@@ -286,15 +287,31 @@ func (s *Service) searchWithVectorAdapter(actor access.Identity, req SemanticSea
 	}, vectorstore.ANNOptions{
 		TopK:       req.TopK,
 		FilterMode: vectorFilterMode(resolved),
-		IndexHint:   vectorIndexHint(resolved),
-		EfSearch:    vectorEfSearch(resolved),
+		IndexHint:  vectorIndexHint(resolved),
+		EfSearch:   vectorEfSearch(resolved),
 	})
 	if err != nil {
 		return nil, err
 	}
+	sourceIDs := make([]string, 0, len(results))
+	seenIDs := map[string]struct{}{}
+	for _, result := range results {
+		if result.Document.NodeID == "" {
+			continue
+		}
+		if _, ok := seenIDs[result.Document.NodeID]; ok {
+			continue
+		}
+		seenIDs[result.Document.NodeID] = struct{}{}
+		sourceIDs = append(sourceIDs, result.Document.NodeID)
+	}
+	sourceNodes := s.sourceNodesByIDs(sourceIDs)
 	searchResults := make([]SearchResult, 0, len(results))
 	for _, result := range results {
 		doc := result.Document
+		if node, ok := sourceNodes[doc.NodeID]; ok {
+			doc = hydrateVectorDocumentFromSource(doc, node)
+		}
 		cfg := scope.statusConfigs[doc.DomainID]
 		if len(scope.domainSet) > 0 {
 			if _, ok := scope.domainSet[doc.DomainID]; !ok {
@@ -323,7 +340,11 @@ func (s *Service) searchWithVectorAdapter(actor access.Identity, req SemanticSea
 				CreatedAt:      time.Time{},
 			})
 		} else {
-			content = vectorDocumentContent(doc)
+			if node, ok := sourceNodes[doc.NodeID]; ok {
+				content = nodeContent(node)
+			} else {
+				content = vectorDocumentContent(doc)
+			}
 		}
 		searchResults = append(searchResults, SearchResult{
 			NodeID:         doc.NodeID,
@@ -362,7 +383,7 @@ func (s *Service) fullTextSearchWithScope(req FullTextSearchRequest, scope searc
 	}, fts.SearchOptions{TopK: req.TopK})
 }
 
-func materializeFTSResults(results []fts.FTSResult, scope searchScope) []SearchResult {
+func materializeFTSResults(results []fts.FTSResult, scope searchScope, sourceNodes map[string]write.NodeRecord) []SearchResult {
 	searchResults := make([]SearchResult, 0, len(results))
 	for _, result := range results {
 		doc := result.Document
@@ -377,6 +398,9 @@ func materializeFTSResults(results []fts.FTSResult, scope searchScope) []SearchR
 		}
 		if scope.allHaveStatus && cfg != nil && doc.StatusValue != "" && !slices.Contains(cfg.ValidStatusValues, doc.StatusValue) {
 			continue
+		}
+		if node, ok := sourceNodes[doc.NodeID]; ok {
+			doc = hydrateFTSDocumentFromSource(doc, node)
 		}
 		searchResults = append(searchResults, SearchResult{
 			NodeID:         doc.NodeID,
@@ -638,6 +662,64 @@ func (s *Service) resolveProfileForSearch(actor access.Identity, domainIDs []str
 	return ontology.ResolvedSearchProfile{}, nil
 }
 
+type sourceNodeBatchReader interface {
+	GetNodesByIDs(ids []string) map[string]write.NodeRecord
+}
+
+func (s *Service) sourceNodesByIDs(ids []string) map[string]write.NodeRecord {
+	if s == nil || s.store == nil {
+		return map[string]write.NodeRecord{}
+	}
+	reader, ok := s.store.(sourceNodeBatchReader)
+	if !ok || reader == nil {
+		return map[string]write.NodeRecord{}
+	}
+	if len(ids) == 0 {
+		return map[string]write.NodeRecord{}
+	}
+	return reader.GetNodesByIDs(ids)
+}
+
+func ftsResultNodeIDs(results []fts.FTSResult) []string {
+	ids := make([]string, 0, len(results))
+	seen := map[string]struct{}{}
+	for _, result := range results {
+		if result.Document.NodeID == "" {
+			continue
+		}
+		if _, ok := seen[result.Document.NodeID]; ok {
+			continue
+		}
+		seen[result.Document.NodeID] = struct{}{}
+		ids = append(ids, result.Document.NodeID)
+	}
+	return ids
+}
+
+func hydrateVectorDocumentFromSource(doc vectorstore.VectorDocument, node write.NodeRecord) vectorstore.VectorDocument {
+	doc.NodeType = node.NodeType
+	doc.DomainID = node.DomainID
+	doc.OwnerTenantID = node.OwnerTenantID
+	doc.OwnerAppID = node.OwnerAppID
+	doc.ACLVisibleTo = nodeACLVisibleTo(node)
+	doc.IsDeleted = node.IsDeleted
+	doc.StatusValue = node.StatusValue
+	doc.DomainProps = cloneMap(node.Properties)
+	return doc
+}
+
+func hydrateFTSDocumentFromSource(doc fts.FTSDocument, node write.NodeRecord) fts.FTSDocument {
+	doc.NodeType = node.NodeType
+	doc.DomainID = node.DomainID
+	doc.OwnerTenantID = node.OwnerTenantID
+	doc.OwnerAppID = node.OwnerAppID
+	doc.ACLVisibleTo = nodeACLVisibleTo(node)
+	doc.IsDeleted = node.IsDeleted
+	doc.StatusValue = node.StatusValue
+	doc.DomainProps = cloneMap(node.Properties)
+	return doc
+}
+
 func (s *Service) embeddingForSearch(actor access.Identity, domainIDs []string, query string) ([]float64, error) {
 	router := s.embedding
 	if router == nil {
@@ -690,4 +772,15 @@ func authorityScoreForFTS(doc fts.FTSDocument, cfg *ontology.StatusFieldConfig) 
 		return nil
 	}
 	return &score
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	if in == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${repo_root}"
+mkdir -p "${repo_root}/codegraph-sync/bin"
+go build -o "${repo_root}/codegraph-sync/bin/codegraph-sync" ./codegraph-sync/cmd/codegraph-sync

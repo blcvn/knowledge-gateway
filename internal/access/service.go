@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"kg-service/internal/identity"
 	"kg-service/internal/platform/rediscache"
 )
 
@@ -510,7 +511,7 @@ func appToResponse(app App, apiKey string) AppResponse {
 }
 
 func newID(prefix string) string {
-	return prefix + "_" + time.Now().UTC().Format("20060102150405.000000000")
+	return identity.NewUUID()
 }
 
 func (s *Service) recordAudit(actor Identity, entry AuditLogEntry) {

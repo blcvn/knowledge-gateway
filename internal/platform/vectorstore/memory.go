@@ -20,6 +20,9 @@ func NewInMemoryVectorAdapter() *InMemoryVectorAdapter {
 func (a *InMemoryVectorAdapter) Upsert(_ context.Context, doc VectorDocument) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if existing, ok := a.docs[doc.NodeID]; ok && existing.SyncVersion > doc.SyncVersion {
+		return nil
+	}
 	if doc.DomainProps == nil {
 		doc.DomainProps = map[string]any{}
 	}
@@ -28,10 +31,32 @@ func (a *InMemoryVectorAdapter) Upsert(_ context.Context, doc VectorDocument) er
 	return nil
 }
 
+func (a *InMemoryVectorAdapter) UpsertBatch(ctx context.Context, docs []VectorDocument) error {
+	for _, doc := range docs {
+		if err := a.Upsert(ctx, doc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a *InMemoryVectorAdapter) Delete(_ context.Context, nodeID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.docs, nodeID)
+	return nil
+}
+
+func (a *InMemoryVectorAdapter) DeleteBatch(ctx context.Context, docs []VectorDocument) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, doc := range docs {
+		existing, ok := a.docs[doc.NodeID]
+		if ok && existing.SyncVersion > doc.SyncVersion {
+			continue
+		}
+		delete(a.docs, doc.NodeID)
+	}
 	return nil
 }
 

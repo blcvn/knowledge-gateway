@@ -102,3 +102,21 @@ func TestNeo4jGraphAdapterExecuteQuery(t *testing.T) {
 		t.Fatalf("runner cypher = %q, want query execution", runner.cypher)
 	}
 }
+
+func TestMemgraphGraphAdapterIgnoresDatabaseConfig(t *testing.T) {
+	adapter := NewMemgraphGraphAdapter(CypherConfig{
+		Endpoint: "bolt://memgraph:7687",
+		Database: "kg",
+	})
+
+	neo4jAdapter, ok := adapter.delegatedGraphAdapter.delegate.(*Neo4jGraphAdapter)
+	if !ok {
+		t.Fatalf("delegate type = %T, want *Neo4jGraphAdapter", adapter.delegatedGraphAdapter.delegate)
+	}
+	if neo4jAdapter.Database != "" {
+		t.Fatalf("memgraph delegate database = %q, want empty", neo4jAdapter.Database)
+	}
+	if neo4jAdapter.Endpoint != "bolt://memgraph:7687" {
+		t.Fatalf("memgraph delegate endpoint = %q, want bolt://memgraph:7687", neo4jAdapter.Endpoint)
+	}
+}

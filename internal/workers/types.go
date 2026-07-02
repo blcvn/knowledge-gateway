@@ -98,9 +98,20 @@ func (s *VectorStore) SnapshotDocuments() map[string]VectorDocument {
 }
 
 type WorkerReport struct {
-	Processed  int
-	Failed     int
-	DeadLetter int
+	Processed    int
+	Failed       int
+	DeadLetter   int
+	BatchCount   int
+	SampleErrors []string // up to 3 representative errors per poll cycle
+}
+
+// recordError adds err to SampleErrors (capped at 3) to surface in the poll summary.
+// Not thread-safe; callers must hold any relevant lock before calling.
+func (r *WorkerReport) recordError(err error) {
+	if err == nil || len(r.SampleErrors) >= 3 {
+		return
+	}
+	r.SampleErrors = append(r.SampleErrors, err.Error())
 }
 
 type ReconciliationIssue struct {
@@ -119,15 +130,18 @@ const (
 )
 
 type EntitySyncStatus struct {
-	EntityID           string       `json:"entity_id"`
-	EntityKind         string       `json:"entity_kind"`
-	SourceVersion      int64        `json:"source_version"`
-	GraphVersion       int64        `json:"graph_version"`
-	GraphLagClass      SyncLagClass `json:"graph_lag_class"`
-	LastGraphSyncedAt  time.Time    `json:"last_graph_synced_at,omitempty"`
-	VectorVersion      int64        `json:"vector_version"`
-	VectorLagClass     SyncLagClass `json:"vector_lag_class"`
-	LastVectorSyncedAt time.Time    `json:"last_vector_synced_at,omitempty"`
+	EntityID                     string       `json:"entity_id"`
+	EntityKind                   string       `json:"entity_kind"`
+	SourceVersion                int64        `json:"source_version"`
+	GraphVersion                 int64        `json:"graph_version"`
+	GraphLagClass                SyncLagClass `json:"graph_lag_class"`
+	GraphProjectionReady         bool         `json:"graph_projection_ready,omitempty"`
+	GraphProjectionHeadVersion   int64        `json:"graph_projection_head_version,omitempty"`
+	GraphProjectionHeadVersionID string       `json:"graph_projection_head_version_id,omitempty"`
+	LastGraphSyncedAt            time.Time    `json:"last_graph_synced_at,omitempty"`
+	VectorVersion                int64        `json:"vector_version"`
+	VectorLagClass               SyncLagClass `json:"vector_lag_class"`
+	LastVectorSyncedAt           time.Time    `json:"last_vector_synced_at,omitempty"`
 }
 
 type ReconciliationReport struct {
