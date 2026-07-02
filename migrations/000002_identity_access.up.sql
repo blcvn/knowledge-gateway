@@ -69,8 +69,11 @@ CREATE INDEX idx_grant_scope
     ON access_grants(scope_type, scope_value)
     WHERE status = 'active';
 
+-- PostgreSQL requires all partition key columns to be included in any PRIMARY KEY
+-- on a partitioned table. We use (id, created_at) as the composite PK so that
+-- PARTITION BY RANGE (created_at) is satisfied.
 CREATE TABLE access_audit_log (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
     requester_tenant_id UUID NOT NULL,
     requester_app_id UUID NOT NULL,
     action TEXT NOT NULL
@@ -80,5 +83,6 @@ CREATE TABLE access_audit_log (
     allowed BOOLEAN NOT NULL,
     reason TEXT NOT NULL,
     request_id UUID,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id, created_at)
 ) PARTITION BY RANGE (created_at);

@@ -27,6 +27,10 @@ CREATE INDEX idx_kg_vector_documents_domain
 CREATE INDEX idx_kg_vector_documents_owner
     ON kg_vector_documents(owner_tenant_id, owner_app_id);
 
-CREATE INDEX idx_kg_vector_documents_embedding_hnsw
-    ON kg_vector_documents
-    USING hnsw (embedding vector_cosine_ops);
+-- NOTE: An HNSW index requires a fixed dimension, e.g. vector(1536).
+-- The embedding dimension depends on the configured provider (deterministic=8,
+-- OpenAI=1536, etc.). Add the HNSW index manually after setting VECTOR_ADAPTER
+-- and confirming the dimension, for example:
+--   ALTER TABLE kg_vector_documents ALTER COLUMN embedding TYPE vector(1536);
+--   CREATE INDEX idx_kg_vector_documents_embedding_hnsw
+--       ON kg_vector_documents USING hnsw (embedding vector_cosine_ops);

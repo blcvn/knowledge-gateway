@@ -1,10 +1,12 @@
 package bootstrap
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"kg-service/internal/access"
 	"kg-service/internal/config"
@@ -20,6 +22,7 @@ import (
 	"kg-service/internal/platform/vectorstore"
 	"kg-service/internal/read"
 	"kg-service/internal/search"
+	"kg-service/internal/workers"
 	"kg-service/internal/write"
 )
 
@@ -45,6 +48,7 @@ type App struct {
 	graphAdapter    graphstore.GraphAdapter
 	ftsAdapter      fts.FTSAdapter
 	searchResolver  ontology.SearchProfileResolver
+	runtime         *workers.Runtime
 }
 
 func New(cfg config.Config) (*App, error) {
@@ -80,6 +84,34 @@ func New(cfg config.Config) (*App, error) {
 
 func (a *App) Handler() http.Handler {
 	return a.httpMux
+}
+
+// Start launches the background outbox-polling worker when enabled by config.
+// It respects ctx cancellation for graceful shutdown — call this after
+// constructing the App and before serving HTTP traffic.
+func (a *App) Start(ctx context.Context) {
+	if !a.config.Worker.Enabled || a.runtime == nil {
+		log.Printf("worker: disabled (KG_WORKER_ENABLED=false)")
+		return
+	}
+	interval := time.Duration(a.config.Worker.PollIntervalMs) * time.Millisecond
+	if interval <= 0 {
+		interval = 500 * time.Millisecond
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		log.Printf("worker: polling started (interval=%v)", interval)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("worker: polling stopped")
+				return
+			case <-ticker.C:
+				a.runtime.PollOnce()
+			}
+		}
+	}()
 }
 
 func (a *App) routes() {
@@ -190,6 +222,16 @@ func (a *App) initAccess() error {
 	searchService.SetVectorAdapter(a.vectorAdapter)
 	searchService.SetFTSAdapter(a.ftsAdapter)
 	searchService.SetSearchProfileResolver(a.searchResolver)
+
+	// Wire the outbox-polling worker with the SAME adapters used by the search
+	// service so that written nodes are immediately searchable.
+	runtime := workers.NewRuntime(writeRepo, ontologyService, &a.redis)
+	runtime.SetEmbeddingRouter(a.embeddingRouter)
+	runtime.SetVectorAdapter(a.vectorAdapter)
+	runtime.SetFTSAdapter(a.ftsAdapter)
+	runtime.SetGraphAdapter(a.graphAdapter)
+	runtime.SetSearchProfileResolver(a.searchResolver)
+	a.runtime = runtime
 	integrityService := integrity.NewService(writeRepo, ontologyStore)
 	mcpService := mcp.NewService(readService, searchService, writeService, ontologyService, accessResolver, integrityService)
 

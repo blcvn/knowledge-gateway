@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: kg-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kg_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    # No host port binding — only accessible inside the compose network
+    volumes:
+      - kg-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kg_service"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: kg-redis-dev
+    restart: unless-stopped
+    # No host port binding — only accessible inside the compose network
+    volumes:
+      - kg-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # migrations/ is synced from local by Makefile deploy target
+      - ./migrations:/migrations:ro
+    command:
+      [
+        "-path", "/migrations",
+        "-database", "postgres://postgres:postgres@postgres:5432/kg_service?sslmode=disable",
+        "up"
+      ]
+
+  kg-service:
+    # Use a minimal base image — binary is mounted from ./bin/kg-service (synced from local)
+    image: alpine:3.19
+    container_name: kg-service-dev
+    restart: unless-stopped
+    entrypoint: ["/app/kg-service"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./bin/kg-service:/app/kg-service:ro
+    env_file:
+      - .env
+    environment:
+      KG_HTTP_HOST: 0.0.0.0
+      KG_HTTP_PORT: 8082
+      KG_POSTGRES_HOST: postgres
+      KG_POSTGRES_PORT: 5432
+      KG_POSTGRES_USER: postgres
+      KG_POSTGRES_PASSWORD: postgres
+      KG_POSTGRES_DATABASE: kg_service
+      KG_POSTGRES_SSLMODE: disable
+      KG_REDIS_HOST: redis
+      KG_REDIS_PORT: 6379
+      KG_REDIS_DB: 0
+    ports:
+      - "18082:8082"
+
+volumes:
+  kg-postgres-data:
+  kg-redis-data:

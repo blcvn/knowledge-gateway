@@ -92,6 +92,51 @@ func (r *Runtime) FTSAdapter() fts.FTSAdapter {
 	return r.ftsAdapter
 }
 
+// SetEmbeddingRouter replaces the embedding router used when projecting nodes.
+// Call before starting the worker.
+func (r *Runtime) SetEmbeddingRouter(router vector.EmbeddingRouter) {
+	if router == nil {
+		return
+	}
+	r.embedding = router
+}
+
+// SetVectorAdapter replaces the vector adapter. Pass the same instance used by
+// the search service so that written nodes are immediately queryable.
+func (r *Runtime) SetVectorAdapter(adapter vectorstore.VectorAdapter) {
+	if adapter == nil {
+		return
+	}
+	r.vectorAdapter = adapter
+}
+
+// SetFTSAdapter replaces the full-text-search adapter. Pass the same instance
+// used by the search service.
+func (r *Runtime) SetFTSAdapter(adapter fts.FTSAdapter) {
+	if adapter == nil {
+		return
+	}
+	r.ftsAdapter = adapter
+}
+
+// SetGraphAdapter replaces the graph adapter used when projecting nodes and
+// relationships.
+func (r *Runtime) SetGraphAdapter(adapter graphstore.GraphAdapter) {
+	if adapter == nil {
+		return
+	}
+	r.graphAdapter = adapter
+}
+
+// SetSearchProfileResolver replaces the search profile resolver used to build
+// domain-specific embedding texts.
+func (r *Runtime) SetSearchProfileResolver(resolver ontology.SearchProfileResolver) {
+	if resolver == nil {
+		return
+	}
+	r.profiles = resolver
+}
+
 func (r *Runtime) PollOnce() WorkerReport {
 	r.mu.Lock()
 	defer r.mu.Unlock()

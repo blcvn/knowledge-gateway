@@ -12,31 +12,86 @@ import (
 	"kg-service/internal/platform/vectorstore"
 )
 
+// buildEmbeddingRouter constructs an EmbeddingRouter from config.
+//
+//   - No routes configured  →  DirectRouter (single provider for all tenants/domains)
+//   - Routes configured     →  RoutingRouter (per-tenant or per-domain overrides)
+//
+// The default provider is always wrapped in the middleware chain
+// (cache → retry → optional proxy). Route overrides inherit retry but
+// run their own provider.
 func buildEmbeddingRouter(cfg config.Config) (vector.EmbeddingRouter, error) {
-	var provider vector.EmbeddingProvider
-	switch cfg.Embedding.Provider {
-	case "", "deterministic":
-		provider = vector.NewDeterministicProvider(8)
-	case "http":
-		provider = vector.HTTPEmbeddingProvider{
-			URL:     cfg.Embedding.URL,
-			Model:   cfg.Embedding.Model,
-			APIKey:  cfg.Embedding.APIKey,
-			Timeout: 30 * time.Second,
-		}
-	default:
-		return nil, fmt.Errorf("unsupported embedding provider: %s", cfg.Embedding.Provider)
+	defaultProvider, err := buildEmbeddingProvider(cfg.Embedding.Provider, cfg.Embedding.URL, cfg.Embedding.Model, cfg.Embedding.APIKey, cfg.Embedding.Dimensions)
+	if err != nil {
+		return nil, err
+	}
+	defaultChain := applyEmbeddingMiddleware(defaultProvider, cfg.Embedding)
+
+	// No per-tenant/domain overrides → use fast DirectRouter.
+	if len(cfg.Embedding.TenantRoutes) == 0 && len(cfg.Embedding.DomainRoutes) == 0 {
+		return vector.DirectRouter{Provider: defaultChain}, nil
 	}
 
-	var chain vector.EmbeddingProvider = provider
-	if cfg.Embedding.ProxyURL != "" {
-		chain = vector.ProxyHTTPProvider{Inner: chain, ProxyURL: cfg.Embedding.ProxyURL}
+	// Build RoutingRouter with per-tenant and per-domain provider overrides.
+	router := vector.RoutingRouter{
+		Default: defaultChain,
+		Tenants: make(map[string]vector.EmbeddingProvider, len(cfg.Embedding.TenantRoutes)),
+		Domains: make(map[string]vector.EmbeddingProvider, len(cfg.Embedding.DomainRoutes)),
+	}
+	for tenantID, route := range cfg.Embedding.TenantRoutes {
+		p, err := buildEmbeddingProvider(route.Provider, route.URL, route.Model, route.APIKey, route.Dimensions)
+		if err != nil {
+			return nil, fmt.Errorf("tenant route %q: %w", tenantID, err)
+		}
+		router.Tenants[tenantID] = applyEmbeddingMiddleware(p, cfg.Embedding)
+	}
+	for domainID, route := range cfg.Embedding.DomainRoutes {
+		p, err := buildEmbeddingProvider(route.Provider, route.URL, route.Model, route.APIKey, route.Dimensions)
+		if err != nil {
+			return nil, fmt.Errorf("domain route %q: %w", domainID, err)
+		}
+		router.Domains[domainID] = applyEmbeddingMiddleware(p, cfg.Embedding)
+	}
+	return router, nil
+}
+
+// buildEmbeddingProvider creates the leaf provider (no middleware).
+func buildEmbeddingProvider(provider, url, model, apiKey string, dimensions int) (vector.EmbeddingProvider, error) {
+	switch provider {
+	case "", "deterministic":
+		dims := dimensions
+		if dims <= 0 {
+			dims = 8
+		}
+		return vector.NewDeterministicProvider(dims), nil
+	case "http":
+		return vector.HTTPEmbeddingProvider{
+			URL:     url,
+			Model:   model,
+			APIKey:  apiKey,
+			Timeout: 30 * time.Second,
+			Dims:    dimensions,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported embedding provider: %s", provider)
+	}
+}
+
+// applyEmbeddingMiddleware wraps a leaf provider in the middleware chain:
+//
+//	[CachingProvider →] RetryProvider [→ ProxyHTTPProvider]
+//
+// Cache and proxy are applied only when configured.
+func applyEmbeddingMiddleware(inner vector.EmbeddingProvider, cfg config.EmbeddingConfig) vector.EmbeddingProvider {
+	var chain vector.EmbeddingProvider = inner
+	if cfg.ProxyURL != "" {
+		chain = vector.ProxyHTTPProvider{Inner: chain, ProxyURL: cfg.ProxyURL}
 	}
 	chain = &vector.RetryProvider{Inner: chain, MaxAttempts: 3}
-	if cfg.Embedding.CacheTTL > 0 {
-		chain = &vector.CachingProvider{Inner: chain, TTL: cfg.Embedding.CacheTTL}
+	if cfg.CacheTTL > 0 {
+		chain = &vector.CachingProvider{Inner: chain, TTL: cfg.CacheTTL}
 	}
-	return vector.DirectRouter{Provider: chain}, nil
+	return chain
 }
 
 func embeddingChain(cfg config.Config) []string {
@@ -53,6 +108,12 @@ func embeddingChain(cfg config.Config) []string {
 		labels = append(labels, "deterministic")
 	case "http":
 		labels = append(labels, "http")
+	}
+	if len(cfg.Embedding.TenantRoutes) > 0 {
+		labels = append(labels, fmt.Sprintf("+%d tenant-routes", len(cfg.Embedding.TenantRoutes)))
+	}
+	if len(cfg.Embedding.DomainRoutes) > 0 {
+		labels = append(labels, fmt.Sprintf("+%d domain-routes", len(cfg.Embedding.DomainRoutes)))
 	}
 	return labels
 }

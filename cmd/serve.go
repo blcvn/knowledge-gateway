@@ -36,6 +36,9 @@ var serveCmd = &Command{
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
 
+		// Start background workers (outbox polling for vector/FTS/graph projection).
+		// The context cancellation will stop the worker on shutdown.
+		app.Start(ctx)
 		go func() {
 			<-ctx.Done()
 

@@ -27,12 +27,15 @@ func Load() (Config, error) {
 			DB:       intEnv("KG_REDIS_DB", 0),
 		},
 		Embedding: EmbeddingConfig{
-			Provider: stringEnv("EMBEDDING_PROVIDER", "deterministic"),
-			URL:      stringEnv("EMBEDDING_URL", ""),
-			Model:    stringEnv("EMBEDDING_MODEL", ""),
-			APIKey:   stringEnv("EMBEDDING_API_KEY", ""),
-			ProxyURL: stringEnv("EMBEDDING_PROXY_URL", ""),
-			CacheTTL: time.Duration(intEnv("EMBEDDING_CACHE_TTL_S", 0)) * time.Second,
+			Provider:     stringEnv("EMBEDDING_PROVIDER", "deterministic"),
+			URL:          stringEnv("EMBEDDING_URL", ""),
+			Model:        stringEnv("EMBEDDING_MODEL", ""),
+			APIKey:       stringEnv("EMBEDDING_API_KEY", ""),
+			ProxyURL:     stringEnv("EMBEDDING_PROXY_URL", ""),
+			CacheTTL:     time.Duration(intEnv("EMBEDDING_CACHE_TTL_S", 0)) * time.Second,
+			Dimensions:   intEnv("EMBEDDING_DIMENSIONS", 0),
+			TenantRoutes: jsonMapEnv[EmbeddingRoute]("EMBEDDING_TENANT_ROUTES"),
+			DomainRoutes: jsonMapEnv[EmbeddingRoute]("EMBEDDING_DOMAIN_ROUTES"),
 		},
 		Vector: AdapterConfig{
 			Kind:       stringEnv("VECTOR_ADAPTER", "memory"),
@@ -45,6 +48,10 @@ func Load() (Config, error) {
 			Database: stringEnv("KG_GRAPH_DATABASE", ""),
 		},
 		FTS: AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
+		Worker: WorkerConfig{
+			Enabled:        boolEnv("KG_WORKER_ENABLED", true),
+			PollIntervalMs: intEnv("KG_WORKER_POLL_INTERVAL_MS", 500),
+		},
 	}
 
 	return cfg, cfg.Validate()

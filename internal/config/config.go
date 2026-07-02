@@ -13,6 +13,7 @@ type Config struct {
 	Vector    AdapterConfig
 	Graph     AdapterConfig
 	FTS       AdapterConfig
+	Worker    WorkerConfig
 }
 
 type HTTPConfig struct {
@@ -67,6 +68,26 @@ type EmbeddingConfig struct {
 	APIKey   string
 	ProxyURL string
 	CacheTTL time.Duration
+	// Dimensions is the vector dimension returned by the configured provider.
+	// Required when using VECTOR_ADAPTER=pgvector and HNSW indexing.
+	// Set via EMBEDDING_DIMENSIONS (default 0 = inferred from response).
+	Dimensions int
+	// TenantRoutes maps tenant IDs to per-tenant provider overrides.
+	// Set via EMBEDDING_TENANT_ROUTES (JSON: {"tenant-id": EmbeddingRoute}).
+	TenantRoutes map[string]EmbeddingRoute
+	// DomainRoutes maps domain IDs to per-domain provider overrides.
+	// Set via EMBEDDING_DOMAIN_ROUTES (JSON: {"domain-id": EmbeddingRoute}).
+	DomainRoutes map[string]EmbeddingRoute
+}
+
+// EmbeddingRoute configures a per-tenant or per-domain embedding provider
+// override used by RoutingRouter. Fields mirror EmbeddingConfig.
+type EmbeddingRoute struct {
+	Provider   string `json:"provider"`
+	URL        string `json:"url"`
+	Model      string `json:"model"`
+	APIKey     string `json:"api_key"`
+	Dimensions int    `json:"dimensions"`
 }
 
 type AdapterConfig struct {
@@ -74,4 +95,14 @@ type AdapterConfig struct {
 	Endpoint   string
 	Database   string
 	Collection string
+}
+
+// WorkerConfig controls the background outbox-polling worker that projects
+// write events into the vector, graph, and FTS adapters.
+type WorkerConfig struct {
+	// Enabled turns the worker on or off (KG_WORKER_ENABLED, default true).
+	Enabled bool
+	// PollIntervalMs is how often the worker polls the outbox in milliseconds
+	// (KG_WORKER_POLL_INTERVAL_MS, default 500).
+	PollIntervalMs int
 }

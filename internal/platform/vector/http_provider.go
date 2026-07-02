@@ -18,9 +18,13 @@ type HTTPEmbeddingProvider struct {
 	APIKey     string
 	Timeout    time.Duration
 	HTTPClient *http.Client
+	// Dims is the expected vector dimension for this provider.
+	// Set via EMBEDDING_DIMENSIONS. 0 means the dimension is inferred
+	// from the provider's response (works with unbounded vector columns).
+	Dims int
 }
 
-func (p HTTPEmbeddingProvider) Dimensions() int { return 0 }
+func (p HTTPEmbeddingProvider) Dimensions() int { return p.Dims }
 
 func (p HTTPEmbeddingProvider) ModelID() string { return p.Model }
 
