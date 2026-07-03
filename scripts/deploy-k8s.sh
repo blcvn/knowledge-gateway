@@ -72,6 +72,7 @@ sed \
   -e "s|__KG_RUNTIME_PROFILE__|$(escape_sed_replacement "${KG_RUNTIME_PROFILE}")|g" \
   -e "s|__KG_GRAPH_ADAPTER__|$(escape_sed_replacement "${GRAPH_ADAPTER}")|g" \
   -e "s|__KG_GRAPH_ENDPOINT__|$(escape_sed_replacement "${KG_GRAPH_ENDPOINT:-}")|g" \
+  -e "s|__KG_GRAPH_DATABASE__|$(escape_sed_replacement "${KG_GRAPH_DATABASE:-}")|g" \
   -e "s|__KG_VECTOR_ADAPTER__|$(escape_sed_replacement "${VECTOR_ADAPTER}")|g" \
   -e "s|__KG_VECTOR_ENDPOINT__|$(escape_sed_replacement "${KG_VECTOR_ENDPOINT:-}")|g" \
   -e "s|__KG_VECTOR_COLLECTION__|$(escape_sed_replacement "${KG_VECTOR_COLLECTION:-kg_vectors}")|g" \

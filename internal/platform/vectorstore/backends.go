@@ -42,6 +42,30 @@ func (a delegatedVectorAdapter) ReadSyncVersion(ctx context.Context, entityID st
 	return a.delegate.ReadSyncVersion(ctx, entityID)
 }
 
+func (a delegatedVectorAdapter) UpsertBatch(ctx context.Context, docs []VectorDocument) error {
+	if batch, ok := a.delegate.(BatchVectorAdapter); ok {
+		return batch.UpsertBatch(ctx, docs)
+	}
+	for _, doc := range docs {
+		if err := a.delegate.Upsert(ctx, doc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a delegatedVectorAdapter) DeleteBatch(ctx context.Context, docs []VectorDocument) error {
+	if batch, ok := a.delegate.(BatchVectorAdapter); ok {
+		return batch.DeleteBatch(ctx, docs)
+	}
+	for _, doc := range docs {
+		if err := a.delegate.Delete(ctx, doc.NodeID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type QdrantVectorAdapter struct {
 	Client     *http.Client
 	Endpoint   string
@@ -86,7 +110,53 @@ func (a *QdrantVectorAdapter) Upsert(ctx context.Context, doc VectorDocument) er
 			},
 		},
 	}
-	return a.do(ctx, http.MethodPut, a.pointsPath(), body, nil)
+	if err := a.do(ctx, http.MethodPut, a.pointsPath(), body, nil); err != nil {
+		return fmt.Errorf(
+			"qdrant upsert node_id=%s type=%s domain=%s collection=%s dims=%d endpoint=%s: %w",
+			doc.NodeID,
+			doc.NodeType,
+			doc.DomainID,
+			a.Collection,
+			len(doc.Embedding),
+			a.Endpoint,
+			err,
+		)
+	}
+	return nil
+}
+
+func (a *QdrantVectorAdapter) UpsertBatch(ctx context.Context, docs []VectorDocument) error {
+	if a == nil || a.Client == nil || strings.TrimSpace(a.Endpoint) == "" || strings.TrimSpace(a.Collection) == "" {
+		return errors.New("qdrant vector adapter is not configured")
+	}
+	if len(docs) == 0 {
+		return nil
+	}
+	points := make([]map[string]any, 0, len(docs))
+	for _, doc := range docs {
+		points = append(points, map[string]any{
+			"id":     doc.NodeID,
+			"vector": doc.Embedding,
+			"payload": map[string]any{
+				"node_id":          doc.NodeID,
+				"node_type":        doc.NodeType,
+				"domain_id":        doc.DomainID,
+				"owner_tenant_id":  doc.OwnerTenantID,
+				"owner_app_id":     doc.OwnerAppID,
+				"acl_visible_to":   append([]string(nil), doc.ACLVisibleTo...),
+				"is_deleted":       doc.IsDeleted,
+				"status_value":     doc.StatusValue,
+				"authority_score":  doc.AuthorityScore,
+				"_kg_sync_version": doc.SyncVersion,
+				"domain_props":     cloneMap(doc.DomainProps),
+				"embedding":        append([]float64(nil), doc.Embedding...),
+			},
+		})
+	}
+	if err := a.do(ctx, http.MethodPut, a.pointsPath(), map[string]any{"points": points}, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *QdrantVectorAdapter) Delete(ctx context.Context, nodeID string) error {
@@ -96,7 +166,33 @@ func (a *QdrantVectorAdapter) Delete(ctx context.Context, nodeID string) error {
 	body := map[string]any{
 		"points": []string{nodeID},
 	}
-	return a.do(ctx, http.MethodPost, a.pointsDeletePath(), body, nil)
+	if err := a.do(ctx, http.MethodPost, a.pointsDeletePath(), body, nil); err != nil {
+		return fmt.Errorf(
+			"qdrant delete node_id=%s collection=%s endpoint=%s: %w",
+			nodeID,
+			a.Collection,
+			a.Endpoint,
+			err,
+		)
+	}
+	return nil
+}
+
+func (a *QdrantVectorAdapter) DeleteBatch(ctx context.Context, docs []VectorDocument) error {
+	if a == nil || a.Client == nil || strings.TrimSpace(a.Endpoint) == "" || strings.TrimSpace(a.Collection) == "" {
+		return errors.New("qdrant vector adapter is not configured")
+	}
+	if len(docs) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		ids = append(ids, doc.NodeID)
+	}
+	if err := a.do(ctx, http.MethodPost, a.pointsDeletePath(), map[string]any{"points": ids}, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *QdrantVectorAdapter) ANN(ctx context.Context, query []float64, filter VectorFilter, opts ANNOptions) ([]VectorResult, error) {
@@ -113,12 +209,19 @@ func (a *QdrantVectorAdapter) ANN(ctx context.Context, query []float64, filter V
 		"with_payload": true,
 		"with_vector":  true,
 	}
-	var points []qdrantPoint
-	if err := a.do(ctx, http.MethodPost, a.searchPath(), body, &points); err != nil {
-		return nil, err
+	var result qdrantSearchResult
+	if err := a.do(ctx, http.MethodPost, a.searchPath(), body, &result); err != nil {
+		return nil, fmt.Errorf(
+			"qdrant ann collection=%s endpoint=%s topk=%d dims=%d: %w",
+			a.Collection,
+			a.Endpoint,
+			opts.TopK,
+			len(query),
+			err,
+		)
 	}
-	results := make([]VectorResult, 0, len(points))
-	for _, point := range points {
+	results := make([]VectorResult, 0, len(result.Result))
+	for _, point := range result.Result {
 		doc := qdrantPointToDocument(point)
 		results = append(results, VectorResult{Document: doc, Score: point.Score})
 	}
@@ -143,7 +246,7 @@ func (a *QdrantVectorAdapter) Snapshot(ctx context.Context) ([]VectorDocument, e
 		}
 		result = qdrantScrollResult{}
 		if err := a.do(ctx, http.MethodPost, a.scrollPath(), body, &result); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("qdrant snapshot collection=%s endpoint=%s: %w", a.Collection, a.Endpoint, err)
 		}
 		for _, point := range result.Result.Points {
 			docs = append(docs, qdrantPointToDocument(point))
@@ -165,7 +268,7 @@ func (a *QdrantVectorAdapter) ReadSyncVersion(ctx context.Context, entityID stri
 		if errors.Is(err, errQdrantNotFound) {
 			return 0, nil
 		}
-		return 0, err
+		return 0, fmt.Errorf("qdrant read sync version node_id=%s collection=%s endpoint=%s: %w", entityID, a.Collection, a.Endpoint, err)
 	}
 	return qdrantPointToDocument(result.Result).SyncVersion, nil
 }
@@ -220,7 +323,7 @@ func (a *QdrantVectorAdapter) do(ctx context.Context, method, targetPath string,
 		return errQdrantNotFound
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("qdrant request failed: %s", resp.Status)
+		return fmt.Errorf("qdrant request failed method=%s path=%s status=%s", method, targetPath, resp.Status)
 	}
 	if dst == nil {
 		return nil
@@ -238,6 +341,10 @@ type qdrantPoint struct {
 
 type qdrantPointResponse struct {
 	Result qdrantPoint `json:"result"`
+}
+
+type qdrantSearchResult struct {
+	Result []qdrantPoint `json:"result"`
 }
 
 type qdrantScrollResult struct {

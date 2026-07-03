@@ -23,59 +23,97 @@ func stringEnv(key, fallback string) string {
 	return value
 }
 
-func intEnv(key string, fallback int) int {
+func intEnv(key string, fallback int) (int, error) {
 	value, ok := os.LookupEnv(key)
 	if !ok {
-		return fallback
+		return fallback, nil
 	}
 
-	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.Atoi(value)
 	if err != nil {
-		panic(fmt.Sprintf("invalid integer for %s: %v", key, err))
+		return fallback, fmt.Errorf("%s must be an integer: %w", key, err)
 	}
 
-	return parsed
+	return parsed, nil
 }
 
-func durationEnv(key string, fallback time.Duration) time.Duration {
+func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	value, ok := os.LookupEnv(key)
 	if !ok {
-		return fallback
+		return fallback, nil
 	}
 
-	parsed, err := time.ParseDuration(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := time.ParseDuration(value)
 	if err != nil {
-		panic(fmt.Sprintf("invalid duration for %s: %v", key, err))
+		return fallback, fmt.Errorf("%s must be a duration: %w", key, err)
 	}
 
-	return parsed
+	return parsed, nil
 }
 
-func boolEnv(key string, fallback bool) bool {
+func boolEnv(key string, fallback bool) (bool, error) {
 	value, ok := os.LookupEnv(key)
 	if !ok {
-		return fallback
+		return fallback, nil
 	}
 
-	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.ParseBool(value)
 	if err != nil {
-		panic(fmt.Sprintf("invalid boolean for %s: %v", key, err))
+		return fallback, fmt.Errorf("%s must be a boolean: %w", key, err)
 	}
 
-	return parsed
+	return parsed, nil
 }
 
-// jsonMapEnv parses a JSON object env var into map[string]T.
-// Returns nil when the variable is unset or empty.
-// Panics on invalid JSON to catch misconfiguration at startup.
-func jsonMapEnv[T any](key string) map[string]T {
+func floatEnv(key string, fallback float64) (float64, error) {
 	value, ok := os.LookupEnv(key)
-	if !ok || strings.TrimSpace(value) == "" {
-		return nil
+	if !ok {
+		return fallback, nil
 	}
-	var result map[string]T
-	if err := json.Unmarshal([]byte(strings.TrimSpace(value)), &result); err != nil {
-		panic(fmt.Sprintf("invalid JSON for %s: %v", key, err))
+
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback, nil
 	}
-	return result
+
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return fallback, fmt.Errorf("%s must be a float: %w", key, err)
+	}
+
+	return parsed, nil
+}
+
+func jsonMapEnv[T any](key string) (map[string]T, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return nil, nil
+	}
+
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+
+	var parsed map[string]T
+	if err := json.Unmarshal([]byte(value), &parsed); err != nil {
+		return nil, fmt.Errorf("%s must be a valid JSON object: %w", key, err)
+	}
+
+	return parsed, nil
 }

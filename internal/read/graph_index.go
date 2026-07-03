@@ -22,6 +22,7 @@ type ProjectionStore interface {
 type GraphIndex interface {
 	ExecuteTemplate(actor access.Identity, domainID string, compiled CompiledTemplate, bound map[string]any, visibility map[string]struct{}, statusCfg *ontology.StatusFieldConfig, maxRows int, queryTimeout time.Duration, now func() time.Time) ([]map[string]any, error)
 	GetNode(actor access.Identity, nodeID string, visibility map[string]struct{}) (NodeResponse, bool)
+	ReadSyncVersion(nodeID string) (int64, error)
 }
 
 type ProjectionGraphIndex struct {
@@ -87,6 +88,10 @@ func (i ProjectionGraphIndex) GetNode(actor access.Identity, nodeID string, visi
 	}
 	_ = actor
 	return NodeResponse{}, false
+}
+
+func (i ProjectionGraphIndex) ReadSyncVersion(nodeID string) (int64, error) {
+	return i.adapter.ReadSyncVersion(context.Background(), nodeID)
 }
 
 func visibleOwnerSet(owners []access.VisibleOwner) map[string]struct{} {

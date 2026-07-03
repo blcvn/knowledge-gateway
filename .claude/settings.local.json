@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go build *)"
+      "Bash(go build *)",
+      "Bash(mkdir -p /Users/anhdt/vnpay/knowledge/kg-service/openspec/changes/2026-06-19-sync-lag-and-version-guardrails/specs/sync-lag-guard)"
+    ],
+    "additionalDirectories": [
+      "/Users/anhdt/vnpay/knowledge/kg-service/openspec/changes/2026-06-19-sync-lag-and-version-guardrails/specs"
     ]
   }
 }

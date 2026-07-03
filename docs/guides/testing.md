@@ -60,7 +60,39 @@ This checks:
 - integrity
 - reconciliation
 
-## 4. Backend-Specific Tests
+## 4. CodeGraph Runtime Validation
+
+Use the dedicated Compose flow when you need to verify the `code-graph` ontology, sync, and query path together:
+
+```bash
+export EMBEDDING_PROVIDER=http
+export EMBEDDING_URL=https://genai.vnpay.vn/aigateway/embed/v1/embeddings
+export EMBEDDING_MODEL=v_search
+export EMBEDDING_API_KEY=replace-with-local-secret
+make validate-codegraph-runtime
+```
+
+This flow:
+
+- boots the dedicated Postgres + Memgraph + Qdrant Compose stack
+- sets Memgraph `vm.max_map_count` to at least `524288` so the graph backend can start cleanly on Docker Desktop
+- creates or reuses a tenant admin app for CodeGraph validation
+- waits for `GET /healthz`
+- bootstraps and verifies the `code-graph` ontology
+- runs the `examples/codegraph` bridge in dry-run and sync modes using upsert semantics
+- when the CodeGraph CLI is available, refreshes a dedicated probe symbol and verifies the same node advances to a newer sync version after an update
+- confirms get/list, hybrid search, full-text search, and template-backed queries work
+
+The endpoint and model values come from `tests/llm/embedding-vnp.txt`, but secrets must stay outside repo-owned files.
+
+For reruns, you can skip completed setup steps:
+
+```bash
+make validate-codegraph-runtime ARGS="--skip-compose"
+make validate-codegraph-runtime ARGS="--skip-compose --skip-sync"
+```
+
+## 5. Backend-Specific Tests
 
 Some backend checks are tag-gated or env-gated:
 
@@ -70,7 +102,7 @@ Some backend checks are tag-gated or env-gated:
 
 These are useful when changing adapter translation or conformance behavior.
 
-## 5. Tenant And App Test Setup
+## 6. Tenant And App Test Setup
 
 For integration tests that need a tenant-specific identity:
 
@@ -81,4 +113,3 @@ For integration tests that need a tenant-specific identity:
 5. Add grants before testing cross-tenant visibility.
 
 When a test writes or reads tenant-scoped data, always prefer a dedicated test tenant/app pair over reusing a shared key.
-

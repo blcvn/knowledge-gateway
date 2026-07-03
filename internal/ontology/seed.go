@@ -39,6 +39,16 @@ func SeedDomains() []Domain {
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		},
+		{
+			ID:            "noi_bo_hop_dong",
+			Name:          "Nội bộ Hợp đồng",
+			OwnerTenantID: "11111111-1111-1111-1111-111111111111",
+			Status:        "active",
+			Version:       1,
+			Visibility:    "private",
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		},
 	}
 }
 
@@ -48,6 +58,7 @@ func SeedVersions() []OntologyVersion {
 		{DomainID: "sample-registry", Version: 1, PublishedAt: now},
 		{DomainID: "sample-policy", Version: 1, PublishedAt: now},
 		{DomainID: "shared-domain", Version: 1, PublishedAt: now},
+		{DomainID: "noi_bo_hop_dong", Version: 1, PublishedAt: now},
 	}
 }
 

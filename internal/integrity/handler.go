@@ -36,6 +36,36 @@ func (h Handler) MissingBridges(w http.ResponseWriter, r *http.Request) {
 	respond.OK(w, respond.ListEnvelope[MissingBridgeItem]{Data: items})
 }
 
+func (h Handler) OrphanScan(w http.ResponseWriter, r *http.Request) {
+	identity, _ := access.IdentityFromContext(r.Context())
+	resp, err := h.service.OrphanScan(identity, r.PathValue("tenant_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, resp)
+}
+
+func (h Handler) RebuildProjection(w http.ResponseWriter, r *http.Request) {
+	identity, _ := access.IdentityFromContext(r.Context())
+	resp, err := h.service.RebuildProjection(identity, r.PathValue("tenant_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, resp)
+}
+
+func (h Handler) PurgeOrphans(w http.ResponseWriter, r *http.Request) {
+	identity, _ := access.IdentityFromContext(r.Context())
+	resp, err := h.service.PurgeOrphans(identity, r.PathValue("tenant_id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, resp)
+}
+
 func writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrValidation):

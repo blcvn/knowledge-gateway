@@ -9,6 +9,7 @@ import (
 
 type EmbeddingProvider interface {
 	Embed(ctx context.Context, text string) ([]float64, error)
+	EmbedBatch(ctx context.Context, texts []string) ([][]float64, error)
 	Dimensions() int
 	ModelID() string
 }
@@ -66,4 +67,16 @@ func (p DeterministicProvider) Embed(_ context.Context, text string) ([]float64,
 		vec[i] /= norm
 	}
 	return vec, nil
+}
+
+func (p DeterministicProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	vectors := make([][]float64, 0, len(texts))
+	for _, text := range texts {
+		vec, err := p.Embed(ctx, text)
+		if err != nil {
+			return nil, err
+		}
+		vectors = append(vectors, vec)
+	}
+	return vectors, nil
 }

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+
+if [ -x "$repo_root/scripts/codegraph-refresh.sh" ]; then
+  "$repo_root/scripts/codegraph-refresh.sh" --background >/dev/null 2>&1 || true
+fi

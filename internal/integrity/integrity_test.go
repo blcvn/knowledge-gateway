@@ -65,6 +65,25 @@ func TestTenantIntegrityHandlerReturnsSummary(t *testing.T) {
 	}
 }
 
+func TestRepairEndpointsReturnPayloads(t *testing.T) {
+	svc, actor := newIntegrityFixture(t)
+	handler := NewHandler(&Service{
+		store:    svc.store,
+		ontology: svc.ontology,
+		repairer: fakeRepairer{},
+		now:      svc.now,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/kg/integrity/orphans?tenant_id="+actor.TenantID, nil)
+	req.SetPathValue("tenant_id", actor.TenantID)
+	req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
+	rec := httptest.NewRecorder()
+	handler.OrphanScan(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"relationship_orphans"`) {
+		t.Fatalf("OrphanScan() status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func newIntegrityFixture(t *testing.T) (*Service, access.Identity) {
 	t.Helper()
 
@@ -102,7 +121,7 @@ func newIntegrityFixture(t *testing.T) (*Service, access.Identity) {
 		CreatedAt:     time.Date(2026, 6, 17, 12, 1, 0, 0, time.UTC),
 		UpdatedAt:     time.Date(2026, 6, 17, 12, 1, 0, 0, time.UTC),
 	})
-	return NewService(store, ontologyStore), actor
+	return NewService(store, ontologyStore, nil), actor
 }
 
 func seedIntegrityNode(t *testing.T, store *write.MemoryStore, node write.NodeRecord) {
@@ -118,4 +137,21 @@ func seedIntegrityNode(t *testing.T, store *write.MemoryStore, node write.NodeRe
 	}); err != nil {
 		t.Fatalf("CreateNodeWithOutbox(%s) error = %v", node.ID, err)
 	}
+}
+
+type fakeRepairer struct{}
+
+func (fakeRepairer) ScanOrphans(ctx context.Context, tenantID string) (OrphanScanResponse, error) {
+	return OrphanScanResponse{
+		RelationshipOrphans: []OrphanRelationshipItem{{RelationshipID: "rel-1"}},
+		VectorOrphans:       []OrphanVectorDocItem{{NodeID: "node-1"}},
+	}, nil
+}
+
+func (fakeRepairer) RebuildProjection(ctx context.Context, tenantID string) (RepairReport, error) {
+	return RepairReport{RebuiltNodes: 1, RebuiltRelationships: 1, ScannedAt: time.Now().UTC()}, nil
+}
+
+func (fakeRepairer) PurgeOrphans(ctx context.Context, tenantID string) (RepairReport, error) {
+	return RepairReport{PurgedRelationships: 1, PurgedVectorDocs: 1, ScannedAt: time.Now().UTC()}, nil
 }

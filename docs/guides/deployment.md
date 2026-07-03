@@ -13,6 +13,7 @@ This guide is for application teams who want to run `kg-service` in a specific e
 - `KG_BASE_URL` for the deployed service, such as `http://127.0.0.1:8082`
 - `KG_API_KEY` for a valid bootstrap or tenant app key
 - `KG_RUNTIME_PROFILE` for profile-aware Compose or operator validation
+- The full operator env contract is documented in [docs/deployment/environment.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/deployment/environment.md)
 
 ## Docker Compose
 
@@ -20,7 +21,8 @@ Use Compose when you want the fastest local bootstrap loop.
 
 - Start the integration smoke stack with `make deploy-compose-integration`
 - Start the runtime validation stack with `make deploy-compose-runtime-validation`
-- Stop the stacks with `make compose-down-integration` or `make compose-down-runtime-validation`
+- Start the dedicated CodeGraph stack with `make deploy-compose-codegraph-runtime`
+- Stop the stacks with `make compose-down-integration`, `make compose-down-runtime-validation`, or `make compose-down-codegraph-runtime`
 
 For the runtime validation stack, ensure the selected profile matches the graph/vector pair you want to exercise.
 
@@ -28,6 +30,12 @@ Example:
 
 ```bash
 KG_RUNTIME_PROFILE=qdrant-nebula make deploy-compose-runtime-validation
+```
+
+For local CodeGraph validation, export the HTTP embedding variables and run:
+
+```bash
+KG_API_KEY=kgsk_test_alpha_admin make validate-codegraph-runtime
 ```
 
 ## Kubernetes
@@ -46,6 +54,8 @@ Useful variables:
 - `KG_GRAPH_DATABASE`
 - `KG_VECTOR_ENDPOINT`
 - `KG_VECTOR_COLLECTION`
+
+See the environment inventory for defaults and when each variable is conditionally required.
 
 ## VM
 
@@ -70,4 +80,3 @@ After the service is reachable:
 3. Save the returned API key.
 4. Call `GET /v1/access/resolve` with that key.
 5. Create access grants when a second app must see the same domain.
-

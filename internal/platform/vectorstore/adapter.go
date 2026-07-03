@@ -10,6 +10,12 @@ type VectorAdapter interface {
 	ReadSyncVersion(ctx context.Context, entityID string) (int64, error)
 }
 
+type BatchVectorAdapter interface {
+	VectorAdapter
+	UpsertBatch(ctx context.Context, docs []VectorDocument) error
+	DeleteBatch(ctx context.Context, docs []VectorDocument) error
+}
+
 type VectorDocument struct {
 	NodeID         string         `json:"node_id"`
 	NodeType       string         `json:"node_type"`

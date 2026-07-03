@@ -7,7 +7,7 @@ Use Kubernetes when you want to run `kg-service` in a cluster and you already ha
 - a `kg-service` Deployment
 - a `kg-service` Service on port `8082`
 - readiness and liveness checks against `/healthz`
-- a runtime profile injected through `KG_RUNTIME_PROFILE`, `GRAPH_ADAPTER`, and `VECTOR_ADAPTER`
+- a runtime profile injected through `KG_RUNTIME_PROFILE`, `GRAPH_ADAPTER`, `VECTOR_ADAPTER`, and any required profile-specific variables such as `KG_GRAPH_DATABASE`
 
 ## Prerequisites
 
@@ -20,6 +20,7 @@ Use Kubernetes when you want to run `kg-service` in a cluster and you already ha
 
 ```bash
 KG_IMAGE=kg-service:local \
+KG_RUNTIME_PROFILE=pgvector-neo4j \
 KG_POSTGRES_HOST=postgres.example.internal \
 KG_POSTGRES_PASSWORD=... \
 KG_REDIS_HOST=redis.example.internal \
@@ -27,6 +28,8 @@ make deploy-k8s
 ```
 
 If your cluster uses a registry image instead of a local build, point `KG_IMAGE` at that image reference.
+
+For profiles that use a graph database name or vector endpoint override, export the corresponding variables before deployment. See [Environment Variables](./environment.md) for the full inventory.
 
 ## Apply Schema
 

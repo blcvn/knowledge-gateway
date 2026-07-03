@@ -39,46 +39,101 @@ func NewMilvusVectorAdapter(cfg MilvusConfig) *MilvusVectorAdapter {
 }
 
 func (a *MilvusVectorAdapter) Upsert(ctx context.Context, doc VectorDocument) error {
+	return a.UpsertBatch(ctx, []VectorDocument{doc})
+}
+
+func (a *MilvusVectorAdapter) UpsertBatch(ctx context.Context, docs []VectorDocument) error {
 	client, err := a.ensureClient(ctx)
 	if err != nil {
 		return err
 	}
-	if len(doc.Embedding) == 0 {
-		return errors.New("milvus vector adapter requires an embedding")
+	if len(docs) == 0 {
+		return nil
 	}
-	if err := a.ensureCollection(ctx, client, len(doc.Embedding)); err != nil {
+	dim := len(docs[0].Embedding)
+	for _, doc := range docs {
+		if len(doc.Embedding) == 0 {
+			return errors.New("milvus vector adapter requires an embedding")
+		}
+		if len(doc.Embedding) != dim {
+			return errors.New("milvus vector adapter requires consistent embedding dimensions")
+		}
+	}
+	if err := a.ensureCollection(ctx, client, dim); err != nil {
 		return err
 	}
-
-	authority := int64(0)
-	if doc.AuthorityScore != nil {
-		authority = int64(*doc.AuthorityScore)
+	nodeIDs := make([]string, 0, len(docs))
+	nodeTypes := make([]string, 0, len(docs))
+	domainIDs := make([]string, 0, len(docs))
+	tenantIDs := make([]string, 0, len(docs))
+	appIDs := make([]string, 0, len(docs))
+	aclJSONs := make([][]byte, 0, len(docs))
+	deletedFlags := make([]bool, 0, len(docs))
+	statusValues := make([]string, 0, len(docs))
+	authorityScores := make([]int64, 0, len(docs))
+	syncVersions := make([]int64, 0, len(docs))
+	propsJSONs := make([][]byte, 0, len(docs))
+	vectors := make([][]float32, 0, len(docs))
+	for _, doc := range docs {
+		authority := int64(0)
+		if doc.AuthorityScore != nil {
+			authority = int64(*doc.AuthorityScore)
+		}
+		aclJSON, _ := json.Marshal(doc.ACLVisibleTo)
+		propsJSON, _ := json.Marshal(cloneMap(doc.DomainProps))
+		vector := make([]float32, 0, len(doc.Embedding))
+		for _, value := range doc.Embedding {
+			vector = append(vector, float32(value))
+		}
+		nodeIDs = append(nodeIDs, doc.NodeID)
+		nodeTypes = append(nodeTypes, doc.NodeType)
+		domainIDs = append(domainIDs, doc.DomainID)
+		tenantIDs = append(tenantIDs, doc.OwnerTenantID)
+		appIDs = append(appIDs, doc.OwnerAppID)
+		aclJSONs = append(aclJSONs, aclJSON)
+		deletedFlags = append(deletedFlags, doc.IsDeleted)
+		statusValues = append(statusValues, doc.StatusValue)
+		authorityScores = append(authorityScores, authority)
+		syncVersions = append(syncVersions, doc.SyncVersion)
+		propsJSONs = append(propsJSONs, propsJSON)
+		vectors = append(vectors, vector)
 	}
-	aclJSON, _ := json.Marshal(doc.ACLVisibleTo)
-	propsJSON, _ := json.Marshal(cloneMap(doc.DomainProps))
-	vector := make([]float32, 0, len(doc.Embedding))
-	for _, value := range doc.Embedding {
-		vector = append(vector, float32(value))
-	}
-
 	_, err = client.Upsert(ctx, a.Collection, "",
-		entity.NewColumnVarChar("node_id", []string{doc.NodeID}),
-		entity.NewColumnVarChar("node_type", []string{doc.NodeType}),
-		entity.NewColumnVarChar("domain_id", []string{doc.DomainID}),
-		entity.NewColumnVarChar("owner_tenant_id", []string{doc.OwnerTenantID}),
-		entity.NewColumnVarChar("owner_app_id", []string{doc.OwnerAppID}),
-		entity.NewColumnJSONBytes("acl_visible_to", [][]byte{aclJSON}),
-		entity.NewColumnBool("is_deleted", []bool{doc.IsDeleted}),
-		entity.NewColumnVarChar("status_value", []string{doc.StatusValue}),
-		entity.NewColumnInt64("authority_score", []int64{authority}),
-		entity.NewColumnInt64("sync_version", []int64{doc.SyncVersion}),
-		entity.NewColumnJSONBytes("domain_props", [][]byte{propsJSON}),
-		entity.NewColumnFloatVector("embedding", len(vector), [][]float32{vector}),
+		entity.NewColumnVarChar("node_id", nodeIDs),
+		entity.NewColumnVarChar("node_type", nodeTypes),
+		entity.NewColumnVarChar("domain_id", domainIDs),
+		entity.NewColumnVarChar("owner_tenant_id", tenantIDs),
+		entity.NewColumnVarChar("owner_app_id", appIDs),
+		entity.NewColumnJSONBytes("acl_visible_to", aclJSONs),
+		entity.NewColumnBool("is_deleted", deletedFlags),
+		entity.NewColumnVarChar("status_value", statusValues),
+		entity.NewColumnInt64("authority_score", authorityScores),
+		entity.NewColumnInt64("sync_version", syncVersions),
+		entity.NewColumnJSONBytes("domain_props", propsJSONs),
+		entity.NewColumnFloatVector("embedding", dim, vectors),
 	)
 	if err != nil {
 		return err
 	}
 	return client.Flush(ctx, a.Collection, false)
+}
+
+func (a *MilvusVectorAdapter) DeleteBatch(ctx context.Context, docs []VectorDocument) error {
+	client, err := a.ensureClient(ctx)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(a.Collection) == "" {
+		return errors.New("milvus vector adapter is not configured")
+	}
+	if len(docs) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		ids = append(ids, doc.NodeID)
+	}
+	return client.Delete(ctx, a.Collection, "", milvusInExpr("node_id", ids))
 }
 
 func (a *MilvusVectorAdapter) Delete(ctx context.Context, nodeID string) error {

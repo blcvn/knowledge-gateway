@@ -14,6 +14,7 @@ import (
 	"kg-service/internal/platform/rediscache"
 	"kg-service/internal/platform/session"
 	"kg-service/internal/read"
+	"kg-service/internal/runtimeobs"
 	"kg-service/internal/search"
 	"kg-service/internal/workers"
 	"kg-service/internal/write"
@@ -98,6 +99,36 @@ func TestEndToEndParityFlow(t *testing.T) {
 	}
 }
 
+func TestEndToEndWriteHttpToWorkerCarriesRequestMeta(t *testing.T) {
+	fixture := newIntegrationFixture(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/kg/write/nodes", strings.NewReader(`{"domain_id":"integration-domain","node_type":"Doc","properties":{"title":"HTTP Meta Doc","status":"active"}}`))
+	req = req.WithContext(access.ContextWithIdentity(req.Context(), fixture.actor))
+	req = req.WithContext(runtimeobs.WithRequestMeta(req.Context(), runtimeobs.NewRequestMeta("req-1", "trace-1", "span-1")))
+	rec := httptest.NewRecorder()
+	fixture.writeHandler.CreateNode(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("CreateNode() status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	events := fixture.store.ListOutboxEvents()
+	if len(events) != 1 {
+		t.Fatalf("outbox len = %d, want 1", len(events))
+	}
+	payload := events[0].Payload
+	if payload["request_id"] != "req-1" || payload["trace_id"] != "trace-1" || payload["span_id"] != "span-1" {
+		t.Fatalf("outbox payload missing request meta: %#v", payload)
+	}
+
+	report := fixture.runtime.PollOnce()
+	if report.Processed == 0 {
+		t.Fatalf("PollOnce() = %+v, want processed work", report)
+	}
+	if got := fixture.runtime.Graph().Nodes[events[0].AggregateID].StatusValue; got != "active" {
+		t.Fatalf("projected status = %q, want active", got)
+	}
+}
+
 func TestEndToEndSearchPipelineReturnsProjectedNode(t *testing.T) {
 	fixture := newIntegrationFixture(t)
 
@@ -169,6 +200,7 @@ type integrationFixture struct {
 	searchSvc     *search.Service
 	integritySv   *integrity.Service
 	runtime       *workers.Runtime
+	writeHandler  write.Handler
 	readHandler   read.Handler
 	searchHandler search.Handler
 	actor         access.Identity
@@ -241,7 +273,7 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 	writeSvc := write.NewService(store, ontologySvc, accessResolver, sessionMgr, accessSvc)
 	readSvc := read.NewService(store, ontologySvc, accessResolver, accessSvc)
 	searchSvc := search.NewService(store, ontologySvc, accessResolver, accessSvc)
-	integritySvc := integrity.NewService(store, ontologyStore)
+	integritySvc := integrity.NewService(store, ontologyStore, nil)
 	runtime := workers.NewRuntime(store, ontologySvc, &cache)
 	searchSvc.SetVectorAdapter(runtime.VectorAdapter())
 	searchSvc.SetFTSAdapter(runtime.FTSAdapter())
@@ -254,6 +286,7 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 		searchSvc:     searchSvc,
 		integritySv:   integritySvc,
 		runtime:       runtime,
+		writeHandler:  write.NewHandler(writeSvc),
 		readHandler:   read.NewHandler(readSvc),
 		searchHandler: search.NewHandler(searchSvc),
 		actor:         actor,

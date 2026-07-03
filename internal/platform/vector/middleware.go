@@ -67,6 +67,35 @@ func (p *CachingProvider) Embed(ctx context.Context, text string) ([]float64, er
 	return vec, nil
 }
 
+func (p *CachingProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	inner := p.inner()
+	if inner == nil {
+		return nil, errors.New("caching provider requires an inner provider")
+	}
+	vectors, err := inner.EmbedBatch(ctx, texts)
+	if err != nil {
+		return nil, err
+	}
+	now := p.now()
+	p.mu.Lock()
+	if p.entries == nil {
+		p.entries = map[string]cacheEntry{}
+	}
+	expiresAt := time.Time{}
+	if p.TTL > 0 {
+		expiresAt = now.Add(p.TTL)
+	}
+	for i, text := range texts {
+		key := cacheKey(inner.ModelID(), text)
+		if i >= len(vectors) {
+			break
+		}
+		p.entries[key] = cacheEntry{value: append([]float64(nil), vectors[i]...), expiresAt: expiresAt}
+	}
+	p.mu.Unlock()
+	return vectors, nil
+}
+
 func (p *CachingProvider) inner() EmbeddingProvider {
 	if p == nil {
 		return nil
@@ -134,6 +163,23 @@ func (p *RetryProvider) Embed(ctx context.Context, text string) ([]float64, erro
 	return nil, lastErr
 }
 
+func (p *RetryProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	inner := p.inner()
+	if inner == nil {
+		return nil, errors.New("retry provider requires an inner provider")
+	}
+	vectors := make([][]float64, 0, len(texts))
+	for _, text := range texts {
+		vec, err := p.Embed(ctx, text)
+		if err != nil {
+			return nil, err
+		}
+		vectors = append(vectors, vec)
+	}
+	_ = inner
+	return vectors, nil
+}
+
 func (p *RetryProvider) inner() EmbeddingProvider {
 	if p == nil {
 		return nil
@@ -181,6 +227,30 @@ func (p ProxyHTTPProvider) Embed(ctx context.Context, text string) ([]float64, e
 		return clone.Embed(ctx, text)
 	default:
 		return p.Inner.Embed(ctx, text)
+	}
+}
+
+func (p ProxyHTTPProvider) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	if p.Inner == nil {
+		return nil, errors.New("proxy provider requires an inner provider")
+	}
+	if strings.TrimSpace(p.ProxyURL) == "" {
+		return p.Inner.EmbedBatch(ctx, texts)
+	}
+	switch inner := p.Inner.(type) {
+	case HTTPEmbeddingProvider:
+		clone := inner
+		clone.URL = p.ProxyURL
+		return clone.EmbedBatch(ctx, texts)
+	case *HTTPEmbeddingProvider:
+		if inner == nil {
+			return nil, errors.New("proxy provider requires an inner provider")
+		}
+		clone := *inner
+		clone.URL = p.ProxyURL
+		return clone.EmbedBatch(ctx, texts)
+	default:
+		return p.Inner.EmbedBatch(ctx, texts)
 	}
 }
 

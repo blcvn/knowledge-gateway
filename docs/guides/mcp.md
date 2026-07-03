@@ -79,9 +79,27 @@ curl -s \
   -X POST \
   -H "Authorization: Bearer kgsk_test_alpha_admin" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kg_read_pattern","arguments":{"domain_id":"sample-policy","template_name":"action-guide","params":{"topic_key":"returns"}}}}' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kg_read_pattern","arguments":{"domain_id":"sample-policy","template_name":"action-guide","params":{"topic_key":"returns"},"app_id":"11111111-admin-1111-admin-111111111111","mode":"realtime"}}}' \
   http://127.0.0.1:8082/v1/mcp/messages/<session_id>
 ```
+
+Example: fetch a node with explicit app scope and realtime mode.
+
+```bash
+curl -s \
+  -X POST \
+  -H "Authorization: Bearer kgsk_test_alpha_admin" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"kg_get_node","arguments":{"id":"<node_id>","app_id":"11111111-admin-1111-admin-111111111111","mode":"realtime"}}}' \
+  http://127.0.0.1:8082/v1/mcp/messages/<session_id>
+```
+
+Freshness behavior:
+
+- `kg_get_node` and `kg_read_pattern` accept `mode=realtime|non-realtime`
+- `non-realtime` reads the graph projection directly
+- `realtime` compares projection version with `relationshipdb` and falls back to `relationshipdb` when the graph projection is stale
+- search tools continue to read from projection search stores rather than `relationshipdb`
 
 ## Common MCP Errors
 
@@ -95,3 +113,4 @@ curl -s \
 - Treat MCP as a thin wrapper over the REST and service layers, not as a separate data plane.
 - Reuse the same expectations for visibility, validation, and async write behavior that you use with REST.
 - Use [Integration Workflows](./integration.md) for the domain and data lifecycle order; MCP does not remove those prerequisites.
+- If you also need the local CodeGraph-to-KG bridge, see [CodeGraph Sync Bridge](../codegraph/sync-bridge.md).

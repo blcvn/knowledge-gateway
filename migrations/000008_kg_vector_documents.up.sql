@@ -12,7 +12,7 @@ CREATE TABLE kg_vector_documents (
     status_value TEXT,
     authority_score INT,
     domain_props JSONB NOT NULL DEFAULT '{}'::jsonb,
-    embedding vector NOT NULL,
+    embedding vector(1024) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

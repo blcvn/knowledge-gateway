@@ -21,6 +21,7 @@ type Neo4jGraphAdapter struct {
 	Driver   neo4j.Driver
 	fallback GraphAdapter
 	Endpoint string
+	Database string
 	mu       sync.Mutex
 	initErr  error
 }
@@ -29,6 +30,7 @@ func NewNeo4jGraphAdapter(cfg CypherConfig) *Neo4jGraphAdapter {
 	adapter := &Neo4jGraphAdapter{
 		fallback: NewInMemoryGraphAdapter(),
 		Endpoint: cfg.Endpoint,
+		Database: strings.TrimSpace(cfg.Database),
 	}
 	if strings.TrimSpace(cfg.Endpoint) != "" {
 		driver, err := neo4j.NewDriver(cfg.Endpoint, neo4j.NoAuth())
@@ -120,7 +122,7 @@ func (a *Neo4jGraphAdapter) UpsertNode(ctx context.Context, node GraphNode) erro
 		return fmt.Errorf("neo4j graph adapter is not configured")
 	}
 	if err := a.ensureReady(); err != nil {
-		return err
+		return fmt.Errorf("neo4j upsert node %s ensure ready: %w", node.ID, err)
 	}
 	if a.Runner == nil && a.Driver == nil {
 		return a.fallback.UpsertNode(ctx, node)
@@ -134,7 +136,8 @@ SET n.domain_id = $domain_id,
     n.status_value = $status_value,
     n.is_deleted = $is_deleted,
     n._kg_sync_version = $sync_version,
-    n.properties = $properties
+    n.properties_json = $properties_json
+SET n += $properties
 `, map[string]any{
 		"id":              node.ID,
 		"domain_id":       node.DomainID,
@@ -145,8 +148,20 @@ SET n.domain_id = $domain_id,
 		"is_deleted":      node.IsDeleted,
 		"sync_version":    node.SyncVersion,
 		"properties":      clone(node.Properties),
+		"properties_json": marshalGraphProperties(node.Properties),
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf(
+			"neo4j upsert node id=%s type=%s domain=%s version=%d endpoint=%s: %w",
+			node.ID,
+			node.NodeType,
+			node.DomainID,
+			node.SyncVersion,
+			a.Endpoint,
+			err,
+		)
+	}
+	return nil
 }
 
 func (a *Neo4jGraphAdapter) DeleteNode(ctx context.Context, nodeID string) error {
@@ -154,13 +169,16 @@ func (a *Neo4jGraphAdapter) DeleteNode(ctx context.Context, nodeID string) error
 		return fmt.Errorf("neo4j graph adapter is not configured")
 	}
 	if err := a.ensureReady(); err != nil {
-		return err
+		return fmt.Errorf("neo4j delete node %s ensure ready: %w", nodeID, err)
 	}
 	if a.Runner == nil && a.Driver == nil {
 		return a.fallback.DeleteNode(ctx, nodeID)
 	}
 	_, err := a.runCypher(ctx, `MATCH (n {id: $id}) DETACH DELETE n`, map[string]any{"id": nodeID})
-	return err
+	if err != nil {
+		return fmt.Errorf("neo4j delete node id=%s endpoint=%s: %w", nodeID, a.Endpoint, err)
+	}
+	return nil
 }
 
 func (a *Neo4jGraphAdapter) UpsertRelationship(ctx context.Context, rel GraphRelationship) error {
@@ -168,7 +186,7 @@ func (a *Neo4jGraphAdapter) UpsertRelationship(ctx context.Context, rel GraphRel
 		return fmt.Errorf("neo4j graph adapter is not configured")
 	}
 	if err := a.ensureReady(); err != nil {
-		return err
+		return fmt.Errorf("neo4j upsert relationship %s ensure ready: %w", rel.ID, err)
 	}
 	if a.Runner == nil && a.Driver == nil {
 		return a.fallback.UpsertRelationship(ctx, rel)
@@ -179,16 +197,233 @@ MATCH (to {id: $to_id})
 MERGE (from)-[r:`+sanitizeLabel(rel.RelType)+` {id: $id}]->(to)
 SET r.domain_id = $domain_id,
     r._kg_sync_version = $sync_version,
-    r.properties = $properties
+    r.properties_json = $properties_json
+SET r += $properties
 `, map[string]any{
-		"id":           rel.ID,
-		"from_id":      rel.FromNodeID,
-		"to_id":        rel.ToNodeID,
-		"domain_id":    rel.DomainID,
-		"sync_version": rel.SyncVersion,
-		"properties":   clone(rel.Properties),
+		"id":              rel.ID,
+		"from_id":         rel.FromNodeID,
+		"to_id":           rel.ToNodeID,
+		"domain_id":       rel.DomainID,
+		"sync_version":    rel.SyncVersion,
+		"properties":      clone(rel.Properties),
+		"properties_json": marshalGraphProperties(rel.Properties),
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf(
+			"neo4j upsert relationship id=%s type=%s from=%s to=%s domain=%s version=%d endpoint=%s: %w",
+			rel.ID,
+			rel.RelType,
+			rel.FromNodeID,
+			rel.ToNodeID,
+			rel.DomainID,
+			rel.SyncVersion,
+			a.Endpoint,
+			err,
+		)
+	}
+	return nil
+}
+
+func (a *Neo4jGraphAdapter) UpsertNodesBatch(ctx context.Context, nodes []GraphNode) error {
+	if a == nil {
+		return fmt.Errorf("neo4j graph adapter is not configured")
+	}
+	if err := a.ensureReady(); err != nil {
+		return fmt.Errorf("neo4j upsert nodes batch ensure ready: %w", err)
+	}
+	if len(nodes) == 0 {
+		return nil
+	}
+	if a.Runner == nil && a.Driver == nil {
+		for _, node := range nodes {
+			if err := a.fallback.UpsertNode(ctx, node); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	grouped := map[string][]GraphNode{}
+	for _, node := range nodes {
+		label := sanitizeLabel(node.NodeType)
+		grouped[label] = append(grouped[label], node)
+	}
+	for label, group := range grouped {
+		rows := make([]map[string]any, 0, len(group))
+		for _, node := range group {
+			rows = append(rows, map[string]any{
+				"id":              node.ID,
+				"domain_id":       node.DomainID,
+				"owner_tenant_id": node.OwnerTenantID,
+				"owner_app_id":    node.OwnerAppID,
+				"visibility":      node.Visibility,
+				"status_value":    node.StatusValue,
+				"is_deleted":      node.IsDeleted,
+				"sync_version":    node.SyncVersion,
+				"properties":      clone(node.Properties),
+				"properties_json": marshalGraphProperties(node.Properties),
+			})
+		}
+		_, err := a.runCypher(ctx, `
+UNWIND $rows AS row
+MERGE (n:`+label+` {id: row.id})
+SET n.domain_id = row.domain_id,
+    n.owner_tenant_id = row.owner_tenant_id,
+    n.owner_app_id = row.owner_app_id,
+    n.visibility = row.visibility,
+    n.status_value = row.status_value,
+    n.is_deleted = row.is_deleted,
+    n._kg_sync_version = row.sync_version,
+    n.properties_json = row.properties_json
+SET n += row.properties
+`, map[string]any{"rows": rows})
+		if err != nil {
+			return fmt.Errorf("neo4j upsert nodes batch label=%s endpoint=%s: %w", label, a.Endpoint, err)
+		}
+	}
+	return nil
+}
+
+func (a *Neo4jGraphAdapter) UpsertRelationshipsBatch(ctx context.Context, rels []GraphRelationship) error {
+	if a == nil {
+		return fmt.Errorf("neo4j graph adapter is not configured")
+	}
+	if err := a.ensureReady(); err != nil {
+		return fmt.Errorf("neo4j upsert relationships batch ensure ready: %w", err)
+	}
+	if len(rels) == 0 {
+		return nil
+	}
+	if a.Runner == nil && a.Driver == nil {
+		for _, rel := range rels {
+			if err := a.fallback.UpsertRelationship(ctx, rel); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	grouped := map[string][]GraphRelationship{}
+	for _, rel := range rels {
+		label := sanitizeLabel(rel.RelType)
+		grouped[label] = append(grouped[label], rel)
+	}
+	for label, group := range grouped {
+		rows := make([]map[string]any, 0, len(group))
+		for _, rel := range group {
+			rows = append(rows, map[string]any{
+				"id":              rel.ID,
+				"from_id":         rel.FromNodeID,
+				"to_id":           rel.ToNodeID,
+				"domain_id":       rel.DomainID,
+				"sync_version":    rel.SyncVersion,
+				"properties":      clone(rel.Properties),
+				"properties_json": marshalGraphProperties(rel.Properties),
+			})
+		}
+		_, err := a.runCypher(ctx, `
+UNWIND $rows AS row
+MATCH (from {id: row.from_id})
+MATCH (to {id: row.to_id})
+MERGE (from)-[r:`+label+` {id: row.id}]->(to)
+SET r.domain_id = row.domain_id,
+    r._kg_sync_version = row.sync_version,
+    r.properties_json = row.properties_json
+SET r += row.properties
+`, map[string]any{"rows": rows})
+		if err != nil {
+			return fmt.Errorf("neo4j upsert relationships batch label=%s endpoint=%s: %w", label, a.Endpoint, err)
+		}
+	}
+	return nil
+}
+
+func (a *Neo4jGraphAdapter) DeleteNodesBatch(ctx context.Context, nodes []GraphNode) error {
+	if a == nil {
+		return fmt.Errorf("neo4j graph adapter is not configured")
+	}
+	if err := a.ensureReady(); err != nil {
+		return fmt.Errorf("neo4j delete nodes batch ensure ready: %w", err)
+	}
+	if len(nodes) == 0 {
+		return nil
+	}
+	if a.Runner == nil && a.Driver == nil {
+		for _, node := range nodes {
+			if err := a.fallback.DeleteNode(ctx, node.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	grouped := map[string][]GraphNode{}
+	for _, node := range nodes {
+		label := sanitizeLabel(node.NodeType)
+		grouped[label] = append(grouped[label], node)
+	}
+	for label, group := range grouped {
+		rows := make([]map[string]any, 0, len(group))
+		for _, node := range group {
+			rows = append(rows, map[string]any{
+				"id":           node.ID,
+				"sync_version": node.SyncVersion,
+			})
+		}
+		_, err := a.runCypher(ctx, `
+UNWIND $rows AS row
+MATCH (n:`+label+` {id: row.id})
+WITH n, row
+WHERE coalesce(n._kg_sync_version, 0) <= row.sync_version
+DETACH DELETE n
+`, map[string]any{"rows": rows})
+		if err != nil {
+			return fmt.Errorf("neo4j delete nodes batch label=%s endpoint=%s: %w", label, a.Endpoint, err)
+		}
+	}
+	return nil
+}
+
+func (a *Neo4jGraphAdapter) DeleteRelationshipsBatch(ctx context.Context, rels []GraphRelationship) error {
+	if a == nil {
+		return fmt.Errorf("neo4j graph adapter is not configured")
+	}
+	if err := a.ensureReady(); err != nil {
+		return fmt.Errorf("neo4j delete relationships batch ensure ready: %w", err)
+	}
+	if len(rels) == 0 {
+		return nil
+	}
+	if a.Runner == nil && a.Driver == nil {
+		for _, rel := range rels {
+			if err := a.fallback.DeleteRelationship(ctx, rel.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	grouped := map[string][]GraphRelationship{}
+	for _, rel := range rels {
+		label := sanitizeLabel(rel.RelType)
+		grouped[label] = append(grouped[label], rel)
+	}
+	for label, group := range grouped {
+		rows := make([]map[string]any, 0, len(group))
+		for _, rel := range group {
+			rows = append(rows, map[string]any{
+				"id":           rel.ID,
+				"sync_version": rel.SyncVersion,
+			})
+		}
+		_, err := a.runCypher(ctx, `
+UNWIND $rows AS row
+MATCH ()-[r:`+label+` {id: row.id}]-()
+WITH r, row
+WHERE coalesce(r._kg_sync_version, 0) <= row.sync_version
+DELETE r
+`, map[string]any{"rows": rows})
+		if err != nil {
+			return fmt.Errorf("neo4j delete relationships batch label=%s endpoint=%s: %w", label, a.Endpoint, err)
+		}
+	}
+	return nil
 }
 
 func (a *Neo4jGraphAdapter) DeleteRelationship(ctx context.Context, relID string) error {
@@ -196,13 +431,16 @@ func (a *Neo4jGraphAdapter) DeleteRelationship(ctx context.Context, relID string
 		return fmt.Errorf("neo4j graph adapter is not configured")
 	}
 	if err := a.ensureReady(); err != nil {
-		return err
+		return fmt.Errorf("neo4j delete relationship %s ensure ready: %w", relID, err)
 	}
 	if a.Runner == nil && a.Driver == nil {
 		return a.fallback.DeleteRelationship(ctx, relID)
 	}
 	_, err := a.runCypher(ctx, `MATCH ()-[r {id: $id}]-() DELETE r`, map[string]any{"id": relID})
-	return err
+	if err != nil {
+		return fmt.Errorf("neo4j delete relationship id=%s endpoint=%s: %w", relID, a.Endpoint, err)
+	}
+	return nil
 }
 
 func (a *Neo4jGraphAdapter) ExecuteQuery(ctx context.Context, query GraphQuery, params map[string]any) ([]map[string]any, error) {
@@ -241,7 +479,7 @@ RETURN
     coalesce(n.status_value, '') AS status_value,
     coalesce(n.is_deleted, false) AS is_deleted,
     coalesce(n._kg_sync_version, 0) AS sync_version,
-    coalesce(n.properties, {}) AS properties,
+    coalesce(n.properties_json, '{}') AS properties,
     coalesce(n.created_at, datetime()) AS created_at,
     coalesce(n.updated_at, datetime()) AS updated_at
 ORDER BY created_at, id
@@ -271,7 +509,7 @@ RETURN
     endNode(r).id AS to_node_id,
     r.domain_id AS domain_id,
     coalesce(r._kg_sync_version, 0) AS sync_version,
-    coalesce(r.properties, {}) AS properties
+    coalesce(r.properties_json, '{}') AS properties
 ORDER BY id
 `, nil)
 	if err != nil {
@@ -316,17 +554,21 @@ func (a *Neo4jGraphAdapter) runCypher(ctx context.Context, cypher string, params
 	if a.Driver == nil {
 		return nil, fmt.Errorf("neo4j graph adapter is not configured")
 	}
-	session := a.Driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	sessionConfig := neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite}
+	if strings.TrimSpace(a.Database) != "" {
+		sessionConfig.DatabaseName = a.Database
+	}
+	session := a.Driver.NewSession(ctx, sessionConfig)
 	defer func() {
 		_ = session.Close(ctx)
 	}()
 	result, err := session.Run(ctx, cypher, params)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("neo4j run cypher endpoint=%s query=%q: %w", a.Endpoint, compactCypher(cypher), err)
 	}
 	records, err := result.Collect(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("neo4j collect cypher endpoint=%s query=%q: %w", a.Endpoint, compactCypher(cypher), err)
 	}
 	rows := make([]map[string]any, 0, len(records))
 	for _, record := range records {
@@ -364,6 +606,8 @@ func scanGraphNodes(rows []map[string]any) ([]GraphNode, error) {
 			node.Properties = clone(raw)
 		} else if rawBytes, ok := row["properties"].([]byte); ok && len(rawBytes) > 0 {
 			_ = json.Unmarshal(rawBytes, &node.Properties)
+		} else if rawString, ok := row["properties"].(string); ok && strings.TrimSpace(rawString) != "" {
+			_ = json.Unmarshal([]byte(rawString), &node.Properties)
 		}
 		if createdAt, ok := readTime(row["created_at"]); ok {
 			node.CreatedAt = createdAt
@@ -396,6 +640,8 @@ func scanGraphRelationships(rows []map[string]any) ([]GraphRelationship, error) 
 			rel.Properties = clone(raw)
 		} else if rawBytes, ok := row["properties"].([]byte); ok && len(rawBytes) > 0 {
 			_ = json.Unmarshal(rawBytes, &rel.Properties)
+		} else if rawString, ok := row["properties"].(string); ok && strings.TrimSpace(rawString) != "" {
+			_ = json.Unmarshal([]byte(rawString), &rel.Properties)
 		}
 		if rel.Properties == nil {
 			rel.Properties = map[string]any{}
@@ -478,4 +724,19 @@ func sanitizeLabel(label string) string {
 		}
 	}
 	return b.String()
+}
+
+func marshalGraphProperties(properties map[string]any) string {
+	if len(properties) == 0 {
+		return "{}"
+	}
+	data, err := json.Marshal(properties)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
+func compactCypher(cypher string) string {
+	return strings.Join(strings.Fields(cypher), " ")
 }

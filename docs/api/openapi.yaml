@@ -547,6 +547,137 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/domains/{domain_id}/search-profile:
+    put:
+      tags: [Ontology]
+      summary: Upsert a domain search profile
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/DomainID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchProfile'
+      responses:
+        '201':
+          description: Search profile stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchProfile'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/ontology/domains/{domain_id}/search-profile:
+    get:
+      tags: [Ontology]
+      summary: Resolve the effective domain search profile
+      parameters:
+        - $ref: '#/components/parameters/DomainID'
+      responses:
+        '200':
+          description: Effective search profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchProfile'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/query-strategies:
+    post:
+      tags: [Ontology]
+      summary: Create a query strategy
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryStrategy'
+      responses:
+        '201':
+          description: Query strategy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryStrategy'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/tenants/{tenant_id}/ontology/query-strategies/{key}:
+    put:
+      tags: [Ontology]
+      summary: Update a query strategy
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/QueryStrategyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryStrategy'
+      responses:
+        '200':
+          description: Query strategy updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryStrategy'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/ontology/query-strategies:
+    get:
+      tags: [Ontology]
+      summary: List query strategies
+      responses:
+        '200':
+          description: Query strategy list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/QueryStrategy'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /v1/ontology/domains/{domain_id}:
     get:
       tags: [Ontology]
@@ -597,7 +728,7 @@ paths:
     post:
       tags: [Read]
       summary: Execute a registered query template
-      description: Generic route backed by active domain query templates rather than hard-coded domain-specific routes.
+      description: Generic route backed by active domain query templates rather than hard-coded domain-specific routes. Request bodies may include `app_id` and `mode` to control graph scope and realtime fallback behavior.
       parameters:
         - $ref: '#/components/parameters/DomainID'
         - $ref: '#/components/parameters/TemplateName'
@@ -632,8 +763,11 @@ paths:
     get:
       tags: [Read]
       summary: Fetch a visible node
+      description: Returns a visible node from the graph projection or, in realtime mode, falls back to `relationshipdb` when the graph projection sync version is stale.
       parameters:
         - $ref: '#/components/parameters/NodeID'
+        - $ref: '#/components/parameters/ReadAppID'
+        - $ref: '#/components/parameters/ReadMode'
       responses:
         '200':
           description: Node details
@@ -709,10 +843,94 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /v1/kg/search/fulltext:
+    post:
+      tags: [Search]
+      summary: Run full-text search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FullTextSearchRequest'
+      responses:
+        '200':
+          description: Full-text search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FullTextSearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/search/hybrid:
+    post:
+      tags: [Search]
+      summary: Run hybrid semantic and full-text search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HybridSearchRequest'
+      responses:
+        '200':
+          description: Hybrid search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HybridSearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/search/graph:
+    post:
+      tags: [Search]
+      summary: Run graph traversal search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphSearchRequest'
+      responses:
+        '200':
+          description: Graph search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateExecutionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '504':
+          $ref: '#/components/responses/TimeoutError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /v1/kg/write/nodes:
     post:
       tags: [Write]
       summary: Create a node
+      description: Persists the source-of-truth node in `relationshipdb` and returns before graph/vector/full-text projections finish syncing.
       requestBody:
         required: true
         content:
@@ -736,10 +954,39 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /v1/kg/write/nodes/bulk:
+    post:
+      tags: [Write]
+      summary: Create nodes in bulk
+      description: Persists source-of-truth nodes in `relationshipdb` and returns a partial-success envelope before graph/vector/full-text projections finish syncing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeBulkCreateRequest'
+      responses:
+        '202':
+          description: Bulk node write accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeBulkCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /v1/kg/write/nodes/{id}:
     put:
       tags: [Write]
       summary: Update a node
+      description: Updates the source-of-truth node in `relationshipdb`; projection refresh happens asynchronously.
       parameters:
         - $ref: '#/components/parameters/NodeID'
       requestBody:
@@ -770,6 +1017,7 @@ paths:
     delete:
       tags: [Write]
       summary: Soft-delete a node
+      description: Marks the source-of-truth node as deleted in `relationshipdb`; projection refresh happens asynchronously.
       parameters:
         - $ref: '#/components/parameters/NodeID'
       responses:
@@ -787,10 +1035,83 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /v1/kg/write/sync-sessions:
+    post:
+      tags: [Write]
+      summary: Open a sync session
+      description: Opens a sync session for the caller and returns the current graph version metadata.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenSyncSessionRequest'
+      responses:
+        '202':
+          description: Sync session opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/sync-sessions/{id}/commit:
+    post:
+      tags: [Write]
+      summary: Commit a sync session
+      description: Commits the open sync session and returns a simple success status payload.
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      responses:
+        '200':
+          description: Sync session committed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOnlyResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/sync-sessions/{id}:
+    delete:
+      tags: [Write]
+      summary: Abandon a sync session
+      description: Abandons the open sync session and returns no response body.
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      responses:
+        '204':
+          description: Sync session abandoned
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /v1/kg/write/relationships:
     post:
       tags: [Write]
       summary: Create a relationship
+      description: Persists the relationship in `relationshipdb` after validating graph scope compatibility for the referenced nodes.
       requestBody:
         required: true
         content:
@@ -812,6 +1133,87 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
         '404':
           $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/relationships/bulk:
+    post:
+      tags: [Write]
+      summary: Create relationships in bulk
+      description: Persists relationships in `relationshipdb` after validating graph scope compatibility for each item.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationshipBulkCreateRequest'
+      responses:
+        '201':
+          description: Bulk relationship write result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipBulkCreateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Write]
+      summary: Delete relationships in bulk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationshipBulkDeleteRequest'
+      responses:
+        '200':
+          description: Bulk relationship delete result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipBulkDeleteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/nodes:by-external-ref-prefix:
+    delete:
+      tags: [Write]
+      summary: Soft-delete nodes by external reference prefix
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeDeleteByExternalRefPrefixRequest'
+      responses:
+        '200':
+          description: Nodes deleted by external reference prefix
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeDeleteByExternalRefPrefixResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
         '422':
           $ref: '#/components/responses/ValidationError'
         '500':
@@ -910,6 +1312,86 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /v1/kg/integrity/orphans:
+    get:
+      tags: [Integrity]
+      summary: Scan projection orphans
+      parameters:
+        - $ref: '#/components/parameters/TenantIDQueryRequired'
+      responses:
+        '200':
+          description: Orphan scan report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrphanScanResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/integrity/repair/rebuild:
+    post:
+      tags: [Integrity]
+      summary: Rebuild projections for a tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantIDQueryRequired'
+      responses:
+        '200':
+          description: Projection rebuild report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepairReport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/integrity/repair/purge-orphans:
+    post:
+      tags: [Integrity]
+      summary: Purge orphaned projections for a tenant
+      parameters:
+        - $ref: '#/components/parameters/TenantIDQueryRequired'
+      responses:
+        '200':
+          description: Orphan purge report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepairReport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/metrics:
+    get:
+      tags: [Integrity]
+      summary: Read projection and worker metrics
+      responses:
+        '200':
+          description: Runtime metrics snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /v1/mcp/connect:
     get:
       tags: [MCP]
@@ -1006,6 +1488,21 @@ components:
       schema:
         type: string
       description: Node identifier.
+    ReadAppID:
+      name: app_id
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Optional app identifier used to resolve graph scope for direct node reads.
+    ReadMode:
+      name: mode
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [realtime, non-realtime]
+      description: Read mode. `non-realtime` always uses the graph projection. `realtime` compares projection version with `relationshipdb` and falls back when the projection is stale.
     JobID:
       name: job_id
       in: path
@@ -1072,6 +1569,13 @@ components:
       schema:
         type: string
       description: Tenant identifier required by the integrity missing-bridges endpoint.
+    QueryStrategyKey:
+      name: key
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Query strategy key.
   responses:
     BadRequestError:
       description: Malformed request or unsupported parameter shape
@@ -1716,6 +2220,13 @@ components:
         params:
           type: object
           additionalProperties: true
+        app_id:
+          type: string
+          description: Optional app identifier used to resolve graph scope for template-backed reads.
+        mode:
+          type: string
+          enum: [realtime, non-realtime]
+          description: Read mode. `non-realtime` always uses the graph projection. `realtime` compares projection version with `relationshipdb` and falls back when the projection is stale.
     TemplateExecutionResponse:
       type: object
       required: [results, query_time_ms]
@@ -1727,6 +2238,48 @@ components:
             additionalProperties: true
         query_time_ms:
           type: integer
+    GraphSearchRequest:
+      type: object
+      required: [domain_id, start_node_type, start_match, hops, return_fields, params]
+      properties:
+        app_id:
+          type: string
+        mode:
+          type: string
+          enum: [realtime, non-realtime]
+        domain_id:
+          type: string
+        start_node_type:
+          type: string
+        start_match:
+          type: object
+          additionalProperties: true
+        hops:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphSearchHopRequest'
+        return_fields:
+          type: array
+          items:
+            type: string
+        params:
+          type: object
+          additionalProperties: true
+    GraphSearchHopRequest:
+      type: object
+      required: [rel_type, to_node_type, direction]
+      properties:
+        rel_type:
+          type: string
+        to_node_type:
+          type: string
+        direction:
+          type: string
+        filter:
+          type: object
+          additionalProperties: true
+        filter_status:
+          type: string
     NodeResponse:
       type: object
       required:
@@ -1753,6 +2306,10 @@ components:
           type: string
         visibility:
           type: string
+        _kg_sync_version:
+          type: integer
+          format: int64
+          description: Projection sync version when the response is served from a versioned graph projection.
         properties:
           type: object
           additionalProperties: true
@@ -1777,6 +2334,60 @@ components:
           items:
             type: string
         top_k:
+          type: integer
+    FullTextSearchRequest:
+      type: object
+      required: [query, domain_ids, top_k, mode, fields]
+      properties:
+        query:
+          type: string
+        domain_ids:
+          type: array
+          items:
+            type: string
+        top_k:
+          type: integer
+        mode:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+    FullTextSearchResponse:
+      type: object
+      required: [results, search_time_ms]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        search_time_ms:
+          type: integer
+    HybridSearchRequest:
+      type: object
+      required: [query, domain_ids, top_k, fts_operator, semantic_weight]
+      properties:
+        query:
+          type: string
+        domain_ids:
+          type: array
+          items:
+            type: string
+        top_k:
+          type: integer
+        fts_operator:
+          type: string
+        semantic_weight:
+          type: number
+    HybridSearchResponse:
+      type: object
+      required: [results, search_time_ms]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        search_time_ms:
           type: integer
     SearchResult:
       type: object
@@ -1849,6 +2460,8 @@ components:
           type: string
         external_ref:
           type: string
+        reference_id:
+          type: string
         bridge_node_ids:
           type: array
           items:
@@ -1859,12 +2472,52 @@ components:
       properties:
         node_id:
           type: string
+        graph_identifier_id:
+          type: string
+        graph_version_id:
+          type: string
+        graph_version_number:
+          type: integer
+        reference_id:
+          type: string
         domain_version:
           type: integer
         status:
           type: string
         sync_eta_ms:
           type: integer
+    NodeBulkCreateRequest:
+      type: object
+      required: [nodes]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeCreateRequest'
+    BulkItemError:
+      type: object
+      required: [index, error]
+      properties:
+        index:
+          type: integer
+        external_ref:
+          type: string
+        relationship_id:
+          type: string
+        error:
+          type: string
+    NodeBulkCreateResponse:
+      type: object
+      required: [succeeded, failed]
+      properties:
+        succeeded:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeCreateResponse'
+        failed:
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkItemError'
     NodeUpdateRequest:
       type: object
       properties:
@@ -1893,6 +2546,33 @@ components:
           type: string
         is_deleted:
           type: boolean
+    OpenSyncSessionRequest:
+      type: object
+      required: [domain_id, graph_scope]
+      properties:
+        domain_id:
+          type: string
+        graph_scope:
+          type: string
+    SyncSessionResponse:
+      type: object
+      required: [session_id, graph_version_id, graph_identifier_id, graph_version_number]
+      properties:
+        session_id:
+          type: string
+        graph_version_id:
+          type: string
+        graph_identifier_id:
+          type: string
+        graph_version_number:
+          type: integer
+          format: int64
+    StatusOnlyResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
     RelationshipCreateRequest:
       type: object
       required: [rel_type, from_node_id, to_node_id, domain_id, properties]
@@ -1908,14 +2588,78 @@ components:
         properties:
           type: object
           additionalProperties: true
+        reference_id:
+          type: string
     RelationshipCreateResponse:
       type: object
       required: [relationship_id, status]
       properties:
         relationship_id:
           type: string
+        graph_identifier_id:
+          type: string
+        graph_version_id:
+          type: string
+        graph_version_number:
+          type: integer
+        reference_id:
+          type: string
         status:
           type: string
+    RelationshipBulkCreateRequest:
+      type: object
+      required: [relationships]
+      properties:
+        relationships:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationshipCreateRequest'
+    RelationshipBulkCreateResponse:
+      type: object
+      required: [succeeded, failed]
+      properties:
+        succeeded:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationshipCreateResponse'
+        failed:
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkItemError'
+    NodeDeleteByExternalRefPrefixRequest:
+      type: object
+      required: [external_ref_prefix]
+      properties:
+        external_ref_prefix:
+          type: string
+    NodeDeleteByExternalRefPrefixResponse:
+      type: object
+      required: [node_ids, count]
+      properties:
+        node_ids:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+    RelationshipBulkDeleteRequest:
+      type: object
+      required: [relationship_ids]
+      properties:
+        relationship_ids:
+          type: array
+          items:
+            type: string
+    RelationshipBulkDeleteResponse:
+      type: object
+      required: [relationship_ids, count]
+      properties:
+        relationship_ids:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
     IngestDocumentRequest:
       type: object
       required: [file_url, loai_van_ban, domain_id]
@@ -1972,6 +2716,162 @@ components:
           type: string
         domain_id:
           type: string
+    OrphanRelationshipItem:
+      type: object
+      required: [relationship_id, rel_type, from_node_id, to_node_id, domain_id]
+      properties:
+        relationship_id:
+          type: string
+        rel_type:
+          type: string
+        from_node_id:
+          type: string
+        to_node_id:
+          type: string
+        domain_id:
+          type: string
+    OrphanVectorDocItem:
+      type: object
+      required: [node_id, node_type, domain_id]
+      properties:
+        node_id:
+          type: string
+        node_type:
+          type: string
+        domain_id:
+          type: string
+    OrphanScanResponse:
+      type: object
+      required: [relationship_orphans, vector_orphans]
+      properties:
+        relationship_orphans:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrphanRelationshipItem'
+        vector_orphans:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrphanVectorDocItem'
+    RepairReport:
+      type: object
+      required: [rebuilt_nodes, rebuilt_relationships, purged_relationships, purged_vector_docs, scanned_at]
+      properties:
+        rebuilt_nodes:
+          type: integer
+        rebuilt_relationships:
+          type: integer
+        purged_relationships:
+          type: integer
+        purged_vector_docs:
+          type: integer
+        scanned_at:
+          type: string
+          format: date-time
+    IndexedField:
+      type: object
+      required: [field_name, weight]
+      properties:
+        field_name:
+          type: string
+        weight:
+          type: number
+        prefix:
+          type: string
+    SearchProfileOverride:
+      type: object
+      properties:
+        semantic_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexedField'
+        fts_language:
+          type: string
+        query_strategy_ref:
+          type: string
+    SearchProfile:
+      type: object
+      required: [semantic_fields, fts_language, query_strategy_ref]
+      properties:
+        semantic_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/IndexedField'
+        fts_language:
+          type: string
+        query_strategy_ref:
+          type: string
+        tenant_overrides:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SearchProfileOverride'
+        app_overrides:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SearchProfileOverride'
+    QueryStrategy:
+      type: object
+      required: [key, version, max_depth]
+      properties:
+        key:
+          type: string
+        version:
+          type: integer
+        max_depth:
+          type: integer
+        params:
+          type: object
+          additionalProperties: true
+    LagStats:
+      type: object
+      required: [count, median, p95, max]
+      properties:
+        count:
+          type: integer
+        median:
+          type: number
+        p95:
+          type: number
+        max:
+          type: number
+    MetricsResponse:
+      type: object
+      required:
+        - kg_outbox_backlog
+        - kg_graph_lag_seconds
+        - kg_vector_lag_seconds
+        - kg_orphan_relationships_count
+        - kg_orphan_vector_docs_count
+        - kg_bulk_write_batch_size
+        - kg_bulk_write_partial_failure_rate
+        - kg_realtime_read_fallback_count
+        - kg_graph_scope_conflict_count
+        - last_updated_at
+      properties:
+        kg_outbox_backlog:
+          type: integer
+        kg_graph_lag_seconds:
+          $ref: '#/components/schemas/LagStats'
+        kg_vector_lag_seconds:
+          $ref: '#/components/schemas/LagStats'
+        kg_orphan_relationships_count:
+          type: integer
+        kg_orphan_vector_docs_count:
+          type: integer
+        kg_bulk_write_batch_size:
+          $ref: '#/components/schemas/LagStats'
+        kg_bulk_write_partial_failure_rate:
+          type: number
+        kg_realtime_read_fallback_count:
+          type: integer
+        kg_graph_scope_conflict_count:
+          type: integer
+        alerts:
+          type: array
+          items:
+            type: string
+        last_updated_at:
+          type: string
+          format: date-time
     JSONRPCRequest:
       type: object
       required: [jsonrpc, method]

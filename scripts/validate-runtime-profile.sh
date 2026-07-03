@@ -51,6 +51,10 @@ http_get "${base_url}/v1/access/resolve" -H "Authorization: Bearer ${api_key}" >
 step "write node"
 create_resp="$(http_json POST "${base_url}/v1/kg/write/nodes" "{\"domain_id\":\"${domain_id}\",\"node_type\":\"Topic\",\"properties\":{\"topic_key\":\"${profile_node_key}\",\"title\":\"Runtime Profile Smoke\"}}")"
 node_id="$(printf '%s' "${create_resp}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["node_id"])')"
+if ! [[ "${node_id}" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]]; then
+  echo "write node id is not a UUID: ${node_id}" >&2
+  exit 1
+fi
 
 step "read node"
 http_get "${base_url}/v1/kg/read/nodes/${node_id}" -H "Authorization: Bearer ${api_key}" >/dev/null

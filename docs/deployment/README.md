@@ -7,6 +7,7 @@ This section is for operators who need to deploy and verify `kg-service` in supp
 - [Docker Compose](./compose.md) for the simplest self-contained local or single-host stack.
 - [Kubernetes](./kubernetes.md) for cluster deployments that point at reachable Postgres and Redis services.
 - [VM](./vm.md) for standalone host deployment with a built binary and your own process supervisor.
+- [Environment Variables](./environment.md) for the operator-facing configuration inventory.
 - [Integration Validation](./integration-test.md) for the repeatable post-deploy smoke and integration check.
 - [User Deployment Guide](../guides/deployment.md) for task-oriented deployment and validation steps.
 
@@ -15,8 +16,10 @@ This section is for operators who need to deploy and verify `kg-service` in supp
 - The HTTP service listens on `KG_HTTP_HOST:KG_HTTP_PORT`, with `0.0.0.0:8082` as the bootstrap default.
 - The service always needs reachable Postgres and Redis endpoints because bootstrap opens both on startup.
 - The runtime profile is selected with `KG_RUNTIME_PROFILE`, with supported profiles such as `pgvector-memgraph`, `pgvector-neo4j`, `qdrant-memgraph`, `qdrant-neo4j`, `milvus-neo4j`, and `qdrant-nebula`.
+- Runtime-specific variables such as `KG_GRAPH_DATABASE`, `KG_GRAPH_ENDPOINT`, and `KG_VECTOR_ENDPOINT` are documented in [Environment Variables](./environment.md).
 - `scripts/validate-runtime-profile.sh` is the post-deploy smoke entrypoint for write, read, search, integrity, and reconcile checks.
-- `GET /healthz` is public; protected routes still require `Authorization: Bearer <api_key>`.
+- `examples/codegraph/validate-codegraph-runtime.sh` is the dedicated local validation entrypoint for the `code-graph` Compose stack.
+- `GET /healthz` is public and intentionally limited to safe operational metadata; protected routes still require `Authorization: Bearer <api_key>`.
 - The repository includes a `Makefile` with repeatable build, run, deploy, and validation targets.
 - The repository also includes `docs/requirements/` for PRD, URD, and SRS references.
 

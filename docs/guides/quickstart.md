@@ -69,6 +69,16 @@ curl -s \
 
 This is the quickest way to confirm that auth, domain visibility, template activation, and the generic read route are working together.
 
+When you need the freshest direct node view, use realtime mode:
+
+```bash
+curl -s \
+  -H "Authorization: Bearer ${KG_API_KEY}" \
+  "${KG_BASE_URL}/v1/kg/read/nodes/<node_id>?app_id=<app_id>&mode=realtime"
+```
+
+Realtime reads use the graph projection only when its sync version matches `relationshipdb`; otherwise the service falls back to `relationshipdb`.
+
 ## First Search Workflow
 
 ```bash
@@ -91,6 +101,7 @@ Search results are filtered by the caller's visibility and by deletion state.
 
 ## Bootstrap Caveats
 
+- Writes land in `relationshipdb` first, and graph/vector/full-text projections are synchronized asynchronously.
 - Some read, search, sync, and integrity behavior still relies on in-memory bootstrap implementations.
 - Caller-supplied `tenant_id` and `app_id` fields in JSON bodies are ignored by middleware; identity comes from the API key.
 - The local seeded credentials are not a production provisioning model.

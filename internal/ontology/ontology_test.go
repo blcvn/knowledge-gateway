@@ -158,18 +158,6 @@ func newTestService(t *testing.T) *Service {
 	store.Seed(SeedDomains(), SeedVersions(), SeedNodeTypes(), SeedRelTypes(), SeedCrossDomainRules(), SeedQueryTemplates(), SeedStatusFieldConfigs())
 	service := NewService(store, accessResolver)
 
-	_, err = service.CreateDomain(access.Identity{
-		TenantID: "11111111-1111-1111-1111-111111111111",
-		AppID:    "11111111-admin-1111-admin-111111111111",
-		AppType:  "admin_tool",
-	}, "11111111-1111-1111-1111-111111111111", DomainCreateRequest{
-		ID:   "noi_bo_hop_dong",
-		Name: "Noi Bo Hop Dong",
-	})
-	if err != nil {
-		t.Fatalf("bootstrap CreateDomain() error = %v", err)
-	}
-
 	return service
 }
 

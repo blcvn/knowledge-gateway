@@ -11,6 +11,7 @@ import (
 	"kg-service/internal/ontology"
 	"kg-service/internal/read"
 	"kg-service/internal/search"
+	"kg-service/internal/workers"
 	"kg-service/internal/write"
 )
 
@@ -23,7 +24,9 @@ var (
 type ReadService interface {
 	ListTemplates(actor access.Identity, domainID string) ([]read.TemplateListItem, error)
 	ExecuteTemplate(actor access.Identity, domainID, templateName string, params map[string]any) (read.TemplateExecutionResponse, error)
+	ExecuteTemplateWithOptions(actor access.Identity, domainID, templateName string, params map[string]any, appID, mode string) (read.TemplateExecutionResponse, error)
 	GetNode(actor access.Identity, nodeID string) (read.NodeResponse, error)
+	GetNodeForAppWithMode(actor access.Identity, appID, nodeID, mode string) (read.NodeResponse, error)
 }
 
 type SearchService interface {
@@ -33,6 +36,11 @@ type SearchService interface {
 
 type WriteService interface {
 	CreateNode(actor access.Identity, req write.NodeCreateRequest) (write.NodeCreateResponse, error)
+	EntitySyncStatus(entityID, entityKind string) (map[string]any, error)
+}
+
+type SyncStatusResolver interface {
+	EntitySyncStatus(entityID, entityKind string) (workers.EntitySyncStatus, bool)
 }
 
 type OntologyResolver interface {
@@ -50,26 +58,28 @@ type IntegrityService interface {
 }
 
 type Service struct {
-	readService      ReadService
-	searchService    SearchService
-	writeService     WriteService
-	ontologyResolver OntologyResolver
-	accessResolver   AccessResolver
-	integrityService IntegrityService
-	mu               sync.RWMutex
-	sessions         map[string]access.Identity
-	now              func() time.Time
+	readService        ReadService
+	searchService      SearchService
+	writeService       WriteService
+	ontologyResolver   OntologyResolver
+	accessResolver     AccessResolver
+	integrityService   IntegrityService
+	syncStatusResolver SyncStatusResolver
+	mu                 sync.RWMutex
+	sessions           map[string]access.Identity
+	now                func() time.Time
 }
 
-func NewService(readService ReadService, searchService SearchService, writeService WriteService, ontologyResolver OntologyResolver, accessResolver AccessResolver, integrityService IntegrityService) *Service {
+func NewService(readService ReadService, searchService SearchService, writeService WriteService, ontologyResolver OntologyResolver, accessResolver AccessResolver, integrityService IntegrityService, syncStatusResolver SyncStatusResolver) *Service {
 	return &Service{
-		readService:      readService,
-		searchService:    searchService,
-		writeService:     writeService,
-		ontologyResolver: ontologyResolver,
-		accessResolver:   accessResolver,
-		integrityService: integrityService,
-		sessions:         map[string]access.Identity{},
+		readService:        readService,
+		searchService:      searchService,
+		writeService:       writeService,
+		ontologyResolver:   ontologyResolver,
+		accessResolver:     accessResolver,
+		integrityService:   integrityService,
+		syncStatusResolver: syncStatusResolver,
+		sessions:           map[string]access.Identity{},
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -95,11 +105,12 @@ func (s *Service) ListTools() []ToolSpec {
 	return []ToolSpec{
 		{Name: "kg_search", Description: "Semantic search over visible KG projections."},
 		{Name: "kg_search_rag", Description: "RAG retrieval over visible KG projections."},
-		{Name: "kg_read_pattern", Description: "Execute a registered query template."},
+		{Name: "kg_read_pattern", Description: "Execute a registered query template with optional app_id and realtime/non-realtime mode."},
 		{Name: "kg_list_domains", Description: "List effective visible domains."},
 		{Name: "kg_list_templates", Description: "List visible active query templates for a domain."},
-		{Name: "kg_get_node", Description: "Fetch a visible node and its relationships."},
+		{Name: "kg_get_node", Description: "Fetch a visible node by kg id with optional app_id and realtime/non-realtime mode."},
 		{Name: "kg_write_node", Description: "Create a node through the write path."},
+		{Name: "kg_entity_sync_status", Description: "Inspect sync status for a node or relationship."},
 		{Name: "kg_check_access", Description: "Inspect effective visible owners and domains."},
 		{Name: "kg_integrity", Description: "Inspect tenant integrity and bridge gaps."},
 	}
@@ -117,6 +128,8 @@ func (s *Service) CallTool(actor access.Identity, name string, args map[string]a
 		return s.callGetNode(actor, args)
 	case "kg_write_node":
 		return s.callWriteNode(actor, args)
+	case "kg_entity_sync_status":
+		return s.callEntitySyncStatus(actor, args)
 	case "kg_search":
 		return s.callSearch(actor, args, false)
 	case "kg_search_rag":
@@ -171,7 +184,9 @@ func (s *Service) callReadPattern(actor access.Identity, args map[string]any) (a
 	if params == nil {
 		params = map[string]any{}
 	}
-	result, callErr := s.readService.ExecuteTemplate(actor, domainID, templateName, params)
+	appID, _ := args["app_id"].(string)
+	mode, _ := args["mode"].(string)
+	result, callErr := s.readService.ExecuteTemplateWithOptions(actor, domainID, templateName, params, appID, mode)
 	if callErr != nil {
 		return nil, toToolError(callErr)
 	}
@@ -183,7 +198,9 @@ func (s *Service) callGetNode(actor access.Identity, args map[string]any) (any, 
 	if err != nil {
 		return nil, err
 	}
-	node, callErr := s.readService.GetNode(actor, nodeID)
+	appID, _ := args["app_id"].(string)
+	mode, _ := args["mode"].(string)
+	node, callErr := s.readService.GetNodeForAppWithMode(actor, appID, nodeID, mode)
 	if callErr != nil {
 		return nil, toToolError(callErr)
 	}
@@ -215,6 +232,44 @@ func (s *Service) callWriteNode(actor access.Identity, args map[string]any) (any
 		return nil, toToolError(callErr)
 	}
 	return result, nil
+}
+
+func (s *Service) callEntitySyncStatus(actor access.Identity, args map[string]any) (any, *JSONRPCError) {
+	entityID, err := requireString(args, "entity_id")
+	if err != nil {
+		return nil, err
+	}
+	entityKind, err := requireString(args, "entity_kind")
+	if err != nil {
+		return nil, err
+	}
+	if s.syncStatusResolver != nil {
+		status, ok := s.syncStatusResolver.EntitySyncStatus(entityID, entityKind)
+		if !ok {
+			return nil, &JSONRPCError{Code: -32004, Message: "not found"}
+		}
+		_ = actor
+		return map[string]any{
+			"entity_id":                        status.EntityID,
+			"entity_kind":                      status.EntityKind,
+			"source_version":                   status.SourceVersion,
+			"graph_version":                    status.GraphVersion,
+			"graph_lag_class":                  status.GraphLagClass,
+			"graph_projection_ready":           status.GraphProjectionReady,
+			"graph_projection_head_version":    status.GraphProjectionHeadVersion,
+			"graph_projection_head_version_id": status.GraphProjectionHeadVersionID,
+			"last_graph_synced_at":             status.LastGraphSyncedAt,
+			"vector_version":                   status.VectorVersion,
+			"vector_lag_class":                 status.VectorLagClass,
+			"last_vector_synced_at":            status.LastVectorSyncedAt,
+		}, nil
+	}
+	status, callErr := s.writeService.EntitySyncStatus(entityID, entityKind)
+	if callErr != nil {
+		return nil, toToolError(callErr)
+	}
+	_ = actor
+	return status, nil
 }
 
 func (s *Service) callSearch(actor access.Identity, args map[string]any, rag bool) (any, *JSONRPCError) {
@@ -299,6 +354,8 @@ func toToolError(err error) *JSONRPCError {
 	switch {
 	case errors.Is(err, ErrValidation), errors.Is(err, read.ErrValidation), errors.Is(err, search.ErrValidation), errors.Is(err, integrity.ErrValidation), errors.Is(err, write.ErrValidation):
 		return &JSONRPCError{Code: -32602, Message: "validation failed"}
+	case errors.Is(err, read.ErrProjectionUnreadable):
+		return &JSONRPCError{Code: -32010, Message: "projection inconsistent", Data: map[string]any{"reason": "projection_unreadable"}}
 	case errors.Is(err, ErrForbidden), errors.Is(err, read.ErrForbidden), errors.Is(err, search.ErrForbidden), errors.Is(err, integrity.ErrForbidden), errors.Is(err, write.ErrForbidden):
 		return &JSONRPCError{Code: -32603, Message: "forbidden"}
 	case errors.Is(err, ErrNotFound), errors.Is(err, read.ErrNotFound), errors.Is(err, search.ErrNotFound), errors.Is(err, integrity.ErrNotFound), errors.Is(err, write.ErrNotFound):

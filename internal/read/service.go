@@ -9,14 +9,17 @@ import (
 
 	"kg-service/internal/access"
 	"kg-service/internal/ontology"
+	"kg-service/internal/platform/graphstore"
+	"kg-service/internal/telemetry"
 	"kg-service/internal/write"
 )
 
 var (
-	ErrForbidden  = errors.New("forbidden")
-	ErrNotFound   = errors.New("not found")
-	ErrValidation = errors.New("validation")
-	ErrTimeout    = errors.New("timeout")
+	ErrForbidden            = errors.New("forbidden")
+	ErrNotFound             = errors.New("not found")
+	ErrProjectionUnreadable = errors.New("projection unreadable")
+	ErrValidation           = errors.New("validation")
+	ErrTimeout              = errors.New("timeout")
 )
 
 type OntologyResolver interface {
@@ -36,6 +39,8 @@ type AuditLogger interface {
 }
 
 type Service struct {
+	sourceStore    ProjectionStore
+	sourceIndex    GraphIndex
 	index          GraphIndex
 	ontology       OntologyResolver
 	accessResolver AccessResolver
@@ -48,6 +53,8 @@ type Service struct {
 
 func NewService(store ProjectionStore, ontology OntologyResolver, accessResolver AccessResolver, auditLogger AuditLogger) *Service {
 	return &Service{
+		sourceStore:    store,
+		sourceIndex:    NewProjectionGraphIndex(store),
 		index:          NewProjectionGraphIndex(store),
 		ontology:       ontology,
 		accessResolver: accessResolver,
@@ -59,6 +66,13 @@ func NewService(store ProjectionStore, ontology OntologyResolver, accessResolver
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (s *Service) SetGraphAdapter(adapter graphstore.GraphAdapter) {
+	if adapter == nil {
+		return
+	}
+	s.index = ProjectionGraphIndex{adapter: adapter}
 }
 
 func (s *Service) ListTemplates(actor access.Identity, domainID string) ([]TemplateListItem, error) {
@@ -89,6 +103,10 @@ func (s *Service) ListTemplates(actor access.Identity, domainID string) ([]Templ
 }
 
 func (s *Service) ExecuteTemplate(actor access.Identity, domainID, templateName string, params map[string]any) (TemplateExecutionResponse, error) {
+	return s.ExecuteTemplateWithOptions(actor, domainID, templateName, params, actor.AppID, ReadModeNonRealtime)
+}
+
+func (s *Service) ExecuteTemplateWithOptions(actor access.Identity, domainID, templateName string, params map[string]any, appID, mode string) (TemplateExecutionResponse, error) {
 	domain, err := s.ontology.GetVisibleDomain(actor, domainID)
 	if err != nil {
 		if errors.Is(err, ontology.ErrForbidden) || errors.Is(err, ontology.ErrNotFound) {
@@ -129,7 +147,7 @@ func (s *Service) ExecuteTemplate(actor access.Identity, domainID, templateName 
 	}
 	visibility := visibleOwnerSet(allowedOwners)
 	statusCfg, _ := s.ontology.GetStatusFieldConfig(domain.ID)
-	results, err := s.index.ExecuteTemplate(actor, domainID, compiled, bound, visibility, statusCfg, s.maxRows, s.queryTimeout, s.now)
+	results, err := s.executeGraphQueryWithMode(actor, appID, normalizeReadMode(mode), domainID, compiled, bound, visibility, statusCfg)
 	if err != nil {
 		if errors.Is(err, ErrTimeout) {
 			s.recordAudit(actor, "read", "query_template", domainID+"."+templateName, "deny", "query_timeout", nil)
@@ -139,6 +157,8 @@ func (s *Service) ExecuteTemplate(actor access.Identity, domainID, templateName 
 	s.recordAudit(actor, "read", "query_template", domainID+"."+templateName, "allow", "", map[string]any{
 		"result_count": len(results),
 		"query":        compiled.Query,
+		"read_mode":    normalizeReadMode(mode),
+		"app_id":       strings.TrimSpace(appID),
 	})
 	return TemplateExecutionResponse{
 		Results:     results,
@@ -146,21 +166,241 @@ func (s *Service) ExecuteTemplate(actor access.Identity, domainID, templateName 
 	}, nil
 }
 
+func (s *Service) GraphSearch(actor access.Identity, req GraphSearchRequest) (TemplateExecutionResponse, error) {
+	if strings.TrimSpace(req.DomainID) == "" {
+		return TemplateExecutionResponse{}, errors.Join(ErrValidation, errors.New("domain_id is required"))
+	}
+	if strings.TrimSpace(req.StartNodeType) == "" {
+		return TemplateExecutionResponse{}, errors.Join(ErrValidation, errors.New("start_node_type is required"))
+	}
+
+	domain, err := s.ontology.GetVisibleDomain(actor, req.DomainID)
+	if err != nil {
+		if errors.Is(err, ontology.ErrForbidden) || errors.Is(err, ontology.ErrNotFound) {
+			s.recordAudit(actor, "read", "graph_search", req.DomainID, "deny", "domain_not_visible", nil)
+			return TemplateExecutionResponse{}, ErrForbidden
+		}
+		return TemplateExecutionResponse{}, err
+	}
+	resolvedProfile, err := s.ontology.Resolve(req.DomainID, actor.TenantID, actor.AppID)
+	if err != nil {
+		return TemplateExecutionResponse{}, err
+	}
+
+	query := req.ToGraphQuery()
+	query.ACLTokensParam = "acl_tokens"
+	allowedDepth := resolvedProfile.QueryStrategy.MaxDepth
+	if allowedDepth <= 0 {
+		allowedDepth = 5
+	}
+	if query.MaxDepth <= 0 || query.MaxDepth > allowedDepth {
+		query.MaxDepth = allowedDepth
+	}
+	if query.Strategy == "" {
+		query.Strategy = resolvedProfile.QueryStrategy.Key
+	}
+	if query.Strategy == "" {
+		query.Strategy = "default"
+	}
+
+	allowedOwners, err := s.accessResolver.ResolveVisibleOwners(actor)
+	if err != nil {
+		return TemplateExecutionResponse{}, err
+	}
+	visibility := visibleOwnerSet(allowedOwners)
+	statusCfg, _ := s.ontology.GetStatusFieldConfig(domain.ID)
+	compiled := CompiledTemplate{
+		DomainID:     req.DomainID,
+		TemplateName: "graph_search",
+		StartType:    req.StartNodeType,
+		ReturnFields: query.ReturnFields,
+		GraphQuery:   query,
+	}
+	results, err := s.executeGraphQueryWithMode(actor, req.AppID, normalizeReadMode(req.Mode), req.DomainID, compiled, req.Params, visibility, statusCfg)
+	if err != nil {
+		if errors.Is(err, ErrTimeout) {
+			s.recordAudit(actor, "read", "graph_search", req.DomainID, "deny", "query_timeout", nil)
+		}
+		return TemplateExecutionResponse{}, err
+	}
+	s.recordAudit(actor, "read", "graph_search", req.DomainID, "allow", "", map[string]any{
+		"result_count": len(results),
+		"read_mode":    normalizeReadMode(req.Mode),
+		"app_id":       strings.TrimSpace(req.AppID),
+	})
+	return TemplateExecutionResponse{
+		Results:     results,
+		QueryTimeMs: 1,
+	}, nil
+}
+
+func (s *Service) executeGraphQueryWithMode(actor access.Identity, appID, mode, domainID string, compiled CompiledTemplate, bound map[string]any, visibility map[string]struct{}, statusCfg *ontology.StatusFieldConfig) ([]map[string]any, error) {
+	targetAppID := strings.TrimSpace(appID)
+	if targetAppID == "" {
+		targetAppID = actor.AppID
+	}
+	if mode != ReadModeRealtime {
+		results, err := s.index.ExecuteTemplate(actor, domainID, compiled, bound, visibility, statusCfg, s.maxRows, s.queryTimeout, s.now)
+		if err != nil {
+			return nil, err
+		}
+		if len(results) == 0 {
+			if startNodeID, ok := resolveStartNodeID(compiled.GraphQuery.StartMatch, bound); ok && s.projectionUnreadable(targetAppID, startNodeID, visibility) {
+				return nil, ErrProjectionUnreadable
+			}
+		}
+		return results, nil
+	}
+	startNodeID, ok := resolveStartNodeID(compiled.GraphQuery.StartMatch, bound)
+	if !ok {
+		return s.index.ExecuteTemplate(actor, domainID, compiled, bound, visibility, statusCfg, s.maxRows, s.queryTimeout, s.now)
+	}
+	sourceNode, ok := s.sourceStore.GetNodeByID(startNodeID)
+	if !ok || sourceNode.IsDeleted || !isNodeVisible(sourceNode, visibility) || !matchesAppScope(sourceNode.OwnerAppID, targetAppID) {
+		return nil, ErrNotFound
+	}
+	graphVersion, err := s.index.ReadSyncVersion(startNodeID)
+	if err == nil && graphVersion == int64(sourceNode.DomainVersion) {
+		return s.index.ExecuteTemplate(actor, domainID, compiled, bound, visibility, statusCfg, s.maxRows, s.queryTimeout, s.now)
+	}
+	telemetry.RecordRealtimeReadFallback(sourceNode.DomainID, targetAppID)
+	return s.sourceIndex.ExecuteTemplate(actor, domainID, compiled, bound, visibility, statusCfg, s.maxRows, s.queryTimeout, s.now)
+}
+
+func resolveStartNodeID(match map[string]any, bound map[string]any) (string, bool) {
+	if match == nil {
+		return "", false
+	}
+	raw, ok := match["id"]
+	if !ok {
+		return "", false
+	}
+	value, resolved := resolveTemplateValue(raw, bound)
+	if !resolved {
+		value = raw
+	}
+	id := strings.TrimSpace(fmt.Sprint(value))
+	if id == "" {
+		return "", false
+	}
+	return id, true
+}
+
 func (s *Service) GetNode(actor access.Identity, nodeID string) (NodeResponse, error) {
+	return s.GetNodeForAppWithMode(actor, actor.AppID, nodeID, ReadModeNonRealtime)
+}
+
+func (s *Service) GetNodeWithMode(actor access.Identity, nodeID, mode string) (NodeResponse, error) {
+	return s.GetNodeForAppWithMode(actor, actor.AppID, nodeID, mode)
+}
+
+func (s *Service) GetNodeForAppWithMode(actor access.Identity, appID, nodeID, mode string) (NodeResponse, error) {
 	owners, err := s.accessResolver.ResolveVisibleOwners(actor)
 	if err != nil {
 		return NodeResponse{}, err
 	}
-	node, ok := s.index.GetNode(actor, nodeID, visibleOwnerSet(owners))
+	visibility := visibleOwnerSet(owners)
+	targetAppID := strings.TrimSpace(appID)
+	if targetAppID == "" {
+		targetAppID = actor.AppID
+	}
+	node, ok := s.nodeForMode(actor, targetAppID, nodeID, normalizeReadMode(mode), visibility)
 	if !ok {
+		if normalizeReadMode(mode) == ReadModeNonRealtime && s.projectionUnreadable(targetAppID, nodeID, visibility) {
+			s.recordAudit(actor, "read", "kg_node", nodeID, "deny", "projection_unreadable", nil)
+			return NodeResponse{}, ErrProjectionUnreadable
+		}
 		s.recordAudit(actor, "read", "kg_node", nodeID, "deny", "node_not_found_or_invisible", nil)
 		return NodeResponse{}, ErrNotFound
 	}
 	s.recordAudit(actor, "read", "kg_node", nodeID, "allow", "", map[string]any{
 		"node_type": node.NodeType,
 		"domain_id": node.DomainID,
+		"read_mode": normalizeReadMode(mode),
+		"app_id":    targetAppID,
 	})
 	return node, nil
+}
+
+func (s *Service) projectionUnreadable(appID, nodeID string, visibility map[string]struct{}) bool {
+	sourceNode, ok := s.sourceStore.GetNodeByID(nodeID)
+	if !ok || sourceNode.IsDeleted || !isNodeVisible(sourceNode, visibility) || !matchesAppScope(sourceNode.OwnerAppID, appID) {
+		return false
+	}
+	graphVersion, err := s.index.ReadSyncVersion(nodeID)
+	if err != nil || graphVersion <= 0 {
+		return false
+	}
+	return graphVersion >= int64(sourceNode.DomainVersion)
+}
+
+func (s *Service) nodeForMode(actor access.Identity, appID, nodeID, mode string, visibility map[string]struct{}) (NodeResponse, bool) {
+	if mode != ReadModeRealtime {
+		node, ok := s.index.GetNode(actor, nodeID, visibility)
+		if !ok || !matchesAppScope(node.OwnerAppID, appID) {
+			return NodeResponse{}, false
+		}
+		return node, true
+	}
+
+	sourceNode, ok := s.sourceStore.GetNodeByID(nodeID)
+	if !ok || sourceNode.IsDeleted || !isNodeVisible(sourceNode, visibility) || !matchesAppScope(sourceNode.OwnerAppID, appID) {
+		return NodeResponse{}, false
+	}
+	graphVersion, err := s.index.ReadSyncVersion(nodeID)
+	if err == nil && graphVersion == int64(sourceNode.DomainVersion) {
+		if node, ok := s.index.GetNode(actor, nodeID, visibility); ok {
+			if matchesAppScope(node.OwnerAppID, appID) {
+				return node, true
+			}
+		}
+	}
+	telemetry.RecordRealtimeReadFallback(sourceNode.DomainID, appID)
+	return sourceNodeResponse(sourceNode, s.sourceStore.ListRelationships()), true
+}
+
+func normalizeReadMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", ReadModeNonRealtime:
+		return ReadModeNonRealtime
+	case ReadModeRealtime:
+		return ReadModeRealtime
+	default:
+		return ReadModeNonRealtime
+	}
+}
+
+func sourceNodeResponse(node write.NodeRecord, rels []write.RelationshipRecord) NodeResponse {
+	relationships := make([]string, 0)
+	for _, rel := range rels {
+		if rel.IsDeleted {
+			continue
+		}
+		if rel.FromNodeID == node.ID || rel.ToNodeID == node.ID {
+			relationships = append(relationships, rel.ID)
+		}
+	}
+	return NodeResponse{
+		ID:            node.ID,
+		NodeType:      node.NodeType,
+		DomainID:      node.DomainID,
+		OwnerTenantID: node.OwnerTenantID,
+		OwnerAppID:    node.OwnerAppID,
+		Visibility:    node.Visibility,
+		SyncVersion:   int64(node.DomainVersion),
+		Properties:    cloneMap(node.Properties),
+		Relationships: relationships,
+		CreatedAt:     node.CreatedAt,
+		UpdatedAt:     node.UpdatedAt,
+	}
+}
+
+func matchesAppScope(ownerAppID, requestedAppID string) bool {
+	requestedAppID = strings.TrimSpace(requestedAppID)
+	if requestedAppID == "" {
+		return true
+	}
+	return ownerAppID == requestedAppID
 }
 
 func matchesNode(node write.NodeRecord, match map[string]any, bound map[string]any) bool {
@@ -169,15 +409,37 @@ func matchesNode(node write.NodeRecord, match map[string]any, bound map[string]a
 		if !ok {
 			want = raw
 		}
-		got, ok := node.Properties[key]
+		got, ok := builtInNodeField(node, key)
 		if !ok {
-			return false
+			got, ok = node.Properties[key]
+			if !ok {
+				return false
+			}
 		}
 		if fmt.Sprintf("%v", got) != fmt.Sprintf("%v", want) {
 			return false
 		}
 	}
 	return true
+}
+
+func builtInNodeField(node write.NodeRecord, key string) (any, bool) {
+	switch key {
+	case "id":
+		return node.ID, true
+	case "node_type":
+		return node.NodeType, true
+	case "domain_id":
+		return node.DomainID, true
+	case "owner_tenant_id":
+		return node.OwnerTenantID, true
+	case "owner_app_id":
+		return node.OwnerAppID, true
+	case "external_ref":
+		return node.ExternalRef, true
+	default:
+		return nil, false
+	}
 }
 
 func bindTemplateParams(template ontology.QueryTemplate, params map[string]any) (map[string]any, error) {

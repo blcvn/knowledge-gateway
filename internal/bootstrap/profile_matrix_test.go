@@ -26,15 +26,16 @@ func TestSupportedRuntimeProfilesBuildAdapters(t *testing.T) {
 		name           string
 		graphKind      string
 		graphEndpoint  string
+		graphDatabase  string
 		vectorKind     string
 		vectorEndpoint string
 	}{
-		{name: "pgvector-memgraph", graphKind: "memgraph", graphEndpoint: "bolt://memgraph:7687", vectorKind: "pgvector"},
-		{name: "pgvector-neo4j", graphKind: "neo4j", graphEndpoint: "neo4j://neo4j:7687", vectorKind: "pgvector"},
-		{name: "qdrant-memgraph", graphKind: "memgraph", graphEndpoint: "bolt://memgraph:7687", vectorKind: "qdrant", vectorEndpoint: "http://qdrant:6333"},
-		{name: "qdrant-neo4j", graphKind: "neo4j", graphEndpoint: "neo4j://neo4j:7687", vectorKind: "qdrant", vectorEndpoint: "http://qdrant:6333"},
-		{name: "milvus-neo4j", graphKind: "neo4j", graphEndpoint: "neo4j://neo4j:7687", vectorKind: "milvus", vectorEndpoint: "http://milvus:19530"},
-		{name: "qdrant-nebula", graphKind: "nebula", graphEndpoint: "nebula://nebula:9669", vectorKind: "qdrant", vectorEndpoint: "http://qdrant:6333"},
+		{name: "pgvector-memgraph", graphKind: "memgraph", graphEndpoint: "bolt://memgraph:7687", graphDatabase: "kg", vectorKind: "pgvector"},
+		{name: "pgvector-neo4j", graphKind: "neo4j", graphEndpoint: "neo4j://neo4j:7687", graphDatabase: "neo4j", vectorKind: "pgvector"},
+		{name: "qdrant-memgraph", graphKind: "memgraph", graphEndpoint: "bolt://memgraph:7687", graphDatabase: "kg", vectorKind: "qdrant", vectorEndpoint: "http://qdrant:6333"},
+		{name: "qdrant-neo4j", graphKind: "neo4j", graphEndpoint: "neo4j://neo4j:7687", graphDatabase: "neo4j", vectorKind: "qdrant", vectorEndpoint: "http://qdrant:6333"},
+		{name: "milvus-neo4j", graphKind: "neo4j", graphEndpoint: "neo4j://neo4j:7687", graphDatabase: "neo4j", vectorKind: "milvus", vectorEndpoint: "http://milvus:19530"},
+		{name: "qdrant-nebula", graphKind: "nebula", graphEndpoint: "nebula://nebula:9669", graphDatabase: "kg", vectorKind: "qdrant", vectorEndpoint: "http://qdrant:6333"},
 	}
 
 	for _, tc := range cases {
@@ -42,6 +43,7 @@ func TestSupportedRuntimeProfilesBuildAdapters(t *testing.T) {
 			cfg := base
 			cfg.Graph.Kind = tc.graphKind
 			cfg.Graph.Endpoint = tc.graphEndpoint
+			cfg.Graph.Database = tc.graphDatabase
 			cfg.Vector.Kind = tc.vectorKind
 			cfg.Vector.Endpoint = tc.vectorEndpoint
 			cfg.Vector.Collection = "kg_vectors"

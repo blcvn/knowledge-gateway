@@ -58,8 +58,11 @@ func TestMCPConnectListAndCallTools(t *testing.T) {
 	var listPayload map[string]any
 	mustDecodeJSON(t, listResp.Body.Bytes(), &listPayload)
 	result := listPayload["result"].(map[string]any)
-	if !containsTool(result["tools"].([]any), "kg_list_templates") {
+	if !containsTool(result["tools"].([]any), "kg_list_templates") || !containsTool(result["tools"].([]any), "kg_entity_sync_status") {
 		t.Fatalf("tools = %#v", result["tools"])
+	}
+	if !toolDescriptionContains(result["tools"].([]any), "kg_get_node", "realtime/non-realtime") {
+		t.Fatalf("kg_get_node description missing mode hint: %#v", result["tools"])
 	}
 
 	callResp := callMCP(t, handler, sessionID, JSONRPCRequest{
@@ -97,6 +100,58 @@ func TestMCPConnectListAndCallTools(t *testing.T) {
 	mustDecodeJSON(t, searchResp.Body.Bytes(), &listPayload)
 	if listPayload["error"] != nil {
 		t.Fatalf("kg_search error = %#v", listPayload["error"])
+	}
+}
+
+func toolDescriptionContains(tools []any, name, fragment string) bool {
+	for _, raw := range tools {
+		tool, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if tool["name"] == name && strings.Contains(strings.ToLower(tool["description"].(string)), strings.ToLower(fragment)) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMCPCallEntitySyncStatus(t *testing.T) {
+	fixture := newParityFixture(t)
+	handler := fixture.mcpHandler
+
+	connectReq := httptest.NewRequest(http.MethodGet, "/v1/mcp/connect", nil)
+	connectReq = connectReq.WithContext(access.ContextWithIdentity(connectReq.Context(), fixture.actor))
+	connectRec := httptest.NewRecorder()
+	handler.Connect(connectRec, connectReq)
+	sessionID := extractSessionID(connectRec.Body.String())
+	if sessionID == "" {
+		t.Fatalf("session body = %s", connectRec.Body.String())
+	}
+
+	resp := callMCP(t, handler, sessionID, JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      99,
+		Method:  "tools/call",
+		Params: map[string]any{
+			"name": "kg_entity_sync_status",
+			"arguments": map[string]any{
+				"entity_id":   fixture.bridgeID,
+				"entity_kind": "kg_node",
+			},
+		},
+	})
+	var payload map[string]any
+	mustDecodeJSON(t, resp.Body.Bytes(), &payload)
+	if payload["error"] != nil {
+		t.Fatalf("kg_entity_sync_status error = %#v", payload["error"])
+	}
+	result := payload["result"].(map[string]any)
+	if result["graph_lag_class"] != "SYNCED" || result["vector_lag_class"] != "SYNCED" {
+		t.Fatalf("result = %#v", result)
+	}
+	if ready, ok := result["graph_projection_ready"].(bool); !ok || !ready {
+		t.Fatalf("result = %#v, want graph projection ready", result)
 	}
 }
 
@@ -225,6 +280,27 @@ func TestMCPCheckAccessMatchesRESTVisibility(t *testing.T) {
 	}
 	if !reflect.DeepEqual(restRead.Results, mcpRead.Results) {
 		t.Fatalf("REST read = %#v, MCP read = %#v", restRead.Results, mcpRead.Results)
+	}
+
+	mcpNodeResp := callMCP(t, handler, sessionID, JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      12.1,
+		Method:  "tools/call",
+		Params: map[string]any{
+			"name": "kg_get_node",
+			"arguments": map[string]any{
+				"id":     fixture.createdID,
+				"app_id": fixture.actor.AppID,
+				"mode":   "realtime",
+			},
+		},
+	})
+	mustDecodeJSON(t, mcpNodeResp.Body.Bytes(), &mcpPayload)
+	if mcpPayload["error"] != nil {
+		t.Fatalf("kg_get_node error = %#v", mcpPayload["error"])
+	}
+	if _, ok := mcpPayload["result"].(map[string]any)["node"]; !ok {
+		t.Fatalf("kg_get_node result = %#v", mcpPayload["result"])
 	}
 
 	restSearchReq := httptest.NewRequest(http.MethodPost, "/v1/kg/search/semantic", strings.NewReader(`{"query":"Hop dong","domain_ids":["noi_bo_hop_dong"],"top_k":1}`))
@@ -403,6 +479,8 @@ type parityFixture struct {
 	integrityHandler integrity.Handler
 	mcpHandler       Handler
 	actor            access.Identity
+	bridgeID         string
+	createdID        string
 }
 
 func newParityFixture(t *testing.T) parityFixture {
@@ -477,11 +555,39 @@ func newParityFixture(t *testing.T) parityFixture {
 		t.Fatalf("CreateNode() error = %v", err)
 	}
 	_ = created
+	now := time.Now().UTC()
+	events := writeStore.ListOutboxEvents()
+	if len(events) == 0 {
+		t.Fatal("bridge create did not emit an outbox event")
+	}
+	if err := writeStore.UpsertGraphProjectionHead(context.Background(), write.GraphProjectionHeadRecord{
+		IdentifierID:         bridge.GraphIdentifierID,
+		BackendKind:          "graph",
+		BackendName:          "",
+		AppliedVersionID:     bridge.GraphVersionID,
+		AppliedVersionNumber: bridge.GraphVersionNumber,
+		UpdatedAt:            now,
+	}); err != nil {
+		t.Fatalf("UpsertGraphProjectionHead() error = %v", err)
+	}
+	_ = writeStore.UpsertProjectionVersion(context.Background(), write.ProjectionVersionRecord{
+		EntityID:           bridge.NodeID,
+		EntityKind:         "kg_node",
+		SourceVersion:      int64(bridge.DomainVersion),
+		SourceEventID:      events[0].ID,
+		SourceUpdatedAt:    now.Add(-2 * time.Second),
+		GraphBackend:       "graph",
+		GraphVersion:       int64(bridge.DomainVersion),
+		LastGraphSyncedAt:  now.Add(-1 * time.Second),
+		VectorBackend:      "vector",
+		VectorVersion:      int64(bridge.DomainVersion),
+		LastVectorSyncedAt: now.Add(-1 * time.Second),
+	})
 
 	readSvc := read.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
 	searchSvc := search.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
-	integritySvc := integrity.NewService(writeStore, ontologyStore)
-	mcpSvc := NewService(readSvc, searchSvc, writeSvc, ontologySvc, accessResolver, integritySvc)
+	integritySvc := integrity.NewService(writeStore, ontologyStore, nil)
+	mcpSvc := NewService(readSvc, searchSvc, writeSvc, ontologySvc, accessResolver, integritySvc, nil)
 	return parityFixture{
 		accessHandler:    access.NewHandler(accessResolver, accessSvc),
 		readHandler:      read.NewHandler(readSvc),
@@ -489,6 +595,8 @@ func newParityFixture(t *testing.T) parityFixture {
 		integrityHandler: integrity.NewHandler(integritySvc),
 		mcpHandler:       NewHandler(mcpSvc),
 		actor:            actor,
+		bridgeID:         bridge.NodeID,
+		createdID:        created.NodeID,
 	}
 }
 
@@ -569,8 +677,8 @@ func newMCPFixtureWithLimiter(t *testing.T, tierLimits map[string]int) (Handler,
 
 	readSvc := read.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
 	searchSvc := search.NewService(writeStore, ontologySvc, accessResolver, accessSvc)
-	integritySvc := integrity.NewService(writeStore, ontologyStore)
-	mcpSvc := NewService(readSvc, searchSvc, writeSvc, ontologySvc, accessResolver, integritySvc)
+	integritySvc := integrity.NewService(writeStore, ontologyStore, nil)
+	mcpSvc := NewService(readSvc, searchSvc, writeSvc, ontologySvc, accessResolver, integritySvc, nil)
 	return NewHandler(mcpSvc, limiter), actor
 }
 

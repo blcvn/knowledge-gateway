@@ -24,9 +24,21 @@ func NewInMemoryGraphAdapter() *InMemoryGraphAdapter {
 func (a *InMemoryGraphAdapter) UpsertNode(_ context.Context, node GraphNode) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if existing, ok := a.nodes[node.ID]; ok && existing.SyncVersion > node.SyncVersion {
+		return nil
+	}
 	node.Properties = clone(node.Properties)
 	node.Properties["_kg_sync_version"] = node.SyncVersion
 	a.nodes[node.ID] = node
+	return nil
+}
+
+func (a *InMemoryGraphAdapter) UpsertNodesBatch(ctx context.Context, nodes []GraphNode) error {
+	for _, node := range nodes {
+		if err := a.UpsertNode(ctx, node); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -42,12 +54,42 @@ func (a *InMemoryGraphAdapter) DeleteNode(_ context.Context, nodeID string) erro
 	return nil
 }
 
+func (a *InMemoryGraphAdapter) DeleteNodesBatch(ctx context.Context, nodes []GraphNode) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, node := range nodes {
+		existing, ok := a.nodes[node.ID]
+		if ok && existing.SyncVersion > node.SyncVersion {
+			continue
+		}
+		delete(a.nodes, node.ID)
+		for id, rel := range a.rels {
+			if rel.FromNodeID == node.ID || rel.ToNodeID == node.ID {
+				delete(a.rels, id)
+			}
+		}
+	}
+	return nil
+}
+
 func (a *InMemoryGraphAdapter) UpsertRelationship(_ context.Context, rel GraphRelationship) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if existing, ok := a.rels[rel.ID]; ok && existing.SyncVersion > rel.SyncVersion {
+		return nil
+	}
 	rel.Properties = clone(rel.Properties)
 	rel.Properties["_kg_sync_version"] = rel.SyncVersion
 	a.rels[rel.ID] = rel
+	return nil
+}
+
+func (a *InMemoryGraphAdapter) UpsertRelationshipsBatch(ctx context.Context, rels []GraphRelationship) error {
+	for _, rel := range rels {
+		if err := a.UpsertRelationship(ctx, rel); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -55,6 +97,19 @@ func (a *InMemoryGraphAdapter) DeleteRelationship(_ context.Context, relID strin
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.rels, relID)
+	return nil
+}
+
+func (a *InMemoryGraphAdapter) DeleteRelationshipsBatch(ctx context.Context, rels []GraphRelationship) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, rel := range rels {
+		existing, ok := a.rels[rel.ID]
+		if ok && existing.SyncVersion > rel.SyncVersion {
+			continue
+		}
+		delete(a.rels, rel.ID)
+	}
 	return nil
 }
 

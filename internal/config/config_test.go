@@ -2,11 +2,21 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestLoadUsesEnvironment(t *testing.T) {
+	t.Setenv("KG_LOG_LEVEL", "debug")
+	t.Setenv("KG_LOG_FORMAT", "text")
+	t.Setenv("KG_SERVICE_NAME", "kg-service-test")
+	t.Setenv("KG_SERVICE_VERSION", "1.2.3")
+	t.Setenv("KG_OTEL_EXPORTER_ENDPOINT", "otel.internal:4317")
+	t.Setenv("KG_OTEL_EXPORTER_PROTOCOL", "http/protobuf")
+	t.Setenv("KG_TRACE_SAMPLING_RATIO", "0.25")
+	t.Setenv("KG_METRICS_ENABLED", "false")
+	t.Setenv("KG_METRICS_ADDRESS", "127.0.0.1:9091")
 	t.Setenv("KG_HTTP_HOST", "127.0.0.1")
 	t.Setenv("KG_HTTP_PORT", "9090")
 	t.Setenv("KG_POSTGRES_HOST", "db.internal")
@@ -24,7 +34,14 @@ func TestLoadUsesEnvironment(t *testing.T) {
 	t.Setenv("KG_VECTOR_COLLECTION", "kg_vectors_test")
 	t.Setenv("GRAPH_ADAPTER", "neo4j")
 	t.Setenv("KG_GRAPH_ENDPOINT", "bolt://neo4j.internal:7687")
+	t.Setenv("KG_GRAPH_DATABASE", "neo4j")
 	t.Setenv("FTS_ADAPTER", "postgres")
+	t.Setenv("KG_RATE_LIMIT_FREE", "100")
+	t.Setenv("KG_RATE_LIMIT_PRO", "200")
+	t.Setenv("KG_RATE_LIMIT_ENTERPRISE", "300")
+	t.Setenv("SYNC_LAG_TOLERANCE_MS", "45000")
+	t.Setenv("SYNC_LAG_STUCK_RETRIES", "5")
+	t.Setenv("SYNC_ETA_DEFAULT_MS", "7000")
 
 	cfg, err := Load()
 	if err != nil {
@@ -33,6 +50,24 @@ func TestLoadUsesEnvironment(t *testing.T) {
 
 	if cfg.HTTP.Address() != "127.0.0.1:9090" {
 		t.Fatalf("HTTP address = %q", cfg.HTTP.Address())
+	}
+	if cfg.Observability.LogLevel != "debug" || cfg.Observability.LogFormat != "text" {
+		t.Fatalf("Observability = %#v", cfg.Observability)
+	}
+	if cfg.Observability.ServiceName != "kg-service-test" || cfg.Observability.ServiceVersion != "1.2.3" {
+		t.Fatalf("Service metadata = %#v", cfg.Observability)
+	}
+	if cfg.Observability.OTELExporterEndpoint != "otel.internal:4317" || cfg.Observability.OTELExporterProtocol != "http/protobuf" {
+		t.Fatalf("OTEL config = %#v", cfg.Observability)
+	}
+	if cfg.Observability.TraceSamplingRatio != 0.25 {
+		t.Fatalf("TraceSamplingRatio = %v", cfg.Observability.TraceSamplingRatio)
+	}
+	if cfg.Observability.MetricsEnabled {
+		t.Fatalf("MetricsEnabled = true, want false")
+	}
+	if cfg.Observability.MetricsAddress != "127.0.0.1:9091" {
+		t.Fatalf("MetricsAddress = %q", cfg.Observability.MetricsAddress)
 	}
 	if cfg.Postgres.DSN() != "postgres://kg:secret@db.internal:5433/kg_service_test?sslmode=require" {
 		t.Fatalf("Postgres DSN = %q", cfg.Postgres.DSN())
@@ -61,8 +96,23 @@ func TestLoadUsesEnvironment(t *testing.T) {
 	if cfg.Graph.Endpoint != "bolt://neo4j.internal:7687" {
 		t.Fatalf("Graph endpoint = %q", cfg.Graph.Endpoint)
 	}
+	if cfg.Graph.Database != "neo4j" {
+		t.Fatalf("Graph database = %q", cfg.Graph.Database)
+	}
 	if cfg.FTS.Kind != "postgres" {
 		t.Fatalf("FTS kind = %q", cfg.FTS.Kind)
+	}
+	if cfg.RateLimit.FreePerMinute != 100 || cfg.RateLimit.ProPerMinute != 200 || cfg.RateLimit.EnterprisePerMinute != 300 {
+		t.Fatalf("RateLimit = %#v", cfg.RateLimit)
+	}
+	if cfg.SyncLagToleranceMs != 45000 {
+		t.Fatalf("SyncLagToleranceMs = %d", cfg.SyncLagToleranceMs)
+	}
+	if cfg.SyncEtaDefaultMs != 7000 {
+		t.Fatalf("SyncEtaDefaultMs = %d", cfg.SyncEtaDefaultMs)
+	}
+	if cfg.SyncLagStuckRetries != 5 {
+		t.Fatalf("SyncLagStuckRetries = %d", cfg.SyncLagStuckRetries)
 	}
 }
 
@@ -106,6 +156,31 @@ func TestValidateRequiresBackendEndpoints(t *testing.T) {
 	}
 }
 
+func TestValidateRequiresNebulaGraphDatabase(t *testing.T) {
+	cfg := Config{
+		HTTP: HTTPConfig{Host: "0.0.0.0", Port: 8082},
+		Postgres: PostgresConfig{
+			Host:     "127.0.0.1",
+			Port:     5432,
+			User:     "postgres",
+			Database: "kg_service",
+		},
+		Redis: RedisConfig{Host: "127.0.0.1", Port: 6379},
+		Graph: AdapterConfig{
+			Kind:     "nebula",
+			Endpoint: "nebula://nebula:9669",
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "KG_GRAPH_DATABASE") {
+		t.Fatalf("Validate() error = %q, want KG_GRAPH_DATABASE", err)
+	}
+}
+
 func TestStringEnvFallsBackOnEmpty(t *testing.T) {
 	t.Setenv("KG_EMPTY_VALUE", "   ")
 	if got := stringEnv("KG_EMPTY_VALUE", "fallback"); got != "fallback" {
@@ -117,10 +192,63 @@ func TestEnvHelpersUseFallbackWhenUnset(t *testing.T) {
 	os.Unsetenv("KG_UNKNOWN_INT")
 	os.Unsetenv("KG_UNKNOWN_DURATION")
 
-	if got := intEnv("KG_UNKNOWN_INT", 7); got != 7 {
-		t.Fatalf("intEnv() = %d", got)
+	gotInt, err := intEnv("KG_UNKNOWN_INT", 7)
+	if err != nil {
+		t.Fatalf("intEnv() error = %v", err)
 	}
-	if got := durationEnv("KG_UNKNOWN_DURATION", time.Minute); got != time.Minute {
-		t.Fatalf("durationEnv() = %v", got)
+	if gotInt != 7 {
+		t.Fatalf("intEnv() = %d", gotInt)
+	}
+	gotDuration, err := durationEnv("KG_UNKNOWN_DURATION", time.Minute)
+	if err != nil {
+		t.Fatalf("durationEnv() error = %v", err)
+	}
+	if gotDuration != time.Minute {
+		t.Fatalf("durationEnv() = %v", gotDuration)
+	}
+}
+
+func TestEnvHelpersUseFallbackWhenBlank(t *testing.T) {
+	t.Setenv("KG_BLANK_INT", "   ")
+	t.Setenv("KG_BLANK_DURATION", " ")
+
+	gotInt, err := intEnv("KG_BLANK_INT", 7)
+	if err != nil {
+		t.Fatalf("intEnv() error = %v", err)
+	}
+	if gotInt != 7 {
+		t.Fatalf("intEnv() = %d, want 7", gotInt)
+	}
+
+	gotDuration, err := durationEnv("KG_BLANK_DURATION", time.Minute)
+	if err != nil {
+		t.Fatalf("durationEnv() error = %v", err)
+	}
+	if gotDuration != time.Minute {
+		t.Fatalf("durationEnv() = %v, want %v", gotDuration, time.Minute)
+	}
+}
+
+func TestLoadRejectsInvalidIntegerEnv(t *testing.T) {
+	t.Setenv("KG_HTTP_PORT", "eightythree")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "KG_HTTP_PORT must be an integer") {
+		t.Fatalf("Load() error = %q, want KG_HTTP_PORT parse error", err)
+	}
+}
+
+func TestLoadRejectsInvalidDurationEnv(t *testing.T) {
+	t.Setenv("KG_POSTGRES_CONN_MAX_LIFETIME", "tomorrow")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "KG_POSTGRES_CONN_MAX_LIFETIME must be a duration") {
+		t.Fatalf("Load() error = %q, want KG_POSTGRES_CONN_MAX_LIFETIME parse error", err)
 	}
 }

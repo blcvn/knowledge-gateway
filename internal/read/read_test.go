@@ -13,7 +13,9 @@ import (
 	"kg-service/internal/access"
 	"kg-service/internal/config"
 	"kg-service/internal/ontology"
+	"kg-service/internal/platform/graphstore"
 	"kg-service/internal/platform/rediscache"
+	"kg-service/internal/telemetry"
 	"kg-service/internal/write"
 )
 
@@ -92,6 +94,92 @@ func TestGetNodeRespectsVisibility(t *testing.T) {
 	}
 }
 
+func TestGetNodeRealtimeFallsBackToSourceWhenGraphProjectionIsStale(t *testing.T) {
+	svc, _, actor, contractNodeID, _, _, _ := newReadFixture(t)
+	before := telemetry.Default().Snapshot().RealtimeReadFallbackCount
+	svc.SetGraphAdapter(stubGraphAdapter{
+		nodes: []graphstore.GraphNode{{
+			ID:            contractNodeID,
+			NodeType:      "HopDongMau",
+			DomainID:      "noi_bo_hop_dong",
+			OwnerTenantID: actor.TenantID,
+			OwnerAppID:    actor.AppID,
+			Visibility:    "private",
+			Properties:    map[string]any{"ten": "stale graph copy"},
+			SyncVersion:   0,
+		}},
+		versions: map[string]int64{contractNodeID: 0},
+	})
+
+	node, err := svc.GetNodeWithMode(actor, contractNodeID, ReadModeRealtime)
+	if err != nil {
+		t.Fatalf("GetNodeWithMode() error = %v", err)
+	}
+	if got := node.Properties["ten"]; got != "Hop dong A" {
+		t.Fatalf("fallback node property = %v, want source value", got)
+	}
+	if node.SyncVersion != 1 {
+		t.Fatalf("sync version = %d, want source version 1", node.SyncVersion)
+	}
+	after := telemetry.Default().Snapshot().RealtimeReadFallbackCount
+	if after != before+1 {
+		t.Fatalf("RealtimeReadFallbackCount = %d, want %d", after, before+1)
+	}
+}
+
+func TestGetNodeNonRealtimeReadsGraphProjection(t *testing.T) {
+	svc, _, actor, contractNodeID, _, _, _ := newReadFixture(t)
+	svc.SetGraphAdapter(stubGraphAdapter{
+		nodes: []graphstore.GraphNode{{
+			ID:            contractNodeID,
+			NodeType:      "HopDongMau",
+			DomainID:      "noi_bo_hop_dong",
+			OwnerTenantID: actor.TenantID,
+			OwnerAppID:    actor.AppID,
+			Visibility:    "private",
+			Properties:    map[string]any{"ten": "graph projection"},
+			SyncVersion:   1,
+		}},
+		versions: map[string]int64{contractNodeID: 1},
+	})
+
+	node, err := svc.GetNodeWithMode(actor, contractNodeID, ReadModeNonRealtime)
+	if err != nil {
+		t.Fatalf("GetNodeWithMode() error = %v", err)
+	}
+	if got := node.Properties["ten"]; got != "graph projection" {
+		t.Fatalf("non-realtime node property = %v, want graph projection", got)
+	}
+}
+
+func TestGetNodeNonRealtimeSurfacesProjectionInconsistency(t *testing.T) {
+	svc, _, actor, contractNodeID, _, _, _ := newReadFixture(t)
+	svc.SetGraphAdapter(stubGraphAdapter{
+		nodes:    nil,
+		versions: map[string]int64{contractNodeID: 1},
+	})
+
+	_, err := svc.GetNodeWithMode(actor, contractNodeID, ReadModeNonRealtime)
+	if err == nil {
+		t.Fatal("GetNodeWithMode() error = nil, want projection unreadable")
+	}
+	if !errors.Is(err, ErrProjectionUnreadable) {
+		t.Fatalf("GetNodeWithMode() error = %v, want projection unreadable", err)
+	}
+}
+
+func TestGetNodeForAppScopesByRequestedAppID(t *testing.T) {
+	svc, _, actor, contractNodeID, _, _, _ := newReadFixture(t)
+
+	_, err := svc.GetNodeForAppWithMode(actor, "different-app", contractNodeID, ReadModeNonRealtime)
+	if err == nil {
+		t.Fatal("GetNodeForAppWithMode() error = nil, want not found")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetNodeForAppWithMode() error = %v, want not found", err)
+	}
+}
+
 func TestReadHandlersReturnEnvelopeAndNode(t *testing.T) {
 	svc, _, actor, contractNodeID, _, _, _ := newReadFixture(t)
 	handler := NewHandler(svc)
@@ -121,6 +209,233 @@ func TestReadHandlersReturnEnvelopeAndNode(t *testing.T) {
 	handler.GetNode(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GetNode() status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetNodeHandlerReturnsProjectionInconsistency(t *testing.T) {
+	svc, _, actor, contractNodeID, _, _, _ := newReadFixture(t)
+	svc.SetGraphAdapter(stubGraphAdapter{
+		versions: map[string]int64{contractNodeID: 1},
+	})
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/kg/read/nodes/"+contractNodeID+"?mode=non-realtime", nil)
+	req.SetPathValue("id", contractNodeID)
+	req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
+	rec := httptest.NewRecorder()
+	handler.GetNode(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("GetNode() status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "PROJECTION_INCONSISTENT") {
+		t.Fatalf("GetNode() body = %s, want projection inconsistency code", rec.Body.String())
+	}
+}
+
+func TestGetNodeHandlerSupportsRealtimeModeQuery(t *testing.T) {
+	svc, _, actor, contractNodeID, _, _, _ := newReadFixture(t)
+	svc.SetGraphAdapter(stubGraphAdapter{
+		nodes: []graphstore.GraphNode{{
+			ID:            contractNodeID,
+			NodeType:      "HopDongMau",
+			DomainID:      "noi_bo_hop_dong",
+			OwnerTenantID: actor.TenantID,
+			OwnerAppID:    actor.AppID,
+			Visibility:    "private",
+			Properties:    map[string]any{"ten": "stale graph copy"},
+			SyncVersion:   0,
+		}},
+		versions: map[string]int64{contractNodeID: 0},
+	})
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/kg/read/nodes/"+contractNodeID+"?mode=realtime", nil)
+	req.SetPathValue("id", contractNodeID)
+	req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
+	rec := httptest.NewRecorder()
+	handler.GetNode(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GetNode() status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Hop dong A") {
+		t.Fatalf("GetNode() body = %s, want source-backed response", rec.Body.String())
+	}
+}
+
+func TestGraphSearchPreservesACLAndReturnsVisibleMatches(t *testing.T) {
+	svc, _, actor, _, _, _, store := newReadFixture(t)
+	seedVisibleNode(t, store, write.NodeRecord{
+		ID:            "graph-search-visible-node",
+		NodeType:      "HopDongMau",
+		DomainID:      "noi_bo_hop_dong",
+		OwnerTenantID: actor.TenantID,
+		OwnerAppID:    actor.AppID,
+		ACLVisibleTo:  []string{actor.TenantID + ":" + actor.AppID},
+		Visibility:    "private",
+		Properties:    map[string]any{"ten": "Graph Search Contract"},
+		DomainVersion: 1,
+		CreatedAt:     time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC),
+		UpdatedAt:     time.Date(2026, 6, 17, 12, 0, 0, 0, time.UTC),
+	})
+	seedVisibleNode(t, store, write.NodeRecord{
+		ID:            "graph-search-hidden-node",
+		NodeType:      "HopDongMau",
+		DomainID:      "noi_bo_hop_dong",
+		OwnerTenantID: "22222222-2222-2222-2222-222222222222",
+		OwnerAppID:    "22222222-aaaa-2222-aaaa-222222222222",
+		ACLVisibleTo:  []string{"22222222-2222-2222-2222-222222222222:22222222-aaaa-2222-aaaa-222222222222"},
+		Visibility:    "private",
+		Properties:    map[string]any{"ten": "Graph Search Contract"},
+		DomainVersion: 1,
+		CreatedAt:     time.Date(2026, 6, 17, 12, 1, 0, 0, time.UTC),
+		UpdatedAt:     time.Date(2026, 6, 17, 12, 1, 0, 0, time.UTC),
+	})
+
+	resp, err := svc.GraphSearch(actor, GraphSearchRequest{
+		DomainID:      "noi_bo_hop_dong",
+		StartNodeType: "HopDongMau",
+		StartMatch:    map[string]any{"ten": "Graph Search Contract"},
+		ReturnFields:  []string{"ten"},
+	})
+	if err != nil {
+		t.Fatalf("GraphSearch() error = %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(resp.Results))
+	}
+	if got := resp.Results[0]["ten"]; got != "Graph Search Contract" {
+		t.Fatalf("result ten = %v, want Graph Search Contract", got)
+	}
+}
+
+func TestGraphSearchRealtimeFallsBackToSourceWhenStartNodeVersionIsStale(t *testing.T) {
+	svc, _, actor, contractNodeID, _, _, _ := newReadFixture(t)
+	svc.SetGraphAdapter(stubGraphAdapter{
+		nodes: []graphstore.GraphNode{{
+			ID:            contractNodeID,
+			NodeType:      "HopDongMau",
+			DomainID:      "noi_bo_hop_dong",
+			OwnerTenantID: actor.TenantID,
+			OwnerAppID:    actor.AppID,
+			Visibility:    "private",
+			Properties:    map[string]any{"ten": "stale graph contract"},
+			SyncVersion:   0,
+		}},
+		versions: map[string]int64{contractNodeID: 0},
+	})
+
+	resp, err := svc.GraphSearch(actor, GraphSearchRequest{
+		AppID:         actor.AppID,
+		Mode:          ReadModeRealtime,
+		DomainID:      "noi_bo_hop_dong",
+		StartNodeType: "HopDongMau",
+		StartMatch:    map[string]any{"id": contractNodeID},
+		ReturnFields:  []string{"id", "ten"},
+	})
+	if err != nil {
+		t.Fatalf("GraphSearch() error = %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(resp.Results))
+	}
+	if got := resp.Results[0]["ten"]; got != "Hop dong A" {
+		t.Fatalf("result ten = %v, want source-backed value", got)
+	}
+}
+
+func TestExecuteTemplateRealtimeFallsBackToSourceWhenStartNodeVersionIsStale(t *testing.T) {
+	svc, ontologySvc, actor, contractNodeID, _, _, _ := newReadFixture(t)
+	svc.SetGraphAdapter(stubGraphAdapter{
+		nodes: []graphstore.GraphNode{{
+			ID:            contractNodeID,
+			NodeType:      "HopDongMau",
+			DomainID:      "noi_bo_hop_dong",
+			OwnerTenantID: actor.TenantID,
+			OwnerAppID:    actor.AppID,
+			Visibility:    "private",
+			Properties:    map[string]any{"ten": "stale graph contract"},
+			SyncVersion:   0,
+		}},
+		versions: map[string]int64{contractNodeID: 0},
+	})
+	if _, err := ontologySvc.CreateQueryTemplate(actor, actor.TenantID, "noi_bo_hop_dong", ontology.QueryTemplateCreateRequest{
+		TemplateName: "contract_by_id",
+		PatternSpec: map[string]any{
+			"start": map[string]any{
+				"node_type": "HopDongMau",
+				"match": map[string]any{
+					"id": "$node_id",
+				},
+			},
+		},
+		ParamSchema:  []ontology.ParameterSchema{{Name: "node_id", Type: "string", Required: true}},
+		ReturnFields: []string{"id", "ten"},
+	}); err != nil {
+		t.Fatalf("CreateQueryTemplate(contract_by_id) error = %v", err)
+	}
+	if _, err := ontologySvc.ActivateQueryTemplate(actor, actor.TenantID, "noi_bo_hop_dong", "contract_by_id"); err != nil {
+		t.Fatalf("ActivateQueryTemplate(contract_by_id) error = %v", err)
+	}
+
+	resp, err := svc.ExecuteTemplateWithOptions(actor, "noi_bo_hop_dong", "contract_by_id", map[string]any{"node_id": contractNodeID}, actor.AppID, ReadModeRealtime)
+	if err != nil {
+		t.Fatalf("ExecuteTemplateWithOptions() error = %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(resp.Results))
+	}
+	if got := resp.Results[0]["ten"]; got != "Hop dong A" {
+		t.Fatalf("result ten = %v, want source-backed value", got)
+	}
+}
+
+func TestExecuteTemplateNonRealtimeSurfacesProjectionInconsistency(t *testing.T) {
+	svc, ontologySvc, actor, contractNodeID, _, _, _ := newReadFixture(t)
+	svc.SetGraphAdapter(stubGraphAdapter{
+		nodes:    nil,
+		versions: map[string]int64{contractNodeID: 1},
+	})
+	if _, err := ontologySvc.CreateQueryTemplate(actor, actor.TenantID, "noi_bo_hop_dong", ontology.QueryTemplateCreateRequest{
+		TemplateName: "contract_by_id_nonrealtime",
+		PatternSpec: map[string]any{
+			"start": map[string]any{
+				"node_type": "HopDongMau",
+				"match": map[string]any{
+					"id": "$node_id",
+				},
+			},
+		},
+		ParamSchema:  []ontology.ParameterSchema{{Name: "node_id", Type: "string", Required: true}},
+		ReturnFields: []string{"id", "ten"},
+	}); err != nil {
+		t.Fatalf("CreateQueryTemplate() error = %v", err)
+	}
+	if _, err := ontologySvc.ActivateQueryTemplate(actor, actor.TenantID, "noi_bo_hop_dong", "contract_by_id_nonrealtime"); err != nil {
+		t.Fatalf("ActivateQueryTemplate() error = %v", err)
+	}
+
+	_, err := svc.ExecuteTemplateWithOptions(actor, "noi_bo_hop_dong", "contract_by_id_nonrealtime", map[string]any{"node_id": contractNodeID}, actor.AppID, ReadModeNonRealtime)
+	if err == nil {
+		t.Fatal("ExecuteTemplateWithOptions() error = nil, want projection unreadable")
+	}
+	if !errors.Is(err, ErrProjectionUnreadable) {
+		t.Fatalf("ExecuteTemplateWithOptions() error = %v, want projection unreadable", err)
+	}
+}
+
+func TestGraphSearchHandlerServesRoute(t *testing.T) {
+	svc, _, actor, _, _, _, _ := newReadFixture(t)
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/kg/search/graph", strings.NewReader(`{"domain_id":"noi_bo_hop_dong","start_node_type":"HopDongMau","start_match":{"ten":"Hop dong A"},"return_fields":["HopDongMau.ten"]}`))
+	req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
+	rec := httptest.NewRecorder()
+	handler.GraphSearch(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GraphSearch() status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"results"`) {
+		t.Fatalf("GraphSearch() body = %s", rec.Body.String())
 	}
 }
 
@@ -594,6 +909,31 @@ func newReadFixture(t *testing.T) (*Service, *ontology.Service, access.Identity,
 	auditLogger := access.NewService(accessStore, &cache)
 	svc := NewService(writeStore, ontologyService, accessResolver, auditLogger)
 	return svc, ontologyService, actor, contractNode.ID, relationship.ID, auditLogger, writeStore
+}
+
+type stubGraphAdapter struct {
+	nodes         []graphstore.GraphNode
+	relationships []graphstore.GraphRelationship
+	versions      map[string]int64
+}
+
+func (s stubGraphAdapter) UpsertNode(context.Context, graphstore.GraphNode) error { return nil }
+func (s stubGraphAdapter) DeleteNode(context.Context, string) error               { return nil }
+func (s stubGraphAdapter) UpsertRelationship(context.Context, graphstore.GraphRelationship) error {
+	return nil
+}
+func (s stubGraphAdapter) DeleteRelationship(context.Context, string) error { return nil }
+func (s stubGraphAdapter) ExecuteQuery(context.Context, graphstore.GraphQuery, map[string]any) ([]map[string]any, error) {
+	return nil, nil
+}
+func (s stubGraphAdapter) ListNodes(context.Context) ([]graphstore.GraphNode, error) {
+	return append([]graphstore.GraphNode(nil), s.nodes...), nil
+}
+func (s stubGraphAdapter) ListRelationships(context.Context) ([]graphstore.GraphRelationship, error) {
+	return append([]graphstore.GraphRelationship(nil), s.relationships...), nil
+}
+func (s stubGraphAdapter) ReadSyncVersion(_ context.Context, entityID string) (int64, error) {
+	return s.versions[entityID], nil
 }
 
 func seedVisibleNode(t *testing.T, store *write.MemoryStore, node write.NodeRecord) write.NodeRecord {

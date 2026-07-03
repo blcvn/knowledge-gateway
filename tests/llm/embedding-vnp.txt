@@ -1,0 +1,19 @@
+Model Embedding:
+BGE m3:
+      model: v_search
+      base_url: "https://genai.vnpay.vn/aigateway/embed/v1/embeddings'"
+      dimension: 1024
+      sequence length: 8192
+      api_key: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ7XCJ1c2VyTmFtZVwiOlwiYW5oZHRcIixcImVtYWlsXCI6XCJhbmhkdFwiLFwidXNlckZ1bGxOYW1lXCI6XCJBbmgsIMSQ4buTbmcgVHXhuqVuXCJ9IiwiaWF0IjoxNzgyMTE3Nzk4LCJleHAiOjE3ODIxMzU3OTh9.qDzfy5DbbNOR7JRDBrBhIK6gNkiAjzVdLoQWQ4pNEoQ"
+Model để trích xuất vector từ text 
+curl --location 'https://genai.vnpay.vn/aigateway/embed/v1/embeddings' --header 'authorization: Bearer API_KEY' --header 'Content-Type: application/json' --data '{"input": ["chao ban", "toi"]}'
+EXAMPLE:
+curl --location 'https://genai.vnpay.vn/aigateway/llm_gemma/v1/chat/completions' --header 'Content-Type: application/json' --header 'http_x_request_id: {{requestId}}' --header 'authorization: Bearer eyJhbGciOiJIUzI1NiJ9.***' --data '{
+        "messages": [
+            {"role": "system", "content": "Bạn là một trợ lý AI chuyên review code."},
+            {"role": "user", "content": "Tóm tắt và đánh giá đoạn code diff sau, chỉ ra điểm tốt và điểm cần cải thiện: \"$git_diff\""}
+        ],
+        "model": "v_gemma",
+"max_tokens": 1000,
+"stream": false
+}'

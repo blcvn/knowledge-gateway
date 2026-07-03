@@ -6,14 +6,30 @@ import (
 )
 
 type Config struct {
-	HTTP      HTTPConfig
-	Postgres  PostgresConfig
-	Redis     RedisConfig
-	Embedding EmbeddingConfig
-	Vector    AdapterConfig
-	Graph     AdapterConfig
-	FTS       AdapterConfig
-	Worker    WorkerConfig
+	Observability       ObservabilityConfig
+	HTTP                HTTPConfig
+	Postgres            PostgresConfig
+	Redis               RedisConfig
+	Embedding           EmbeddingConfig
+	Vector              AdapterConfig
+	Graph               AdapterConfig
+	FTS                 AdapterConfig
+	RateLimit           RateLimitConfig
+	SyncLagToleranceMs  int
+	SyncLagStuckRetries int
+	SyncEtaDefaultMs    int
+}
+
+type ObservabilityConfig struct {
+	LogLevel             string
+	LogFormat            string
+	ServiceName          string
+	ServiceVersion       string
+	OTELExporterEndpoint string
+	OTELExporterProtocol string
+	TraceSamplingRatio   float64
+	MetricsEnabled       bool
+	MetricsAddress       string
 }
 
 type HTTPConfig struct {
@@ -97,12 +113,8 @@ type AdapterConfig struct {
 	Collection string
 }
 
-// WorkerConfig controls the background outbox-polling worker that projects
-// write events into the vector, graph, and FTS adapters.
-type WorkerConfig struct {
-	// Enabled turns the worker on or off (KG_WORKER_ENABLED, default true).
-	Enabled bool
-	// PollIntervalMs is how often the worker polls the outbox in milliseconds
-	// (KG_WORKER_POLL_INTERVAL_MS, default 500).
-	PollIntervalMs int
+type RateLimitConfig struct {
+	FreePerMinute       int
+	ProPerMinute        int
+	EnterprisePerMinute int
 }
