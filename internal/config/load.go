@@ -121,9 +121,6 @@ func Load() (Config, error) {
 			APIKey:       stringEnv("EMBEDDING_API_KEY", ""),
 			ProxyURL:     stringEnv("EMBEDDING_PROXY_URL", ""),
 			CacheTTL:     time.Duration(embeddingCacheTTLS) * time.Second,
-			Dimensions:   intEnv("EMBEDDING_DIMENSIONS", 0),
-			TenantRoutes: jsonMapEnv[EmbeddingRoute]("EMBEDDING_TENANT_ROUTES"),
-			DomainRoutes: jsonMapEnv[EmbeddingRoute]("EMBEDDING_DOMAIN_ROUTES"),
 		},
 		Vector: AdapterConfig{
 			Kind:       stringEnv("VECTOR_ADAPTER", "memory"),
@@ -144,6 +141,19 @@ func Load() (Config, error) {
 		SyncLagToleranceMs:  syncLagToleranceMs,
 		SyncLagStuckRetries: syncLagStuckRetries,
 		SyncEtaDefaultMs:    syncEtaDefaultMs,
+	}
+
+	cfg.Embedding.Dimensions, err = intEnv("EMBEDDING_DIMENSIONS", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.Embedding.TenantRoutes, err = jsonMapEnv[EmbeddingRoute]("EMBEDDING_TENANT_ROUTES")
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.Embedding.DomainRoutes, err = jsonMapEnv[EmbeddingRoute]("EMBEDDING_DOMAIN_ROUTES")
+	if err != nil {
+		errs = append(errs, err)
 	}
 
 	errs = append(errs, cfg.Validate())

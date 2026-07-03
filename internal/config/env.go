@@ -98,3 +98,22 @@ func floatEnv(key string, fallback float64) (float64, error) {
 
 	return parsed, nil
 }
+
+func jsonMapEnv[T any](key string) (map[string]T, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return nil, nil
+	}
+
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+
+	var parsed map[string]T
+	if err := json.Unmarshal([]byte(value), &parsed); err != nil {
+		return nil, fmt.Errorf("%s must be a valid JSON object: %w", key, err)
+	}
+
+	return parsed, nil
+}
