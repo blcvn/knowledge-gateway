@@ -14,5 +14,5 @@ Required order:
 ## Local setup
 
 - The repo is indexed by CodeGraph in `.codegraph/`.
-- Refresh the local index with `make codegraph-refresh` or `scripts/codegraph-refresh.sh`.
+- Refresh the local index with `make codegraph-refresh` or `examples/codegraph/codegraph-refresh.sh`.
 - See `docs/codegraph/bootstrap-guide.md` for the reusable bootstrap pattern and repo-specific notes.

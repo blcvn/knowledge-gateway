@@ -19,7 +19,7 @@
     trực tiếp trên Postgres.
   - Idempotency rules: upsert trên `external_ref` không tạo duplicate, retry an toàn.
 
-- [x] **T3** — Cập nhật `codegraph-sync` sang bulk-first producer. Yêu cầu cụ thể:
+- [x] **T3** — Cập nhật `examples/codegraph` sang bulk-first producer. Yêu cầu cụ thể:
   - Thay `reconcileNodes` / `reconcileRelationships` (sync.go:95, sync.go:139) gọi từng API bằng bulk
     upsert API mới từ T2.
   - **Fix relationship delete semantics — correctness bug**: `reconcileRelationships` (sync.go:176) gán

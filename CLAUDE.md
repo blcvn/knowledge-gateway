@@ -14,6 +14,6 @@ Required order:
 ## Repo pointers
 
 - `docs/codegraph/bootstrap-guide.md` documents the reusable bootstrap pattern for other Go repos.
-- `scripts/codegraph-refresh.sh` refreshes the local index when you want it on demand.
+- `examples/codegraph/codegraph-refresh.sh` refreshes the local index when you want it on demand.
 - `.githooks/post-commit` triggers an incremental refresh after commits when enabled via
   `git config core.hooksPath .githooks`.

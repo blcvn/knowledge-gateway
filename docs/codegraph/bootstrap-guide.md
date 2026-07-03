@@ -16,7 +16,7 @@ applied to another Go repository.
 
 ### Optional convenience
 
-- `scripts/codegraph-refresh.sh`
+- `examples/codegraph/codegraph-refresh.sh`
 - `.githooks/post-commit`
 - `make codegraph-refresh`
 - `codegraph serve --mcp` for a local agent smoke test
@@ -110,7 +110,7 @@ Example hook body:
 set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-"$repo_root/scripts/codegraph-refresh.sh" --background >/dev/null 2>&1 || true
+"$repo_root/examples/codegraph/codegraph-refresh.sh" --background >/dev/null 2>&1 || true
 ```
 
 The helper should be safe to run even when CodeGraph is missing, so commits are never blocked by

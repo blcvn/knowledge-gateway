@@ -144,6 +144,9 @@ Read and search behavior notes:
 | `POST` | `/v1/kg/write/nodes/bulk` | `202` | Bulk async acknowledgments with per-node `node_id` entries after `relationshipdb` persistence. |
 | `PUT` | `/v1/kg/write/nodes/{id}` | `200` | Updates node properties, visibility, or external ref. |
 | `DELETE` | `/v1/kg/write/nodes/{id}` | `200` | Soft-delete response with `node_id` and `is_deleted`. |
+| `POST` | `/v1/kg/write/sync-sessions` | `202` | Opens a sync session and returns the session identifiers plus graph version metadata. |
+| `POST` | `/v1/kg/write/sync-sessions/{id}/commit` | `200` | Commits an open sync session and returns `{ status: "ok" }` on success. |
+| `DELETE` | `/v1/kg/write/sync-sessions/{id}` | `204` | Abandons an open sync session with no response body. |
 | `POST` | `/v1/kg/write/relationships` | `201` | Creates relationship in `relationshipdb` and returns `relationship_id`. |
 | `POST` | `/v1/kg/write/relationships/bulk` | `201` | Bulk relationship creation in `relationshipdb` with per-item `relationship_id` entries. |
 | `DELETE` | `/v1/kg/write/relationships/bulk` | `200` | Bulk relationship delete by relationship IDs. |

@@ -8,6 +8,15 @@ import (
 )
 
 func TestLoadUsesEnvironment(t *testing.T) {
+	t.Setenv("KG_LOG_LEVEL", "debug")
+	t.Setenv("KG_LOG_FORMAT", "text")
+	t.Setenv("KG_SERVICE_NAME", "kg-service-test")
+	t.Setenv("KG_SERVICE_VERSION", "1.2.3")
+	t.Setenv("KG_OTEL_EXPORTER_ENDPOINT", "otel.internal:4317")
+	t.Setenv("KG_OTEL_EXPORTER_PROTOCOL", "http/protobuf")
+	t.Setenv("KG_TRACE_SAMPLING_RATIO", "0.25")
+	t.Setenv("KG_METRICS_ENABLED", "false")
+	t.Setenv("KG_METRICS_ADDRESS", "127.0.0.1:9091")
 	t.Setenv("KG_HTTP_HOST", "127.0.0.1")
 	t.Setenv("KG_HTTP_PORT", "9090")
 	t.Setenv("KG_POSTGRES_HOST", "db.internal")
@@ -41,6 +50,24 @@ func TestLoadUsesEnvironment(t *testing.T) {
 
 	if cfg.HTTP.Address() != "127.0.0.1:9090" {
 		t.Fatalf("HTTP address = %q", cfg.HTTP.Address())
+	}
+	if cfg.Observability.LogLevel != "debug" || cfg.Observability.LogFormat != "text" {
+		t.Fatalf("Observability = %#v", cfg.Observability)
+	}
+	if cfg.Observability.ServiceName != "kg-service-test" || cfg.Observability.ServiceVersion != "1.2.3" {
+		t.Fatalf("Service metadata = %#v", cfg.Observability)
+	}
+	if cfg.Observability.OTELExporterEndpoint != "otel.internal:4317" || cfg.Observability.OTELExporterProtocol != "http/protobuf" {
+		t.Fatalf("OTEL config = %#v", cfg.Observability)
+	}
+	if cfg.Observability.TraceSamplingRatio != 0.25 {
+		t.Fatalf("TraceSamplingRatio = %v", cfg.Observability.TraceSamplingRatio)
+	}
+	if cfg.Observability.MetricsEnabled {
+		t.Fatalf("MetricsEnabled = true, want false")
+	}
+	if cfg.Observability.MetricsAddress != "127.0.0.1:9091" {
+		t.Fatalf("MetricsAddress = %q", cfg.Observability.MetricsAddress)
 	}
 	if cfg.Postgres.DSN() != "postgres://kg:secret@db.internal:5433/kg_service_test?sslmode=require" {
 		t.Fatalf("Postgres DSN = %q", cfg.Postgres.DSN())

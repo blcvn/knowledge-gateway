@@ -21,5 +21,5 @@
   Yêu cầu:
   - run `bash -n` for touched scripts;
   - run `go test ./tests/integration/...`;
-  - run `go test ./codegraph-sync/...`;
+  - run `go test ./examples/codegraph/...`;
   - note Docker/runtime limitations if full Compose validation cannot run locally.

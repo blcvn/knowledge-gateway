@@ -97,7 +97,7 @@
 
 - [x] **W5b** — Sessionize stale relationship delete path.
   Yêu cầu:
-  - delete path dùng bởi `codegraph-sync` phải nhận `graph_version_id` khi chạy trong
+  - delete path dùng bởi `examples/codegraph` phải nhận `graph_version_id` khi chạy trong
     session mode;
   - delete/soft-delete source rows và append graph-version entity với `change_kind = DELETE`
     phải xảy ra mà không phát outbox event riêng;
@@ -152,10 +152,10 @@
   - chạy định kỳ theo `SYNC_SESSION_CLEANUP_INTERVAL_MINUTES` (default 30);
   - log số lượng session được cleanup.
 
-## Milestone: codegraph-sync
+## Milestone: examples/codegraph
 
 - [x] **C1** — Thêm 3 method mới vào `KGServiceClient` interface và `Client` struct trong
-  `codegraph-sync/internal/bridge/kgservice.go`.
+  `examples/codegraph/internal/bridge/kgservice.go`.
   Yêu cầu:
   - `OpenSyncSession(ctx, OpenSyncSessionRequest) (SyncSessionResponse, error)` →
     `POST /v1/kg/write/sync-sessions`;
@@ -164,7 +164,7 @@
   - `AbandonSyncSession(ctx, sessionID string) error` →
     `DELETE /v1/kg/write/sync-sessions/{id}`.
 
-- [x] **C2** — Sửa `SyncProject` trong `codegraph-sync/internal/bridge/sync.go` để dùng
+- [x] **C2** — Sửa `SyncProject` trong `examples/codegraph/internal/bridge/sync.go` để dùng
   session.
   Yêu cầu:
   - mở session trước khi reconcile;
@@ -225,7 +225,7 @@
   - `UpdateNodeWithContext` và `DeleteNodeWithContext` đã chuyển sang session-aware path;
   - mọi node mutation trong cùng sync interaction giờ chỉ append `GraphVersionEntities` cho đến lúc `CommitSyncSession`.
 
-- [x] **P2** — Hoàn thiện `codegraph-sync` cho full create/update/delete parity trong cùng session.
+- [x] **P2** — Hoàn thiện `examples/codegraph` cho full create/update/delete parity trong cùng session.
   Trạng thái hiện tại:
   - `SyncProject` truyền `graphVersionID` cho node create/update/delete và stale relationship delete;
   - stale node delete cũng đi qua session-aware delete path;

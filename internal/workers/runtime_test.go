@@ -9,6 +9,10 @@ import (
 	"testing"
 	"time"
 
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
+
 	"kg-service/internal/access"
 	"kg-service/internal/config"
 	"kg-service/internal/ontology"
@@ -18,6 +22,7 @@ import (
 	"kg-service/internal/platform/session"
 	"kg-service/internal/platform/vector"
 	"kg-service/internal/platform/vectorstore"
+	"kg-service/internal/runtimeobs"
 	"kg-service/internal/write"
 )
 
@@ -54,6 +59,120 @@ func TestRuntimeProjectsNodeRelationshipAndCascade(t *testing.T) {
 	}
 	if got := runtime.Graph().Nodes[fixture.childID].StatusValue; got != "con_hieu_luc" {
 		t.Fatalf("child status = %q, want con_hieu_luc", got)
+	}
+}
+
+func TestRequestMetaFromOutboxEvent(t *testing.T) {
+	meta := requestMetaFromPayload(map[string]any{
+		"request_id": "req-1",
+		"trace_id":   "trace-1",
+		"span_id":    "span-1",
+	})
+	if meta.RequestID != "req-1" || meta.TraceID != "trace-1" || meta.SpanID != "span-1" {
+		t.Fatalf("meta = %#v, want request/trace/span IDs", meta)
+	}
+}
+
+func TestEventSpanLinksFromPayload(t *testing.T) {
+	traceID := "0123456789abcdef0123456789abcdef"
+	spanID := "0123456789abcdef"
+	links := eventSpanLinks(write.OutboxEvent{
+		Payload: map[string]any{
+			"request_id": "req-1",
+			"trace_id":   traceID,
+			"span_id":    spanID,
+		},
+	})
+	if len(links) != 1 {
+		t.Fatalf("links len = %d, want 1", len(links))
+	}
+	if got := links[0].SpanContext.TraceID().String(); got != traceID {
+		t.Fatalf("trace id = %s, want %s", got, traceID)
+	}
+	if got := links[0].SpanContext.SpanID().String(); got != spanID {
+		t.Fatalf("span id = %s, want %s", got, spanID)
+	}
+	if !links[0].SpanContext.IsRemote() {
+		t.Fatal("link span context should be remote")
+	}
+}
+
+func TestWithTracerProviderSetsTracer(t *testing.T) {
+	fixture := newWorkerFixture(t)
+	store, ontologySvc, cache := fixture.store, fixture.ontologySvc, fixture.cache
+	runtime := NewRuntime(store, ontologySvc, &cache, WithTracerProvider(trace.NewNoopTracerProvider(), "kg-service/workers"))
+	if runtime.tracer == nil {
+		t.Fatal("expected tracer to be set")
+	}
+}
+
+func TestWorkerExportsLinkedSpanForOutboxEvent(t *testing.T) {
+	fixture := newWorkerFixture(t)
+	recorder := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	t.Cleanup(func() {
+		_ = tp.Shutdown(context.Background())
+	})
+
+	runtime := NewRuntime(fixture.store, fixture.ontologySvc, &fixture.cache, WithTracerProvider(tp, "kg-service/workers"))
+	meta := runtimeobs.NewRequestMeta(
+		"req-worker-span",
+		"0123456789abcdef0123456789abcdef",
+		"0123456789abcdef",
+	)
+	ctx := runtimeobs.WithRequestMeta(context.Background(), meta)
+	node, err := fixture.writeSvc.CreateNodeWithContext(ctx, fixture.actor, write.NodeCreateRequest{
+		DomainID:   "test-domain",
+		NodeType:   "Parent",
+		Properties: map[string]any{"ten": "Span", "tinh_trang": "con_hieu_luc"},
+	})
+	if err != nil {
+		t.Fatalf("CreateNodeWithContext() error = %v", err)
+	}
+	events := fixture.store.ListOutboxEvents()
+	if len(events) == 0 {
+		t.Fatal("expected outbox events")
+	}
+	event := events[len(events)-1]
+	if event.AggregateID != node.NodeID {
+		t.Fatalf("event aggregate id = %s, want %s", event.AggregateID, node.NodeID)
+	}
+
+	report := runtime.PollOnce()
+	if report.Processed == 0 {
+		t.Fatal("expected processed event")
+	}
+
+	spans := recorder.Ended()
+	var matched bool
+	for _, span := range spans {
+		if span.Name() != "worker.process_outbox_event" {
+			continue
+		}
+		var gotEventID string
+		for _, attr := range span.Attributes() {
+			if attr.Key == "kg.event_id" {
+				gotEventID = attr.Value.AsString()
+			}
+		}
+		if gotEventID != event.ID {
+			continue
+		}
+		links := span.Links()
+		if len(links) != 1 {
+			t.Fatalf("links len = %d, want 1", len(links))
+		}
+		if got := links[0].SpanContext.TraceID().String(); got != meta.TraceID {
+			t.Fatalf("link trace id = %s, want %s", got, meta.TraceID)
+		}
+		if got := links[0].SpanContext.SpanID().String(); got != meta.SpanID {
+			t.Fatalf("link span id = %s, want %s", got, meta.SpanID)
+		}
+		matched = true
+		break
+	}
+	if !matched {
+		t.Fatalf("did not find worker span for event %s", event.ID)
 	}
 }
 

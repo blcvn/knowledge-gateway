@@ -8,6 +8,21 @@ import (
 func Load() (Config, error) {
 	var errs []error
 
+	logLevel := stringEnv("KG_LOG_LEVEL", "info")
+	logFormat := stringEnv("KG_LOG_FORMAT", "json")
+	serviceName := stringEnv("KG_SERVICE_NAME", "kg-service")
+	serviceVersion := stringEnv("KG_SERVICE_VERSION", "dev")
+	otelExporterEndpoint := stringEnv("KG_OTEL_EXPORTER_ENDPOINT", "")
+	otelExporterProtocol := stringEnv("KG_OTEL_EXPORTER_PROTOCOL", "grpc")
+	traceSamplingRatio, err := floatEnv("KG_TRACE_SAMPLING_RATIO", 1.0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	metricsEnabled, err := boolEnv("KG_METRICS_ENABLED", true)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	metricsAddress := stringEnv("KG_METRICS_ADDRESS", "")
 	httpPort, err := intEnv("KG_HTTP_PORT", 8082)
 	if err != nil {
 		errs = append(errs, err)
@@ -66,6 +81,17 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
+		Observability: ObservabilityConfig{
+			LogLevel:             logLevel,
+			LogFormat:            logFormat,
+			ServiceName:          serviceName,
+			ServiceVersion:       serviceVersion,
+			OTELExporterEndpoint: otelExporterEndpoint,
+			OTELExporterProtocol: otelExporterProtocol,
+			TraceSamplingRatio:   traceSamplingRatio,
+			MetricsEnabled:       metricsEnabled,
+			MetricsAddress:       metricsAddress,
+		},
 		HTTP: HTTPConfig{
 			Host: stringEnv("KG_HTTP_HOST", "0.0.0.0"),
 			Port: httpPort,

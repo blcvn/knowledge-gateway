@@ -11,7 +11,7 @@ graph/vector/FTS được xử lý theo batch, song song, và có khả năng ch
 ### Current data flow
 
 ```text
-Producer / codegraph-sync
+Producer / examples/codegraph
   -> POST /v1/kg/write/nodes hoặc /relationships
   -> write.Service
   -> Postgres transaction
@@ -46,7 +46,7 @@ Worker PollOnce
 
 #### 1. Producer vẫn gửi tuần tự từng entity
 
-`codegraph-sync/internal/bridge/sync.go` hiện reconcile node/relationship bằng cách gọi từng
+`examples/codegraph/internal/bridge/sync.go` hiện reconcile node/relationship bằng cách gọi từng
 `CreateNode`, `UpdateNode`, `CreateRelationship` trong vòng lặp tại `reconcileNodes` (sync.go:95)
 và `reconcileRelationships` (sync.go:139).
 
@@ -152,7 +152,7 @@ Implementation target:
 - resolve `external_ref` theo batch thay vì `SELECT` từng record
 - emit outbox theo batch hoặc theo chunk lớn, không từng entity lẻ nếu không cần
 
-`codegraph-sync` phải đổi sang bulk-first mode, chỉ fallback về single-item khi batch thất bại cần isolate lỗi.
+`examples/codegraph` phải đổi sang bulk-first mode, chỉ fallback về single-item khi batch thất bại cần isolate lỗi.
 
 **Quyết định: batch failure semantics — partial success với per-item error list.**
 
@@ -161,7 +161,7 @@ Hai lựa chọn:
 - *All-or-nothing per batch*: đơn giản nhất, nhưng một node sai schema block cả batch 500 node.
 - *Partial success với per-item error list*: response trả về `{succeeded: [...], failed: [{index, external_ref, error}]}`.
 
-Chọn partial success. Lý do: `codegraph-sync` sync hàng trăm node mỗi lần; một node lỗi validation
+Chọn partial success. Lý do: `examples/codegraph` sync hàng trăm node mỗi lần; một node lỗi validation
 không nên block phần còn lại. Producer tự quyết định có retry item lỗi hay bỏ qua. Response contract:
 
 ```json
@@ -176,7 +176,7 @@ không nên block phần còn lại. Producer tự quyết định có retry ite
 Implementation cần xử lý validate trước khi mở transaction (preflight) và persist chỉ những item pass.
 
 **Gap bổ sung — `DeleteNodesByExternalRefPrefixWithContext` là hotspot chưa được đề cập:**
-`service.go:424` load toàn bộ node vào memory và loop xóa tuần tự. `codegraph-sync` gọi path này qua
+`service.go:424` load toàn bộ node vào memory và loop xóa tuần tự. `examples/codegraph` gọi path này qua
 `clearProjectByPrefix` khi reset state. Cần thêm bulk soft-delete by prefix support vào T2 hoặc T7.
 
 ### 2. Separate source write SLA from projection SLA
@@ -407,7 +407,7 @@ Spec này ưu tiên honesty hơn là tạo `down.sql` hình thức nhưng không
 ### Phase 1
 
 - thêm bulk APIs và bulk repository primitives
-- cập nhật `codegraph-sync` sang batch mode
+- cập nhật `examples/codegraph` sang batch mode
 
 ### Phase 2
 
@@ -441,7 +441,7 @@ Với workload lớn, application-managed integrity + reconcile job phù hợp h
 
 ### 4. Ưu tiên batch semantics hơn single-record correctness loops
 
-Mục tiêu là tối ưu throughput mặc định cho producer lớn như `codegraph-sync`, thay vì chỉ tối ưu cho CRUD nhỏ lẻ.
+Mục tiêu là tối ưu throughput mặc định cho producer lớn như `examples/codegraph`, thay vì chỉ tối ưu cho CRUD nhỏ lẻ.
 
 ### 5. SQL migration phải tách schema rollout khỏi data repair
 

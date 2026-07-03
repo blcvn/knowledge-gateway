@@ -6,7 +6,7 @@
 A bootstrap script SHALL be generated that encapsulates all API calls to initialise the `code-graph` ontology domain.
 
 #### Scenario: Script runs without errors
-- GIVEN the bootstrap script `scripts/bootstrap-codegraph-ontology.sh` has been generated
+- GIVEN the bootstrap script `examples/codegraph/bootstrap-codegraph-ontology.sh` has been generated
 - WHEN the script is executed against the target environment
 - THEN all API calls SHALL complete with successful HTTP status codes and no error output
 

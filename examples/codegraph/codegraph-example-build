@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "${repo_root}"
+mkdir -p "${repo_root}/examples/codegraph/bin"
+go build -o "${repo_root}/examples/codegraph/bin/codegraph-example" ./examples/codegraph/cmd/codegraph-example

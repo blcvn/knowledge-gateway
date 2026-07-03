@@ -2,7 +2,7 @@
 
 ## Problem
 
-Khi `codegraph-sync/sync` chạy, nó gửi nhiều HTTP bulk request (mỗi batch 200 node, tương
+Khi `examples/codegraph/sync` chạy, nó gửi nhiều HTTP bulk request (mỗi batch 200 node, tương
 tự với relationship). Mỗi request hiện tại tạo ra:
 
 - một `GraphVersion` riêng lẻ per-node bên trong mỗi batch
@@ -57,13 +57,13 @@ Với MemoryStore (test), lease được implement bằng in-memory mutex/map pe
 - Durable scope lease per graph scope — ngăn concurrent sync trên cùng scope
 - `NodeBulkCreateRequest` và `RelationshipBulkCreateRequest` nhận optional
   `graph_version_id` (session mode)
-- Stale relationship deletes trong `codegraph-sync` đi qua cùng session thay vì phát event
+- Stale relationship deletes trong `examples/codegraph` đi qua cùng session thay vì phát event
   legacy riêng
 - Xóa bridge rel outbox events thừa trong bulk path (bug fix)
 - Batch embedding trong `handleGraphVersionEvent` khi xử lý GRAPH_VERSION_SEALED
 - Cơ chế expiry: GraphVersion ở `PENDING_ENTITIES` quá N giờ được cleanup job đánh dấu
   `ABANDONED` và release scope lease
-- `codegraph-sync/bridge` cập nhật `reconcileNodes` và `reconcileRelationships` dùng session
+- `examples/codegraph/bridge` cập nhật `reconcileNodes` và `reconcileRelationships` dùng session
 
 ### Out of scope
 
@@ -73,7 +73,7 @@ Với MemoryStore (test), lease được implement bằng in-memory mutex/map pe
 
 ## Success Criteria
 
-- `codegraph-sync/sync` trên một graph scope, bao gồm create/update/delete thuộc cùng
+- `examples/codegraph/sync` trên một graph scope, bao gồm create/update/delete thuộc cùng
   interaction, emit đúng 1 outbox event
 - Projection worker xử lý 1000 node trong 1 event nhanh hơn hoặc bằng 1000 event nhờ
   batch embed

@@ -242,7 +242,7 @@ Nếu transaction rollback thì version vẫn `PENDING_ENTITIES` và client có 
 ### Toàn bộ mutation của một interaction phải nằm trong cùng session
 
 Để giữ invariant `1 interaction = 1 version change = 1 outbox event`, mọi mutation mà
-`codegraph-sync` quyết định áp dụng cho cùng graph scope trong một lần reconcile phải đi qua
+`examples/codegraph` quyết định áp dụng cho cùng graph scope trong một lần reconcile phải đi qua
 cùng `graph_version_id`. Điều này bao gồm:
 
 - node create/update;
@@ -326,7 +326,7 @@ trong runtime.
 
 ---
 
-## 4. codegraph-sync Changes
+## 4. examples/codegraph Changes
 
 ### SyncSession trong reconcile
 

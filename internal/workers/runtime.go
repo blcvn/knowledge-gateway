@@ -5,13 +5,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"kg-service/internal/config"
 	"kg-service/internal/integrity"
@@ -22,6 +26,7 @@ import (
 	"kg-service/internal/platform/session"
 	"kg-service/internal/platform/vector"
 	"kg-service/internal/platform/vectorstore"
+	"kg-service/internal/runtimeobs"
 	"kg-service/internal/searchprofile"
 	"kg-service/internal/telemetry"
 	"kg-service/internal/write"
@@ -61,11 +66,13 @@ type Runtime struct {
 	store              Repository
 	ontology           OntologyResolver
 	cache              *rediscache.Client
+	logger             *runtimeobs.Logger
 	embedding          vector.EmbeddingRouter
 	profiles           ontology.SearchProfileResolver
 	graphAdapter       graphstore.GraphAdapter
 	vectorAdapter      vectorstore.VectorAdapter
 	ftsAdapter         fts.FTSAdapter
+	tracer             trace.Tracer
 	graph              *GraphStore
 	vector             *VectorStore
 	sessionManager     session.Manager
@@ -147,6 +154,22 @@ func WithSessionManager(manager session.Manager) RuntimeOption {
 	}
 }
 
+func WithLogger(logger *runtimeobs.Logger) RuntimeOption {
+	return func(r *Runtime) {
+		if logger != nil {
+			r.logger = logger
+		}
+	}
+}
+
+func WithTracerProvider(provider trace.TracerProvider, name string) RuntimeOption {
+	return func(r *Runtime) {
+		if provider != nil {
+			r.tracer = provider.Tracer(name)
+		}
+	}
+}
+
 func projectionBatchingEnabled() bool {
 	raw := strings.TrimSpace(os.Getenv("PROJECTION_BATCHING_ENABLED"))
 	if raw == "" {
@@ -200,6 +223,8 @@ func NewRuntime(store Repository, ontologyResolver OntologyResolver, cache *redi
 		store:              store,
 		ontology:           ontologyResolver,
 		cache:              cache,
+		logger:             runtimeobs.NewLogger(config.Config{}, "workers"),
+		tracer:             otel.Tracer("kg-service/workers"),
 		embedding:          router,
 		profiles:           profileResolver,
 		vectorAdapter:      vectorstore.NewInMemoryVectorAdapter(),
@@ -238,11 +263,80 @@ func NewRuntimeFromConfig(store Repository, ontologyResolver OntologyResolver, c
 		store,
 		ontologyResolver,
 		cache,
+		WithLogger(runtimeobs.NewLogger(cfg, "workers")),
 		WithLagToleranceWindow(time.Duration(cfg.SyncLagToleranceMs)*time.Millisecond),
 		WithMaxRetries(cfg.SyncLagStuckRetries),
 		WithWorkerPoolSize(workerPoolSize),
 		WithOutboxPageSize(outboxPageSize),
 	)
+}
+
+func (r *Runtime) logf(format string, args ...any) {
+	if r == nil || r.logger == nil {
+		return
+	}
+	r.logger.Printf(format, args...)
+}
+
+func (r *Runtime) logEventf(event write.OutboxEvent, format string, args ...any) {
+	if r == nil || r.logger == nil {
+		return
+	}
+	meta := requestMetaFromPayload(event.Payload)
+	if meta == (runtimeobs.RequestMeta{}) {
+		r.logger.Printf(format, args...)
+		return
+	}
+	message := fmt.Sprintf(format, args...)
+	r.logger.Printf(
+		"%s request_id=%s trace_id=%s span_id=%s",
+		message,
+		meta.RequestID,
+		meta.TraceID,
+		meta.SpanID,
+	)
+}
+
+func requestMetaFromPayload(payload map[string]any) runtimeobs.RequestMeta {
+	if len(payload) == 0 {
+		return runtimeobs.RequestMeta{}
+	}
+	meta := runtimeobs.RequestMeta{}
+	if value, ok := payload["request_id"].(string); ok {
+		meta.RequestID = strings.TrimSpace(value)
+	}
+	if value, ok := payload["trace_id"].(string); ok {
+		meta.TraceID = strings.TrimSpace(value)
+	}
+	if value, ok := payload["span_id"].(string); ok {
+		meta.SpanID = strings.TrimSpace(value)
+	}
+	return meta
+}
+
+func eventSpanLinks(event write.OutboxEvent) []trace.Link {
+	meta := requestMetaFromPayload(event.Payload)
+	if meta == (runtimeobs.RequestMeta{}) {
+		return nil
+	}
+	traceID, err := trace.TraceIDFromHex(meta.TraceID)
+	if err != nil {
+		return nil
+	}
+	spanID, err := trace.SpanIDFromHex(meta.SpanID)
+	if err != nil {
+		return nil
+	}
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	})
+	if !sc.IsValid() {
+		return nil
+	}
+	return []trace.Link{{SpanContext: sc}}
 }
 
 func (r *Runtime) Graph() *GraphStore {
@@ -294,7 +388,7 @@ func (r *Runtime) PollOnce() WorkerReport {
 	for {
 		batch, err := r.store.ClaimOutboxBatch(context.Background(), r.outboxPageSize)
 		if err != nil {
-			log.Printf("claim outbox batch failed: %v", err)
+			r.logf("claim outbox batch failed: %v", err)
 			report.Failed++
 			return report
 		}
@@ -404,13 +498,13 @@ func (r *Runtime) cleanupExpiredSyncSessions(ctx context.Context) int {
 	cleaned := 0
 	for _, version := range expired {
 		if err := r.store.CleanupExpiredSyncSession(ctx, version.VersionID); err != nil {
-			log.Printf("session cleanup failed version_id=%s err=%v", version.VersionID, err)
+			r.logf("session cleanup failed version_id=%s err=%v", version.VersionID, err)
 			continue
 		}
 		cleaned++
 	}
 	if cleaned > 0 {
-		log.Printf("session cleanup processed=%d cutoff=%s", cleaned, cutoff.Format(time.RFC3339))
+		r.logf("session cleanup processed=%d cutoff=%s", cleaned, cutoff.Format(time.RFC3339))
 	}
 	return cleaned
 }
@@ -431,7 +525,26 @@ func (r *Runtime) processOutboxEvent(event write.OutboxEvent, report *WorkerRepo
 		return
 	}
 
-	log.Printf(
+	tracer := r.tracer
+	if tracer == nil {
+		tracer = otel.Tracer("kg-service/workers")
+	}
+	spanOpts := []trace.SpanStartOption{
+		trace.WithAttributes(
+			attribute.String("kg.event_id", event.ID),
+			attribute.String("kg.aggregate_type", event.AggregateType),
+			attribute.String("kg.event_type", event.EventType),
+			attribute.String("kg.event_status", string(env.Status)),
+			attribute.Int("kg.event_retry_count", env.RetryCount),
+		),
+	}
+	if links := eventSpanLinks(event); len(links) > 0 {
+		spanOpts = append(spanOpts, trace.WithLinks(links...))
+	}
+	ctx, span := tracer.Start(context.Background(), "worker.process_outbox_event", spanOpts...)
+	defer span.End()
+
+	r.logEventf(event,
 		"projection event %s start aggregate=%s type=%s status=%s retry=%d payload=%v",
 		event.ID,
 		event.AggregateType,
@@ -441,13 +554,16 @@ func (r *Runtime) processOutboxEvent(event write.OutboxEvent, report *WorkerRepo
 		event.Payload,
 	)
 	env.Status = EventProcessing
-	_ = r.store.UpdateOutboxStatus(context.Background(), event.ID, string(EventProcessing), env.RetryCount, nil)
+	span.SetAttributes(attribute.String("kg.event_status", string(EventProcessing)))
+	_ = r.store.UpdateOutboxStatus(ctx, event.ID, string(EventProcessing), env.RetryCount, nil)
 	if err := r.handleEvent(env.Event); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		env.RetryCount++
 		env.Error = err.Error()
 		reportMu.Lock()
 		if len(report.SampleErrors) < 3 {
-			log.Printf(
+			r.logEventf(event,
 				"projection event %s failed aggregate=%s type=%s retry=%d/%d err=%v",
 				event.ID,
 				event.AggregateType,
@@ -466,7 +582,8 @@ func (r *Runtime) processOutboxEvent(event write.OutboxEvent, report *WorkerRepo
 			report.Failed++
 		}
 		reportMu.Unlock()
-		_ = r.store.UpdateOutboxStatus(context.Background(), event.ID, string(env.Status), env.RetryCount, nil)
+		span.SetAttributes(attribute.String("kg.event_status", string(env.Status)))
+		_ = r.store.UpdateOutboxStatus(ctx, event.ID, string(env.Status), env.RetryCount, nil)
 		r.outbox[event.ID] = env
 		return
 	}
@@ -474,9 +591,13 @@ func (r *Runtime) processOutboxEvent(event write.OutboxEvent, report *WorkerRepo
 	env.Error = ""
 	now := time.Now().UTC()
 	env.Event.ProcessedAt = &now
-	_ = r.store.UpdateOutboxStatus(context.Background(), event.ID, string(EventDone), env.RetryCount, &now)
+	span.SetAttributes(
+		attribute.String("kg.event_status", string(EventDone)),
+		attribute.String("kg.event_processed_at", now.Format(time.RFC3339Nano)),
+	)
+	_ = r.store.UpdateOutboxStatus(ctx, event.ID, string(EventDone), env.RetryCount, &now)
 	r.outbox[event.ID] = env
-	log.Printf(
+	r.logEventf(event,
 		"projection event %s done aggregate=%s type=%s retry=%d processed_at=%s",
 		event.ID,
 		event.AggregateType,
@@ -595,7 +716,7 @@ func (r *Runtime) projectCoalescedUnits(units []projectionWorkUnit) []projection
 		case "kg_node":
 			node, ok := nodeSources[unit.EntityID]
 			if !ok {
-				log.Printf("projection skip stale event entity_id=%s kind=kg_node event_type=%s: node no longer exists",
+				r.logf("projection skip stale event entity_id=%s kind=kg_node event_type=%s: node no longer exists",
 					unit.EntityID, unit.Latest.EventType)
 				results[idx].GraphSynced = true
 				results[idx].VectorSynced = true
@@ -621,7 +742,7 @@ func (r *Runtime) projectCoalescedUnits(units []projectionWorkUnit) []projection
 		case "kg_relationship":
 			rel, ok := relSources[unit.EntityID]
 			if !ok {
-				log.Printf("projection skip stale event entity_id=%s kind=kg_relationship event_type=%s: relationship no longer exists",
+				r.logf("projection skip stale event entity_id=%s kind=kg_relationship event_type=%s: relationship no longer exists",
 					unit.EntityID, unit.Latest.EventType)
 				results[idx].GraphSynced = true
 				results[idx].VectorSynced = true
@@ -1124,7 +1245,7 @@ func (r *Runtime) commitProjectionResultLocked(result projectionUnitResult, repo
 	if result.Err != nil {
 		telemetry.RecordProjectionPartialFailure(len(unit.Events))
 		if len(report.SampleErrors) < 3 {
-			log.Printf(
+			r.logf(
 				"projection unit failed entity_id=%s kind=%s events=%d retry=%d err=%v",
 				unit.EntityID, unit.EntityKind, len(unit.Events),
 				unit.Events[0].RetryCount+1, result.Err,
@@ -1833,10 +1954,10 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 	switch event.EventType {
 	case "NODE_UPSERTED":
 		nodeID, _ := event.Payload["node_id"].(string)
-		log.Printf("handle node upsert event=%s node_id=%s", event.ID, nodeID)
+		r.logEventf(event, "handle node upsert event=%s node_id=%s", event.ID, nodeID)
 		node, ok := r.fetchNodeForEvent(context.Background(), event, nodeID)
 		if !ok {
-			log.Printf("projection skip stale event=%s node_id=%s event_type=NODE_UPSERTED: node no longer exists", event.ID, nodeID)
+			r.logEventf(event, "projection skip stale event=%s node_id=%s event_type=NODE_UPSERTED: node no longer exists", event.ID, nodeID)
 			return nil
 		}
 		graphSynced, vectorSynced, err := r.projectNode(node)
@@ -1848,10 +1969,10 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 		return r.applyStatusCascade(node.DomainID, node.ID)
 	case "NODE_DELETED":
 		nodeID, _ := event.Payload["node_id"].(string)
-		log.Printf("handle node delete event=%s node_id=%s", event.ID, nodeID)
+		r.logEventf(event, "handle node delete event=%s node_id=%s", event.ID, nodeID)
 		node, ok := r.fetchNodeForEvent(context.Background(), event, nodeID)
 		if !ok {
-			log.Printf("projection skip stale event=%s node_id=%s event_type=NODE_DELETED: node no longer exists", event.ID, nodeID)
+			r.logEventf(event, "projection skip stale event=%s node_id=%s event_type=NODE_DELETED: node no longer exists", event.ID, nodeID)
 			return nil
 		}
 		node.IsDeleted = true
@@ -1873,10 +1994,10 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 		return nil
 	case "RELATIONSHIP_UPSERTED", "RELATIONSHIP_DELETED":
 		relID, _ := event.Payload["relationship_id"].(string)
-		log.Printf("handle relationship event=%s event_type=%s relationship_id=%s", event.ID, event.EventType, relID)
+		r.logEventf(event, "handle relationship event=%s event_type=%s relationship_id=%s", event.ID, event.EventType, relID)
 		rel, ok := r.fetchRelationshipForEvent(context.Background(), event, relID)
 		if !ok {
-			log.Printf("projection skip stale event=%s relationship_id=%s event_type=%s: relationship no longer exists", event.ID, relID, event.EventType)
+			r.logEventf(event, "projection skip stale event=%s relationship_id=%s event_type=%s: relationship no longer exists", event.ID, relID, event.EventType)
 			return nil
 		}
 		sourceVersion := int64(rel.DomainVersion)
@@ -1921,10 +2042,10 @@ func (r *Runtime) handleEvent(event write.OutboxEvent) error {
 		}
 		return r.applyStatusCascade(rel.DomainID, rel.FromNodeID)
 	case "ACCESS_GRANT_CHANGED":
-		log.Printf("handle access grant change event=%s payload=%v", event.ID, event.Payload)
+		r.logEventf(event, "handle access grant change event=%s payload=%v", event.ID, event.Payload)
 		return r.handleAccessGrantChanged(event.Payload)
 	default:
-		log.Printf("skip unsupported event=%s type=%s aggregate=%s", event.ID, event.EventType, event.AggregateType)
+		r.logEventf(event, "skip unsupported event=%s type=%s aggregate=%s", event.ID, event.EventType, event.AggregateType)
 		return nil
 	}
 }
@@ -2025,7 +2146,7 @@ func (r *Runtime) refreshStatusCascadesLocked() {
 }
 
 func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
-	log.Printf(
+	r.logf(
 		"project node start node_id=%s node_type=%s domain=%s tenant=%s app=%s version=%d deleted=%t props=%d",
 		node.ID,
 		node.NodeType,
@@ -2074,7 +2195,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 	graphSynced := true
 	var graphErr error
 	if r.graphAdapter != nil {
-		log.Printf(
+		r.logf(
 			"project node graph upsert start node_id=%s node_type=%s domain=%s version=%d",
 			node.ID,
 			node.NodeType,
@@ -2105,9 +2226,9 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 				node.DomainVersion,
 				err,
 			)
-			log.Printf("project node graph upsert failed node_id=%s err=%v", node.ID, graphErr)
+			r.logf("project node graph upsert failed node_id=%s err=%v", node.ID, graphErr)
 		} else {
-			log.Printf("project node graph upsert done node_id=%s", node.ID)
+			r.logf("project node graph upsert done node_id=%s", node.ID)
 		}
 	}
 	cfg, err := r.ontology.GetStatusFieldConfig(node.DomainID)
@@ -2125,7 +2246,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 	if embeddingProvider == nil {
 		embeddingProvider = vector.NewDeterministicProvider(8)
 	}
-	log.Printf(
+	r.logf(
 		"project node embedding start node_id=%s provider=%T model=%s text_len=%d preview=%q",
 		node.ID,
 		embeddingProvider,
@@ -2146,7 +2267,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 			err,
 		)
 	}
-	log.Printf("project node embedding done node_id=%s dims=%d", node.ID, len(embedding))
+	r.logf("project node embedding done node_id=%s dims=%d", node.ID, len(embedding))
 	doc := VectorDocument{
 		NodeID:        node.ID,
 		NodeType:      node.NodeType,
@@ -2170,7 +2291,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 	vectorSynced := true
 	var vectorErr error
 	if r.vectorAdapter != nil {
-		log.Printf(
+		r.logf(
 			"project node vector upsert start node_id=%s node_type=%s domain=%s dims=%d version=%d",
 			node.ID,
 			node.NodeType,
@@ -2202,9 +2323,9 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 				node.DomainVersion,
 				err,
 			)
-			log.Printf("project node vector upsert failed node_id=%s err=%v", node.ID, vectorErr)
+			r.logf("project node vector upsert failed node_id=%s err=%v", node.ID, vectorErr)
 		} else {
-			log.Printf("project node vector upsert done node_id=%s", node.ID)
+			r.logf("project node vector upsert done node_id=%s", node.ID)
 		}
 	}
 	if vectorSynced {
@@ -2212,7 +2333,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 		r.vector.Documents[node.ID].DomainProps["_kg_sync_version"] = int64(node.DomainVersion)
 	}
 	if !node.IsDeleted && r.ftsAdapter != nil {
-		log.Printf("project node fts index start node_id=%s", node.ID)
+		r.logf("project node fts index start node_id=%s", node.ID)
 		if err := r.ftsAdapter.Index(context.Background(), buildFTSDocument(node, acl, doc.AuthorityScore)); err != nil {
 			return graphSynced, vectorSynced, fmt.Errorf(
 				"fts index node_id=%s node_type=%s domain=%s: %w",
@@ -2222,7 +2343,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 				err,
 			)
 		}
-		log.Printf("project node fts index done node_id=%s", node.ID)
+		r.logf("project node fts index done node_id=%s", node.ID)
 	}
 	if vectorErr != nil {
 		return graphSynced, vectorSynced, vectorErr
@@ -2230,7 +2351,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 	if graphErr != nil {
 		return graphSynced, vectorSynced, graphErr
 	}
-	log.Printf("project node done node_id=%s graph_synced=%t vector_synced=%t", node.ID, graphSynced, vectorSynced)
+	r.logf("project node done node_id=%s graph_synced=%t vector_synced=%t", node.ID, graphSynced, vectorSynced)
 	return graphSynced, vectorSynced, nil
 }
 

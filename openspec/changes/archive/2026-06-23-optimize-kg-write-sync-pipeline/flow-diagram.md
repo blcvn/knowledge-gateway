@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-    Producer[Producer / codegraph-sync]
+    Producer[Producer / examples/codegraph]
     WriteAPI[POST /v1/kg/write/nodes or /relationships]
     WriteSvc[write.Service]
     Pg[(Postgres)]

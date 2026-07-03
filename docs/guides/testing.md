@@ -79,7 +79,7 @@ This flow:
 - creates or reuses a tenant admin app for CodeGraph validation
 - waits for `GET /healthz`
 - bootstraps and verifies the `code-graph` ontology
-- runs `codegraph-sync` in dry-run and sync modes using upsert semantics
+- runs the `examples/codegraph` bridge in dry-run and sync modes using upsert semantics
 - when the CodeGraph CLI is available, refreshes a dedicated probe symbol and verifies the same node advances to a newer sync version after an update
 - confirms get/list, hybrid search, full-text search, and template-backed queries work
 

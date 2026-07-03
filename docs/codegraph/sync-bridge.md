@@ -1,6 +1,6 @@
 # CodeGraph Sync Bridge
 
-This runbook covers the implemented bridge in [codegraph-sync](/Users/anhdt/vnpay/knowledge/kg-service/codegraph-sync).
+This runbook covers the implemented bridge in [examples/codegraph](/Users/anhdt/vnpay/knowledge/kg-service/examples/codegraph).
 
 ## What It Does
 
@@ -28,7 +28,7 @@ Useful optional variables:
 - `KG_DEFAULT_TOP_K`
 - `KG_TEMPLATE_TIMEOUT_SEC`
 
-See [codegraph-sync/.env.example](/Users/anhdt/vnpay/knowledge/kg-service/codegraph-sync/.env.example) for a starter file.
+See [examples/codegraph/.env.example](/Users/anhdt/vnpay/knowledge/kg-service/examples/codegraph/.env.example) for a starter file.
 
 Example `.env`:
 
@@ -39,7 +39,7 @@ KG_SERVICE_URL=http://127.0.0.1:8082
 KG_API_KEY=kgsk_test_alpha_admin
 KG_DOMAIN_ID=code-graph
 KG_VISIBILITY=private
-KG_STATE_DIR=codegraph-sync/.state
+KG_STATE_DIR=examples/codegraph/.state
 KG_TEMPLATE_DOMAIN_ID=code-graph
 ```
 
@@ -48,29 +48,29 @@ KG_TEMPLATE_DOMAIN_ID=code-graph
 From the repo root:
 
 ```bash
-make codegraph-sync-build
-make codegraph-sync-sync-dry
-make codegraph-sync-sync
-make codegraph-sync-mcp
+make codegraph-example-build
+make codegraph-example-sync-dry
+make codegraph-example-sync
+make codegraph-example-mcp
 ```
 
 Or run the bridge scripts directly:
 
 ```bash
-./codegraph-sync/build
-./codegraph-sync/sync:dry
-./codegraph-sync/sync
-./codegraph-sync/mcp
+./examples/codegraph/codegraph-example-build
+./examples/codegraph/codegraph-example-sync-dry
+./examples/codegraph/codegraph-example-sync
+./examples/codegraph/codegraph-example-mcp
 ```
 
-Use `./codegraph-sync/sync --full` for a full reindex against the local manifest.
+Use `./examples/codegraph/codegraph-example-sync --full` for a full reindex against the local manifest.
 
 Typical first run:
 
 ```bash
-make codegraph-sync-build
-make codegraph-sync-sync-dry
-make codegraph-sync-sync
+make codegraph-example-build
+make codegraph-example-sync-dry
+make codegraph-example-sync
 ```
 
 ## Mapping Summary
@@ -123,7 +123,7 @@ They call these `kg-service` routes:
 
 ### Example Tool Listing
 
-After starting `./codegraph-sync/mcp`, clients can list the bridge tools with a JSON-RPC request
+After starting `./examples/codegraph/mcp`, clients can list the bridge tools with a JSON-RPC request
 like this:
 
 ```json
@@ -172,8 +172,8 @@ Use the bridge as a stdio MCP server in your client config:
 ```json
 {
   "mcpServers": {
-    "codegraph-sync": {
-      "command": "/Users/anhdt/vnpay/knowledge/kg-service/codegraph-sync/mcp",
+    "codegraph-example": {
+      "command": "/Users/anhdt/vnpay/knowledge/kg-service/examples/codegraph/codegraph-example-mcp",
       "env": {
         "KG_SERVICE_URL": "http://127.0.0.1:8082",
         "KG_API_KEY": "kgsk_test_alpha_admin",
@@ -254,8 +254,8 @@ If `template_name` is missing or empty, the bridge returns a validation error be
 Recommended smoke checks:
 
 ```bash
-make codegraph-sync-sync-dry
-make codegraph-sync-build
+make codegraph-example-sync-dry
+make codegraph-example-build
 ```
 
 If `sync` fails, confirm:

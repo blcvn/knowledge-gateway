@@ -1,6 +1,6 @@
 # Tasks
 
-- [x] **T1** — Tạo `codegraph-sync/` với scripts `build`, `sync`, `sync:dry`, `mcp`.
+- [x] **T1** — Tạo `examples/codegraph/` với scripts `build`, `sync`, `sync:dry`, `mcp`.
 - [x] **T2** — Implement extractor mapping CodeGraph symbols/edges sang payload của `kg-service`.
 - [x] **T3** — Document mapping cụ thể cho node, relationship, và `external_ref`.
 - [x] **T4** — Implement `KGServiceAdapter` bám route thật của repo.

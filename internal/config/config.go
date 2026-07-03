@@ -6,6 +6,7 @@ import (
 )
 
 type Config struct {
+	Observability       ObservabilityConfig
 	HTTP                HTTPConfig
 	Postgres            PostgresConfig
 	Redis               RedisConfig
@@ -17,6 +18,18 @@ type Config struct {
 	SyncLagToleranceMs  int
 	SyncLagStuckRetries int
 	SyncEtaDefaultMs    int
+}
+
+type ObservabilityConfig struct {
+	LogLevel             string
+	LogFormat            string
+	ServiceName          string
+	ServiceVersion       string
+	OTELExporterEndpoint string
+	OTELExporterProtocol string
+	TraceSamplingRatio   float64
+	MetricsEnabled       bool
+	MetricsAddress       string
 }
 
 type HTTPConfig struct {

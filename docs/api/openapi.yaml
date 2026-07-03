@@ -1035,6 +1035,78 @@ paths:
           $ref: '#/components/responses/NotFoundError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /v1/kg/write/sync-sessions:
+    post:
+      tags: [Write]
+      summary: Open a sync session
+      description: Opens a sync session for the caller and returns the current graph version metadata.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenSyncSessionRequest'
+      responses:
+        '202':
+          description: Sync session opened
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/sync-sessions/{id}/commit:
+    post:
+      tags: [Write]
+      summary: Commit a sync session
+      description: Commits the open sync session and returns a simple success status payload.
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      responses:
+        '200':
+          description: Sync session committed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusOnlyResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/sync-sessions/{id}:
+    delete:
+      tags: [Write]
+      summary: Abandon a sync session
+      description: Abandons the open sync session and returns no response body.
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+      responses:
+        '204':
+          description: Sync session abandoned
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /v1/kg/write/relationships:
     post:
       tags: [Write]
@@ -2474,6 +2546,33 @@ components:
           type: string
         is_deleted:
           type: boolean
+    OpenSyncSessionRequest:
+      type: object
+      required: [domain_id, graph_scope]
+      properties:
+        domain_id:
+          type: string
+        graph_scope:
+          type: string
+    SyncSessionResponse:
+      type: object
+      required: [session_id, graph_version_id, graph_identifier_id, graph_version_number]
+      properties:
+        session_id:
+          type: string
+        graph_version_id:
+          type: string
+        graph_identifier_id:
+          type: string
+        graph_version_number:
+          type: integer
+          format: int64
+    StatusOnlyResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
     RelationshipCreateRequest:
       type: object
       required: [rel_type, from_node_id, to_node_id, domain_id, properties]

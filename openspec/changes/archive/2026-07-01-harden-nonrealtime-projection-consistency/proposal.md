@@ -4,7 +4,7 @@
 
 The current validation flow exposed a contract mismatch in the projection-backed read path:
 
-1. `scripts/validate-codegraph-runtime.sh` successfully reached the relationshipdb write and
+1. `examples/codegraph/validate-codegraph-runtime.sh` successfully reached the relationshipdb write and
    projection timing step even when the local CodeGraph CLI was unavailable, but the timing check
    failed on a more serious condition:
    - `kg_entity_sync_status` reported `graph_lag_class="SYNCED"` for a freshly written node;

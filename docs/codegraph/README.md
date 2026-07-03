@@ -14,4 +14,4 @@ Use [Integration Design](./codegraph-integration-design.md) when you need the fu
 including the future KG hybrid path.
 
 For the implemented bridge and MCP tooling that sync the local index into `kg-service`, see
-[CodeGraph Sync Bridge](./sync-bridge.md) and [codegraph-sync](/Users/anhdt/vnpay/knowledge/kg-service/codegraph-sync).
+[CodeGraph Sync Bridge](./sync-bridge.md) and [examples/codegraph](/Users/anhdt/vnpay/knowledge/kg-service/examples/codegraph).

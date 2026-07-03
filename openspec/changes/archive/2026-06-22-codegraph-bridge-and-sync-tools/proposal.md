@@ -11,7 +11,7 @@ Ngay cả khi đã có CodeGraph local index và ontology `code-graph`, repo v�
 
 ## Proposed Solution
 
-Tạo `codegraph-sync/` như một bridge/tooling package riêng:
+Tạo `examples/codegraph/` như một bridge/tooling package riêng:
 
 - extractor + mapping layer
 - `KGServiceAdapter` bám `/v1/kg/*` hiện có
@@ -22,7 +22,7 @@ Tạo `codegraph-sync/` như một bridge/tooling package riêng:
 
 ### In scope
 
-- `codegraph-sync/`
+- `examples/codegraph/`
 - mapping sang `NodeCreateRequest` và `RelationshipCreateRequest`
 - sync dry-run/full-run
 - MCP tools `kg_semantic_search`, `kg_fulltext_search`, `kg_code_template_query`

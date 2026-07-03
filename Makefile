@@ -5,7 +5,7 @@ BIN_DIR := bin
 BIN := $(BIN_DIR)/$(APP_NAME)
 IMAGE ?= kg-service:local
 
-.PHONY: help build run test docker-build deploy-compose deploy-compose-integration deploy-compose-runtime-validation deploy-compose-codegraph-runtime deploy-k8s deploy-vm migrate integration-test validate-runtime-profile validate-codegraph-runtime compose-down compose-down-integration compose-down-runtime-validation compose-down-codegraph-runtime codegraph-refresh codegraph-sync-build codegraph-sync-sync codegraph-sync-sync-dry codegraph-sync-mcp bootstrap-codegraph-ontology verify-codegraph-ontology
+.PHONY: help build run test docker-build deploy-compose deploy-compose-integration deploy-compose-runtime-validation deploy-compose-codegraph-runtime deploy-k8s deploy-vm migrate integration-test validate-runtime-profile validate-codegraph-runtime compose-down compose-down-integration compose-down-runtime-validation compose-down-codegraph-runtime codegraph-refresh codegraph-example-build codegraph-example-sync codegraph-example-sync-dry codegraph-example-mcp bootstrap-codegraph-ontology verify-codegraph-ontology
 
 help:
 	@printf '%s\n' \
@@ -27,10 +27,10 @@ help:
 		'  compose-down     Stop the Compose stack' \
 		'  compose-down-codegraph-runtime Stop the CodeGraph Compose stack' \
 		'  codegraph-refresh Refresh the local CodeGraph incremental index' \
-		'  codegraph-sync-build Build the codegraph-sync bridge binary' \
-		'  codegraph-sync-sync Run a full codegraph-sync pass' \
-		'  codegraph-sync-sync-dry Run a dry-run codegraph-sync pass' \
-		'  codegraph-sync-mcp Start the codegraph-sync MCP server' \
+		'  codegraph-example-build Build the examples/codegraph bridge binary' \
+		'  codegraph-example-sync Run a full examples/codegraph sync pass' \
+		'  codegraph-example-sync-dry Run a dry-run examples/codegraph sync pass' \
+		'  codegraph-example-mcp Start the examples/codegraph MCP server' \
 		'  bootstrap-codegraph-ontology Bootstrap the code-graph ontology domain' \
 		'  verify-codegraph-ontology Verify the code-graph ontology domain'
 
@@ -57,7 +57,7 @@ deploy-compose-runtime-validation:
 	./scripts/deploy-compose-runtime-validation.sh
 
 deploy-compose-codegraph-runtime:
-	./scripts/deploy-compose-codegraph-runtime.sh $(ARGS)
+	./examples/codegraph/deploy-compose-codegraph-runtime.sh $(ARGS)
 
 deploy-k8s:
 	./scripts/deploy-k8s.sh
@@ -75,7 +75,7 @@ validate-runtime-profile:
 	./scripts/validate-runtime-profile.sh
 
 validate-codegraph-runtime:
-	./scripts/validate-codegraph-runtime.sh $(ARGS)
+	./examples/codegraph/validate-codegraph-runtime.sh $(ARGS)
 
 compose-down:
 	docker compose -f deploy/compose/docker-compose.yml down
@@ -90,22 +90,22 @@ compose-down-codegraph-runtime:
 	docker compose -f deploy/compose/codegraph-runtime/docker-compose.yml down
 
 codegraph-refresh:
-	./scripts/codegraph-refresh.sh
+	./examples/codegraph/codegraph-refresh.sh
 
-codegraph-sync-build:
-	./codegraph-sync/build
+codegraph-example-build:
+	./examples/codegraph/codegraph-example-build
 
-codegraph-sync-sync:
-	./codegraph-sync/sync
+codegraph-example-sync:
+	./examples/codegraph/codegraph-example-sync
 
-codegraph-sync-sync-dry:
-	./codegraph-sync/sync:dry
+codegraph-example-sync-dry:
+	./examples/codegraph/codegraph-example-sync-dry
 
-codegraph-sync-mcp:
-	./codegraph-sync/mcp
+codegraph-example-mcp:
+	./examples/codegraph/codegraph-example-mcp
 
 bootstrap-codegraph-ontology:
-	./scripts/bootstrap-codegraph-ontology.sh
+	./examples/codegraph/bootstrap-codegraph-ontology.sh
 
 verify-codegraph-ontology:
-	./scripts/verify-codegraph-ontology.sh
+	./examples/codegraph/verify-codegraph-ontology.sh

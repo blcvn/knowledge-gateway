@@ -16,15 +16,28 @@ type Store interface {
 }
 
 type Service struct {
-	store   Store
-	runtime *workers.Runtime
-	now     func() time.Time
+	store     Store
+	runtime   *workers.Runtime
+	telemetry MetricsSnapshotter
+	now       func() time.Time
 }
 
 func NewService(store Store, runtime *workers.Runtime) *Service {
+	return NewServiceWithTelemetry(store, runtime, telemetry.Default())
+}
+
+type MetricsSnapshotter interface {
+	Snapshot() telemetry.Snapshot
+}
+
+func NewServiceWithTelemetry(store Store, runtime *workers.Runtime, snapshotter MetricsSnapshotter) *Service {
+	if snapshotter == nil {
+		snapshotter = telemetry.Default()
+	}
 	return &Service{
-		store:   store,
-		runtime: runtime,
+		store:     store,
+		runtime:   runtime,
+		telemetry: snapshotter,
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -46,7 +59,10 @@ type MetricsResponse struct {
 }
 
 func (s *Service) Snapshot() MetricsResponse {
-	snap := telemetry.Default().Snapshot()
+	snap := telemetry.Snapshot{}
+	if s != nil && s.telemetry != nil {
+		snap = s.telemetry.Snapshot()
+	}
 	resp := MetricsResponse{
 		OutboxBacklog:               backlogCount(s.store),
 		GraphLagSeconds:             lagStats(s.store, s.now, "graph"),

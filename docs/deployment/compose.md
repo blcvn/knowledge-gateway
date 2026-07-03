@@ -69,7 +69,7 @@ make validate-codegraph-runtime ARGS="--skip-compose --skip-sync"
 ```
 
 On the first successful run, the script stores the generated tenant/app identity in
-`codegraph-sync/.state/codegraph-runtime-bootstrap.json` so later runs can reuse it without creating a new tenant.
+`examples/codegraph/.state/codegraph-runtime-bootstrap.json` so later runs can reuse it without creating a new tenant.
 
 ## Verify The Deployment
 
@@ -86,4 +86,4 @@ To validate a deployed profile end to end, use `scripts/validate-runtime-profile
 - The Compose path now selects a named runtime profile instead of silently booting memory adapters.
 - The migration container applies the repository SQL schema before the service starts.
 - The integration smoke stack under `make deploy-compose-integration` uses its own fixed profile and does not require you to export `KG_RUNTIME_PROFILE`.
-- `make deploy-compose-codegraph-runtime` and `make validate-codegraph-runtime` both read `deploy/compose/codegraph-runtime/.env` directly for the CodeGraph embedding settings.
+- `make deploy-compose-codegraph-runtime` and `make validate-codegraph-runtime` both read `deploy/compose/codegraph-runtime/.env` directly for the CodeGraph embedding settings, while the bridge example itself lives under `examples/codegraph/`.

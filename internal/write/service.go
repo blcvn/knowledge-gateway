@@ -18,6 +18,7 @@ import (
 	"kg-service/internal/identity"
 	"kg-service/internal/ontology"
 	"kg-service/internal/platform/session"
+	"kg-service/internal/runtimeobs"
 	"kg-service/internal/telemetry"
 )
 
@@ -345,7 +346,7 @@ func (s *Service) CommitSyncSession(ctx context.Context, actor access.Identity, 
 			}
 			return ErrValidation
 		}
-		event := OutboxEvent{
+		event := withRequestMeta(ctx, OutboxEvent{
 			ID:            deterministicUUID("graph-version-sealed:" + sessionID),
 			AggregateType: "kg_graph_version",
 			AggregateID:   sessionID,
@@ -361,7 +362,7 @@ func (s *Service) CommitSyncSession(ctx context.Context, actor access.Identity, 
 			Status:     "PENDING",
 			RetryCount: 0,
 			CreatedAt:  s.now(),
-		}
+		})
 		if err := repo.CreateOutboxEvents(ctx, []OutboxEvent{event}); err != nil {
 			if strings.Contains(err.Error(), "duplicate key value") {
 				return repo.ReleaseScopeLease(ctx, state.identity.OwnerTenantID, state.identity.OwnerAppID, state.identity.GraphScope, sessionID)
@@ -580,6 +581,28 @@ func maxInt64(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+func withRequestMeta(ctx context.Context, event OutboxEvent) OutboxEvent {
+	meta := runtimeobs.RequestMetaFromContext(ctx)
+	if meta == (runtimeobs.RequestMeta{}) {
+		return event
+	}
+	payload := make(map[string]any, len(event.Payload)+3)
+	for key, value := range event.Payload {
+		payload[key] = value
+	}
+	if meta.RequestID != "" {
+		payload["request_id"] = meta.RequestID
+	}
+	if meta.TraceID != "" {
+		payload["trace_id"] = meta.TraceID
+	}
+	if meta.SpanID != "" {
+		payload["span_id"] = meta.SpanID
+	}
+	event.Payload = payload
+	return event
 }
 
 func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (NodeCreateResponse, error) {
@@ -812,7 +835,7 @@ func (s *Service) CreateNodesBulkWithContext(ctx context.Context, actor access.I
 				Status:             "processing",
 				SyncETAMs:          estimateSyncETA(s.store, draft.node.DomainID, s.syncEtaDefaultMs),
 			}
-			events = append(events, OutboxEvent{
+			events = append(events, withRequestMeta(ctx, OutboxEvent{
 				ID:            newID("evt"),
 				AggregateType: "kg_node",
 				AggregateID:   draft.node.ID,
@@ -835,12 +858,12 @@ func (s *Service) CreateNodesBulkWithContext(ctx context.Context, actor access.I
 				Status:     "PENDING",
 				RetryCount: 0,
 				CreatedAt:  draft.node.UpdatedAt,
-			})
+			}))
 		}
 		for _, rel := range bridgeRels {
 			fromNode, _ := repo.GetNodeByID(rel.FromNodeID)
 			graphScope := deriveGraphScopeForNode(fromNode)
-			events = append(events, OutboxEvent{
+			events = append(events, withRequestMeta(ctx, OutboxEvent{
 				ID:            newID("evt"),
 				AggregateType: "kg_relationship",
 				AggregateID:   rel.ID,
@@ -860,7 +883,7 @@ func (s *Service) CreateNodesBulkWithContext(ctx context.Context, actor access.I
 				Status:     "PENDING",
 				RetryCount: 0,
 				CreatedAt:  rel.CreatedAt,
-			})
+			}))
 		}
 		return repo.CreateOutboxEvents(ctx, events)
 	})
@@ -1057,7 +1080,7 @@ func (s *Service) UpdateNodeWithContext(ctx context.Context, actor access.Identi
 		if err != nil {
 			return err
 		}
-		event := OutboxEvent{
+		event := withRequestMeta(ctx, OutboxEvent{
 			ID:            newID("evt"),
 			AggregateType: "kg_node",
 			AggregateID:   nodeID,
@@ -1080,7 +1103,7 @@ func (s *Service) UpdateNodeWithContext(ctx context.Context, actor access.Identi
 			Status:     "PENDING",
 			RetryCount: 0,
 			CreatedAt:  updated.UpdatedAt,
-		}
+		})
 		if err := repo.UpdateNodeWithOutbox(ctx, updated, event); err != nil {
 			switch {
 			case errors.Is(err, ErrDuplicateExternalRef):
@@ -1374,7 +1397,7 @@ func (s *Service) CreateRelationshipsBulkWithContext(ctx context.Context, actor 
 				ReferenceID:        strings.TrimSpace(version.referenceID),
 				Status:             "processing",
 			}
-			events = append(events, OutboxEvent{
+			events = append(events, withRequestMeta(ctx, OutboxEvent{
 				ID:            newID("evt"),
 				AggregateType: "kg_relationship",
 				AggregateID:   draft.rel.ID,
@@ -1399,7 +1422,7 @@ func (s *Service) CreateRelationshipsBulkWithContext(ctx context.Context, actor 
 				Status:     "PENDING",
 				RetryCount: 0,
 				CreatedAt:  draft.rel.CreatedAt,
-			})
+			}))
 		}
 		return repo.CreateOutboxEvents(ctx, events)
 	})
@@ -1546,7 +1569,7 @@ func (s *Service) DeleteRelationshipsBulkWithContext(ctx context.Context, actor 
 					return err
 				}
 			}
-			events = append(events, OutboxEvent{
+			events = append(events, withRequestMeta(ctx, OutboxEvent{
 				ID:            newID("evt"),
 				AggregateType: "kg_relationship",
 				AggregateID:   rel.ID,
@@ -1570,7 +1593,7 @@ func (s *Service) DeleteRelationshipsBulkWithContext(ctx context.Context, actor 
 				Status:     "PENDING",
 				RetryCount: 0,
 				CreatedAt:  deletedAt,
-			})
+			}))
 		}
 		return repo.CreateOutboxEvents(ctx, events)
 	})
@@ -1714,7 +1737,7 @@ func (s *Service) DeleteNodesByExternalRefPrefixWithVersion(ctx context.Context,
 					return err
 				}
 			}
-			events = append(events, OutboxEvent{
+			events = append(events, withRequestMeta(ctx, OutboxEvent{
 				ID:            newID("evt"),
 				AggregateType: "kg_node",
 				AggregateID:   node.ID,
@@ -1735,7 +1758,7 @@ func (s *Service) DeleteNodesByExternalRefPrefixWithVersion(ctx context.Context,
 				Status:     "PENDING",
 				RetryCount: 0,
 				CreatedAt:  deletedAt,
-			})
+			}))
 		}
 		return repo.CreateOutboxEvents(ctx, events)
 	})
@@ -1969,7 +1992,7 @@ func (s *Service) createNodeInScope(ctx context.Context, scope session.SessionSc
 			if err != nil {
 				return NodeCreateResponse{}, err
 			}
-			event := OutboxEvent{
+			event := withRequestMeta(ctx, OutboxEvent{
 				ID:            newID("evt"),
 				AggregateType: "kg_node",
 				AggregateID:   updated.ID,
@@ -1992,7 +2015,7 @@ func (s *Service) createNodeInScope(ctx context.Context, scope session.SessionSc
 				Status:     "PENDING",
 				RetryCount: 0,
 				CreatedAt:  now,
-			}
+			})
 			if err := repo.UpdateNodeWithOutbox(ctx, updated, event); err != nil {
 				if errors.Is(err, ErrDuplicateExternalRef) {
 					return NodeCreateResponse{}, errors.Join(ErrValidation, errors.New("external_ref already exists"))
@@ -2048,7 +2071,7 @@ func (s *Service) createNodeInScope(ctx context.Context, scope session.SessionSc
 	if err != nil {
 		return NodeCreateResponse{}, err
 	}
-	event := OutboxEvent{
+	event := withRequestMeta(ctx, OutboxEvent{
 		ID:            newID("evt"),
 		AggregateType: "kg_node",
 		AggregateID:   nodeID,
@@ -2071,7 +2094,7 @@ func (s *Service) createNodeInScope(ctx context.Context, scope session.SessionSc
 		Status:     "PENDING",
 		RetryCount: 0,
 		CreatedAt:  now,
-	}
+	})
 	if err := repo.CreateNodeBundle(ctx, node, bridgeRelationships, event); err != nil {
 		if errors.Is(err, ErrDuplicateExternalRef) {
 			return NodeCreateResponse{}, errors.Join(ErrValidation, errors.New("external_ref already exists"))
@@ -2214,7 +2237,7 @@ func (s *Service) deleteNodeInScope(ctx context.Context, scope session.SessionSc
 	deleted := node
 	deleted.IsDeleted = true
 	deleted.UpdatedAt = s.now()
-	event := OutboxEvent{
+	event := withRequestMeta(ctx, OutboxEvent{
 		ID:            newID("evt"),
 		AggregateType: "kg_node",
 		AggregateID:   nodeID,
@@ -2230,7 +2253,7 @@ func (s *Service) deleteNodeInScope(ctx context.Context, scope session.SessionSc
 		Status:     "PENDING",
 		RetryCount: 0,
 		CreatedAt:  deleted.UpdatedAt,
-	}
+	})
 	identity, graphVersion, err := s.sealGraphVersion(ctx, repo, actor, deriveGraphScopeForNode(deleted), "", "node delete", graphVersionEntities("node", "DELETE", nodeID))
 	if err != nil {
 		return NodeDeleteResponse{}, err
@@ -2321,7 +2344,7 @@ func (s *Service) createRelationshipInScope(ctx context.Context, scope session.S
 	if err != nil {
 		return RelationshipCreateResponse{}, err
 	}
-	event := OutboxEvent{
+	event := withRequestMeta(ctx, OutboxEvent{
 		ID:            newID("evt"),
 		AggregateType: "kg_relationship",
 		AggregateID:   relID,
@@ -2346,7 +2369,7 @@ func (s *Service) createRelationshipInScope(ctx context.Context, scope session.S
 		Status:     "PENDING",
 		RetryCount: 0,
 		CreatedAt:  now,
-	}
+	})
 	if err := repo.CreateRelationshipWithOutbox(ctx, rel, event); err != nil {
 		return RelationshipCreateResponse{}, err
 	}

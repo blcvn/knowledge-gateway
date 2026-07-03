@@ -8,6 +8,23 @@ import (
 func (c Config) Validate() error {
 	var errs []error
 
+	switch c.Observability.LogFormat {
+	case "", "json", "text":
+	default:
+		errs = append(errs, fmt.Errorf("log format must be json or text: %s", c.Observability.LogFormat))
+	}
+	switch c.Observability.LogLevel {
+	case "", "debug", "info", "warn", "error":
+	default:
+		errs = append(errs, fmt.Errorf("log level must be debug, info, warn, or error: %s", c.Observability.LogLevel))
+	}
+	if c.Observability.TraceSamplingRatio < 0 || c.Observability.TraceSamplingRatio > 1 {
+		errs = append(errs, fmt.Errorf("trace sampling ratio must be between 0 and 1: %f", c.Observability.TraceSamplingRatio))
+	}
+	if c.Observability.MetricsEnabled && c.Observability.MetricsAddress != "" && c.HTTP.Address() == c.Observability.MetricsAddress {
+		errs = append(errs, fmt.Errorf("metrics address must differ from http address when metrics are enabled"))
+	}
+
 	if c.HTTP.Host == "" {
 		errs = append(errs, errors.New("http host must not be empty"))
 	}

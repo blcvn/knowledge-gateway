@@ -9,7 +9,7 @@
 Tích hợp CodeGraph vào `ba-agent-service` để:
 
 - **Phase 1** — Giảm token và tool call khi Claude Code navigate codebase Go của service (structural query: tìm function, trace call graph, blast radius trước refactor).
-- **Phase 2** — Mở rộng sang KG hybrid: sync graph lên KG service sẵn có, thêm `codegraph-sync` cùng các MCP tool mới (`kg_semantic_search`, `kg_fulltext_search`, `kg_code_template_query`) phục vụ semantic search, full-text search, và template-backed traversal mà SQLite FTS5 không đáp ứng được.
+- **Phase 2** — Mở rộng sang KG hybrid: sync graph lên KG service sẵn có, thêm `codegraph-example` cùng các MCP tool mới (`kg_semantic_search`, `kg_fulltext_search`, `kg_code_template_query`) phục vụ semantic search, full-text search, và template-backed traversal mà SQLite FTS5 không đáp ứng được.
 
 Nguyên tắc thiết kế xuyên suốt:
 
@@ -167,16 +167,16 @@ Phase 2 thêm một **sync bridge** chạy sau mỗi lần index và ba **MCP to
 ```
 Phase 1:  agent → codegraph_explore → SQLite
                                          ↑
-Phase 2:  thêm:  SQLite ──async──► codegraph-sync bridge ──► KG service
+Phase 2:  thêm:  SQLite ──async──► codegraph-example bridge ──► KG service
                  agent → kg_semantic_search      ─────────► KG service
                  agent → kg_fulltext_search       ─────────► KG service
                  agent → kg_code_template_query   ─────────► KG service
 ```
 
-### 4.2 Cấu trúc thư mục codegraph-sync
+### 4.2 Cấu trúc thư mục codegraph-example
 
 ```
-codegraph-sync/
+codegraph-example/
 ├── package.json
 ├── tsconfig.json
 ├── src/
@@ -615,7 +615,7 @@ Thêm vào `.claude.json` (hoặc `~/.claude.json` để global):
     },
     "kg-tools": {
       "command": "node",
-      "args": ["/path/to/codegraph-sync/src/mcp/tools.js"],
+      "args": ["/path/to/codegraph-example/src/mcp/tools.js"],
       "env": {
         "KG_PROJECT_IDS": "ba-agent-service,aevlex",
         "KG_SERVICE_URL": "http://localhost:7474"
@@ -719,7 +719,7 @@ function scheduleSync(
 ### 4.11 CI integration — GitHub Actions
 
 ```yaml
-# .github/workflows/codegraph-sync.yml
+# .github/workflows/codegraph-example.yml
 name: CodeGraph → KG sync
 
 on:
@@ -752,14 +752,14 @@ jobs:
 
       - name: Install sync bridge
         run: |
-          cd codegraph-sync
+          cd codegraph-example
           npm ci
 
       - name: Sync to KG
         run: |
           ARGS="sync"
           if [ "${{ inputs.full_reindex }}" = "true" ]; then ARGS="$ARGS --full"; fi
-          node codegraph-sync/src/index.js $ARGS
+          node codegraph-example/src/index.js $ARGS
         env:
           PROJECT_PATH: ${{ github.workspace }}
           PROJECT_ID: ba-agent-service
@@ -767,11 +767,11 @@ jobs:
           # Thêm env vars khác theo tài liệu KG service
 ```
 
-### 4.12 package.json cho codegraph-sync
+### 4.12 package.json cho codegraph-example
 
 ```json
 {
-  "name": "codegraph-sync",
+  "name": "codegraph-example",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -828,7 +828,7 @@ Mỗi KG service có query language và auth khác nhau (Cypher vs Qdrant REST v
 - [ ] Verify: `codegraph status` và `codegraph search "<symbol>"`
 
 ### Phase 2 (sau khi có tài liệu KG service)
-- [ ] Tạo thư mục `codegraph-sync/` với cấu trúc trên
+- [ ] Tạo thư mục `codegraph-example/` với cấu trúc trên
 - [ ] Implement `src/adapters/your-kg.ts` theo tài liệu KG service
 - [ ] Test adapter: `npm run sync:dry` → xem extracted nodes/edges
 - [ ] Test sync: `npm run sync` → verify data trong KG service
@@ -847,11 +847,11 @@ Mỗi KG service có query language và auth khác nhau (Cypher vs Qdrant REST v
 | `.codegraph/config.json` | Ignore patterns cho Go project |
 | `CLAUDE.md` | Agent instructions, cập nhật ở Phase 2 |
 | `.git/hooks/post-commit` | Incremental sync sau commit |
-| `codegraph-sync/package.json` | Dependencies |
-| `codegraph-sync/src/adapter.ts` | KGAdapter interface |
-| `codegraph-sync/src/extractor.ts` | Đọc graph từ CodeGraph API |
-| `codegraph-sync/src/index.ts` | Sync entry point |
-| `codegraph-sync/src/adapters/your-kg.ts` | **Implement theo tài liệu KG service** |
-| `codegraph-sync/src/mcp/tools.ts` | KG MCP server |
+| `codegraph-example/package.json` | Dependencies |
+| `codegraph-example/src/adapter.ts` | KGAdapter interface |
+| `codegraph-example/src/extractor.ts` | Đọc graph từ CodeGraph API |
+| `codegraph-example/src/index.ts` | Sync entry point |
+| `codegraph-example/src/adapters/your-kg.ts` | **Implement theo tài liệu KG service** |
+| `codegraph-example/src/mcp/tools.ts` | KG MCP server |
 | `.claude.json` | Đăng ký cả hai MCP server |
-| `.github/workflows/codegraph-sync.yml` | CI sync |
+| `.github/workflows/codegraph-example.yml` | CI sync |

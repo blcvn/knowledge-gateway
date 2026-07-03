@@ -55,7 +55,7 @@ Run the checks that are deterministic in the current workspace:
 
 1. `bash -n` on the touched shell scripts;
 2. `go test ./tests/integration/...`;
-3. `go test ./codegraph-sync/...` for bridge-level coverage around stale/update behavior;
+3. `go test ./examples/codegraph/...` for bridge-level coverage around stale/update behavior;
 4. attempt the lightweight CodeGraph validation entrypoint where environment limitations allow.
 
 If Docker is unavailable, record that as an environment limitation rather than broadening the change

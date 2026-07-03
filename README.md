@@ -11,8 +11,8 @@ Bootstrap workspace for the multi-tenant, domain-agnostic KG Service described i
 ## CodeGraph Bootstrap
 
 - Required: `.codegraph/config.json`, `codegraph init -i`, and an instruction file for the agent you use
-- Optional convenience: `scripts/codegraph-refresh.sh`, `.githooks/post-commit`, and `make codegraph-refresh`
-- Bridge tooling for sync and MCP lives in [codegraph-sync](/Users/anhdt/vnpay/knowledge/kg-service/codegraph-sync) and the operator walkthrough is in [docs/codegraph/sync-bridge.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/codegraph/sync-bridge.md)
+- Optional convenience: `examples/codegraph/codegraph-refresh.sh`, `.githooks/post-commit`, and `make codegraph-refresh`
+- Bridge tooling for sync and MCP lives in [examples/codegraph](/Users/anhdt/vnpay/knowledge/kg-service/examples/codegraph) and the operator walkthrough is in [docs/codegraph/sync-bridge.md](/Users/anhdt/vnpay/knowledge/kg-service/docs/codegraph/sync-bridge.md)
 
 ## Current Scope
 
@@ -45,7 +45,7 @@ Bootstrap workspace for the multi-tenant, domain-agnostic KG Service described i
 - Direct node reads support `mode=realtime|non-realtime`; realtime reads use graph projection when versions match and fall back to `relationshipdb` when the projection is stale.
 - Read, search, integrity, and worker behavior are available for local validation, but some runtime paths remain in-memory by design.
 - `sample-policy` is the easiest seeded domain for end-to-end template and search testing.
-- `codegraph-sync` can extract the local CodeGraph index and write it to the frozen `code-graph` ontology once `KG_SERVICE_URL` and `KG_API_KEY` are set.
+- The `examples/codegraph` bridge can extract the local CodeGraph index and write it to the frozen `code-graph` ontology once `KG_SERVICE_URL` and `KG_API_KEY` are set.
 
 ## Implemented Endpoint Groups
 

@@ -5,7 +5,7 @@
 Luồng `insert/update/upsert` của `kg-service` hiện đang chậm khi ingest/sync dữ liệu lớn vào knowledge graph.
 Qua rà soát code hiện tại, độ trễ đến từ cả phía producer lẫn projection runtime:
 
-- `codegraph-sync` đang gọi `CreateNode` và `CreateRelationship` theo từng item, chưa dùng bulk API.
+- `examples/codegraph` đang gọi `CreateNode` và `CreateRelationship` theo từng item, chưa dùng bulk API.
 - bulk API hiện có trong `internal/write/service.go` vẫn lặp từng entity trong cùng transaction, chưa có bulk SQL hay bulk outbox thật sự.
 - mỗi `NODE_UPSERTED` event được worker xử lý tuần tự theo chuỗi `graph upsert -> embedding -> vector upsert -> FTS index`.
 - adapter Milvus đang `Flush` sau từng document upsert.
@@ -23,7 +23,7 @@ Thiết kế lại write/sync pipeline theo hướng tối ưu ingest khối lư
 
 2. **Chuẩn hóa bulk-first write path**
    - thêm contract bulk upsert thực sự cho nodes/relationships/outbox thay vì loop từng item.
-   - cho phép producer như `codegraph-sync` gửi theo batch thay vì từng request đơn lẻ.
+   - cho phép producer như `examples/codegraph` gửi theo batch thay vì từng request đơn lẻ.
 
 3. **Tách source write khỏi projection cost**
    - giữ API write chỉ commit source records + outbox càng nhanh càng tốt.
@@ -59,7 +59,7 @@ Thiết kế lại write/sync pipeline theo hướng tối ưu ingest khối lư
 
 - có một tài liệu flow rõ ràng cho current state và target state qua tất cả database/backend liên quan
 - xác định được bottleneck chính và chuyển chúng thành backlog implementation cụ thể
-- có thiết kế bulk write + batch sync đủ rõ để `codegraph-sync` và các producer khác dùng được
+- có thiết kế bulk write + batch sync đủ rõ để `examples/codegraph` và các producer khác dùng được
 - có quyết định rõ ràng về FK nào sẽ bỏ, FK nào giữ lại, và integrity sẽ được thay bằng cơ chế code/runtime nào
 - có chuẩn migration/SQL rõ ràng để rollout các thay đổi schema, backfill, và cleanup mà không làm pipeline khó vận hành
 - target design giảm đáng kể round-trip ghi, giảm projection lag, và phù hợp với dữ liệu lớn

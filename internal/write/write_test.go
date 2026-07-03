@@ -16,6 +16,7 @@ import (
 	"kg-service/internal/ontology"
 	"kg-service/internal/platform/rediscache"
 	"kg-service/internal/platform/session"
+	"kg-service/internal/runtimeobs"
 	"kg-service/internal/telemetry"
 )
 
@@ -91,6 +92,33 @@ func TestCreateNodeValidatesOntologyAndCreatesOutbox(t *testing.T) {
 	payload := store.ListOutboxEvents()[0].Payload
 	if payload["graph_identifier_id"] == "" || payload["graph_version_id"] == "" || payload["reference_id"] == "" {
 		t.Fatalf("outbox payload missing graph lineage: %#v", payload)
+	}
+}
+
+func TestCreateNodeWithContextAttachesRequestMetaToOutbox(t *testing.T) {
+	svc, store := newTestService(t)
+	ctx := runtimeobs.WithRequestMeta(context.Background(), runtimeobs.NewRequestMeta("req-1", "trace-1", "span-1"))
+
+	_, err := svc.CreateNodeWithContext(ctx, access.Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}, NodeCreateRequest{
+		DomainID:    "noi_bo_hop_dong",
+		NodeType:    "HopDongMau",
+		Properties:  map[string]any{"ten": "Meta node", "bridge_dinh_kem_ids": []any{"appendix-1"}},
+		ExternalRef: "meta-node",
+	})
+	if err != nil {
+		t.Fatalf("CreateNodeWithContext() error = %v", err)
+	}
+	events := store.ListOutboxEvents()
+	if len(events) != 1 {
+		t.Fatalf("outbox len = %d, want 1", len(events))
+	}
+	payload := events[0].Payload
+	if payload["request_id"] != "req-1" || payload["trace_id"] != "trace-1" || payload["span_id"] != "span-1" {
+		t.Fatalf("outbox payload missing request meta: %#v", payload)
 	}
 }
 

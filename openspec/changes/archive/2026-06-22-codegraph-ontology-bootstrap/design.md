@@ -57,7 +57,7 @@ Sau khi script chạy xong, đọc lại từng entity qua read API và đối c
 
 ### 1. Script là artifact chính
 
-Script được commit vào repo (e.g. `scripts/bootstrap-codegraph-ontology.sh`) để có thể tái dùng khi reset môi trường.
+Script được commit vào repo (e.g. `examples/codegraph/bootstrap-codegraph-ontology.sh`) để có thể tái dùng khi reset môi trường.
 
 ### 2. SearchProfile chỉ dùng field có schema support
 

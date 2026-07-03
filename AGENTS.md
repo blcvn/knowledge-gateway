@@ -15,7 +15,7 @@ Required order:
 
 - The repo is indexed by CodeGraph in `.codegraph/`.
 - The MCP server is configured in `~/.codex/config.toml` through `codegraph serve --mcp`.
-- Refresh the local index with `make codegraph-refresh` or `scripts/codegraph-refresh.sh`.
+- Refresh the local index with `make codegraph-refresh` or `examples/codegraph/codegraph-refresh.sh`.
 
 ## Repo pointers
 
