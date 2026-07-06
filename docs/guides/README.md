@@ -11,6 +11,7 @@ These guides are for people integrating with `kg-service` during the current boo
 - [Deployment Guide](./deployment.md) for Compose, Kubernetes, and VM user-facing deployment steps.
 - [MCP Integration](./mcp.md) for session-based MCP usage over the current HTTP transport.
 - [Troubleshooting](./troubleshooting.md) for common integration failures before switching to operator runbooks.
+- [Implementation Bundle](./implementation/README.md) is a self-contained, partner-facing copy of the guides above (plus the API reference and OpenAPI spec) with internal-only links removed — send this folder to external teams integrating with `kg-service`.
 
 ## Choose The Right Document
 
@@ -32,3 +33,4 @@ The current guides describe the repository's local bootstrap environment:
 
 - Update these guides in the same workstream whenever onboarding, auth, ontology setup, write flows, read/search behavior, or MCP integration behavior changes materially.
 - Update [API Reference](../api/README.md) alongside these guides when route inventory or shared request/response conventions change.
+- Refresh [docs/guides/implementation](./implementation/README.md) in the same workstream whenever the source guides or API reference change materially, so the partner-facing bundle doesn't drift.
