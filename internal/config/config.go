@@ -111,6 +111,30 @@ type AdapterConfig struct {
 	Endpoint   string
 	Database   string
 	Collection string
+	// SurrealDB-specific fields (only used when Kind = "surreal")
+	SurrealNamespace string
+	SurrealUsername  string
+	SurrealPassword  string
+}
+
+// SurrealConfig extracts SurrealDB connection parameters from an AdapterConfig.
+func (c AdapterConfig) SurrealConfig() SurrealGraphConfig {
+	return SurrealGraphConfig{
+		Endpoint:  c.Endpoint,
+		Namespace: c.SurrealNamespace,
+		Database:  c.Database,
+		Username:  c.SurrealUsername,
+		Password:  c.SurrealPassword,
+	}
+}
+
+// SurrealGraphConfig carries connection parameters for a SurrealDB graph backend.
+type SurrealGraphConfig struct {
+	Endpoint  string
+	Namespace string
+	Database  string
+	Username  string
+	Password  string
 }
 
 type RateLimitConfig struct {

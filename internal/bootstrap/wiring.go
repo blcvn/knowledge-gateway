@@ -158,6 +158,15 @@ func buildGraphAdapter(cfg config.Config) (graphstore.GraphAdapter, error) {
 			Endpoint: cfg.Graph.Endpoint,
 			Database: cfg.Graph.Database,
 		}), nil
+	case "surreal":
+		sc := cfg.Graph.SurrealConfig()
+		return graphstore.NewSurrealGraphAdapter(graphstore.SurrealConfig{
+			Endpoint:  sc.Endpoint,
+			Namespace: sc.Namespace,
+			Database:  sc.Database,
+			Username:  sc.Username,
+			Password:  sc.Password,
+		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported graph adapter: %s", cfg.Graph.Kind)
 	}

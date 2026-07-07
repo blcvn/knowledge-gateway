@@ -29,6 +29,41 @@ services:
       timeout: 5s
       retries: 20
 
+  memgraph:
+    image: memgraph/memgraph:2.18.1
+    container_name: kg-memgraph-dev
+    restart: unless-stopped
+    # No host port binding — only accessible inside the compose network
+    # Bolt port 7687 is used by the kg-service graph adapter
+    volumes:
+      - kg-memgraph-data:/var/lib/memgraph
+    healthcheck:
+      test: ["CMD", "mg_client", "--host", "localhost", "--port", "7687", "--execute", "RETURN 1;"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Optional: SurrealDB graph backend
+  # To enable: uncomment this block, uncomment the volume below, and set
+  #   GRAPH_ADAPTER=surreal  KG_GRAPH_ENDPOINT=http://surrealdb:8000
+  # in the kg-service environment section (or in .env).
+  # ---------------------------------------------------------------------------
+  # surrealdb:
+  #   image: surrealdb/surrealdb:v2.1.4
+  #   container_name: kg-surrealdb-dev
+  #   restart: unless-stopped
+  #   command: start --log debug --user root --pass root rocksdb:/data/kg.db
+  #   volumes:
+  #     - kg-surrealdb-data:/data
+  #   healthcheck:
+  #     test: ["CMD", "surreal", "isready", "--endpoint", "http://localhost:8000"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 20
+  #     start_period: 5s
+
   migrate:
     image: migrate/migrate:v4.17.1
     depends_on:
@@ -55,6 +90,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      memgraph:
+        condition: service_healthy
     volumes:
       - ./bin/kg-service:/app/kg-service:ro
     env_file:
@@ -71,9 +108,15 @@ services:
       KG_REDIS_HOST: redis
       KG_REDIS_PORT: 6379
       KG_REDIS_DB: 0
+      # Graph adapter — Memgraph via Bolt protocol (persistent across restarts)
+      GRAPH_ADAPTER: memgraph
+      KG_GRAPH_ENDPOINT: bolt://memgraph:7687
+      KG_GRAPH_DATABASE: ""
     ports:
       - "18082:8082"
 
 volumes:
   kg-postgres-data:
   kg-redis-data:
+  kg-memgraph-data:
+  # kg-surrealdb-data:  # uncomment when enabling surrealdb service above

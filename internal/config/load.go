@@ -128,9 +128,12 @@ func Load() (Config, error) {
 			Collection: stringEnv("KG_VECTOR_COLLECTION", "kg_vectors"),
 		},
 		Graph: AdapterConfig{
-			Kind:     stringEnv("GRAPH_ADAPTER", "memory"),
-			Endpoint: stringEnv("KG_GRAPH_ENDPOINT", ""),
-			Database: stringEnv("KG_GRAPH_DATABASE", ""),
+			Kind:             stringEnv("GRAPH_ADAPTER", "memory"),
+			Endpoint:         stringEnv("KG_GRAPH_ENDPOINT", ""),
+			Database:         stringEnv("KG_GRAPH_DATABASE", ""),
+			SurrealNamespace: stringEnv("KG_SURREAL_NAMESPACE", "kg"),
+			SurrealUsername:  stringEnv("KG_SURREAL_USERNAME", "root"),
+			SurrealPassword:  stringEnv("KG_SURREAL_PASSWORD", "root"),
 		},
 		FTS: AdapterConfig{Kind: stringEnv("FTS_ADAPTER", "memory")},
 		RateLimit: RateLimitConfig{
