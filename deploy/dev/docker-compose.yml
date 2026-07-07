@@ -38,8 +38,8 @@ services:
     volumes:
       - kg-memgraph-data:/var/lib/memgraph
     healthcheck:
-      # mg_client is not bundled in this image — use TCP probe instead
-      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/7687 2>/dev/null && exit 0 || exit 1"]
+      # mgconsole is the CLI tool bundled with this image
+      test: ["CMD-SHELL", "echo 'RETURN 1;' | mgconsole --host localhost --port 7687 --no-history 2>/dev/null | grep -q '1' && exit 0 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
