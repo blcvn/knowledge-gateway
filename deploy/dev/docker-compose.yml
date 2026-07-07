@@ -38,11 +38,12 @@ services:
     volumes:
       - kg-memgraph-data:/var/lib/memgraph
     healthcheck:
-      test: ["CMD", "mg_client", "--host", "localhost", "--port", "7687", "--execute", "RETURN 1;"]
+      # mg_client is not bundled in this image — use TCP probe instead
+      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/7687 2>/dev/null && exit 0 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
-      start_period: 10s
+      start_period: 15s
 
   # ---------------------------------------------------------------------------
   # Optional: SurrealDB graph backend

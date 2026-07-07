@@ -40,7 +40,7 @@ BEGIN
     FROM kg_vector_documents;
 END $$;
 
-CREATE OR REPLACE FUNCTION kg_uuid_identity_lookup(entity_kind TEXT, value TEXT)
+CREATE OR REPLACE FUNCTION kg_uuid_identity_lookup(p_entity_kind TEXT, value TEXT)
 RETURNS UUID
 LANGUAGE plpgsql
 VOLATILE
@@ -50,7 +50,7 @@ DECLARE
 BEGIN
     SELECT new_id INTO mapped
     FROM kg_uuid_identity_map
-    WHERE kg_uuid_identity_map.entity_kind = entity_kind
+    WHERE kg_uuid_identity_map.entity_kind = p_entity_kind
       AND old_id = value;
 
     IF FOUND THEN
