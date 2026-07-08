@@ -249,6 +249,7 @@ func (a *App) initAccess() error {
 	identityResolver := access.NewIdentityResolver(store, &a.redis)
 	accessResolver := access.NewAccessResolver(store, store, &a.redis)
 	service := access.NewService(store, &a.redis)
+	service.WithPersistence(postgres.NewAccessPersistence(a.pgDB))
 	rateLimiter := access.NewRateLimiter(store, map[string]int{
 		"free":       a.config.RateLimit.FreePerMinute,
 		"pro":        a.config.RateLimit.ProPerMinute,

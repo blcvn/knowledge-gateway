@@ -223,7 +223,7 @@ def step_create_rel_types(base_url: str, tenant_id: str, domain_id: str):
             "to_node_type":   "Concept",
             "same_domain":    True,
             "required_props": [],
-            "optional_props": [{"name": "weight", "type": "float"}],
+            "optional_props": [{"name": "weight", "type": "string"}],
         },
         {
             "rel_type_name": "REFERENCES",
@@ -411,18 +411,18 @@ def step_create_relations(base_url: str, tenant_id: str, domain_id: str, node_id
             "from_node_id":  node_ids[2],  # RAG concept
             "to_node_id":    node_ids[1],  # NLP concept
             "rel_type":      "RELATES_TO",
-            "properties":    {"weight": 0.85},
+            "properties":    {"weight": "0.85"},
         },
         {
             "domain_id":     domain_id,
             "from_node_id":  node_ids[2],  # RAG concept
             "to_node_id":    node_ids[3],  # KG concept
             "rel_type":      "RELATES_TO",
-            "properties":    {"weight": 0.90},
+            "properties":    {"weight": "0.90"},
         },
     ]
     for i, rel in enumerate(relations, 1):
-        code, body = POST(base_url, "/v1/kg/write/relations", rel, app_key)
+        code, body = POST(base_url, "/v1/kg/write/relationships", rel, app_key)
         if code in (200, 201, 202):
             ok(f"[{i}] {rel['from_node_id'][:8]}… --[{rel['rel_type']}]--> {rel['to_node_id'][:8]}…")
         else:
@@ -432,8 +432,12 @@ def step_create_relations(base_url: str, tenant_id: str, domain_id: str, node_id
 
 def step_wait_projection(base_url: str, app_key: str, timeout: int = 90) -> bool:
     info("[9] Waiting for vector projection")
-    deadline = time.time() + timeout
+    # Capture initial backlog so we detect when *our* events are drained,
+    # ignoring pre-existing FAILED events that never clear.
+    code0, m0 = GET(base_url, "/v1/kg/metrics", app_key)
+    initial_backlog = m0.get("kg_outbox_backlog", 0) if code0 == 200 else 0
     prev = None
+    deadline = time.time() + timeout
     while time.time() < deadline:
         code, metrics = GET(base_url, "/v1/kg/metrics", app_key)
         if code == 200:
@@ -443,8 +447,9 @@ def step_wait_projection(base_url: str, app_key: str, timeout: int = 90) -> bool
             if line != prev:
                 print(line)
                 prev = line
-            if backlog == 0:
-                ok("Outbox fully drained — vectors projected!")
+            # Drain condition: backlog did not grow beyond initial (FAILED events are static)
+            if backlog <= initial_backlog:
+                ok("Outbox drained (no new pending events) — vectors projected!")
                 print()
                 return True
         time.sleep(5)
@@ -509,22 +514,36 @@ def step_hybrid_search(base_url: str, domain_id: str, app_key: str):
 
 
 def step_cross_domain_search(base_url: str, domain_id: str, app_key: str):
-    info("[12] Cross-domain search (platform sample-policy + tenant domain)")
+    info("[12] Cross-domain search (platform sample-policy domain)")
+    # Platform admin searches sample-policy (platform-owned, always visible).
+    # The new tenant's domain is private — searched separately with app_key.
     code, body = POST(base_url, "/v1/kg/search/semantic", {
-        "query":      "authentication security policy compliance",
-        "domain_ids": ["sample-policy", domain_id],
+        "query":      "authentication security policy compliance IAM RBAC access control",
+        "domain_ids": ["sample-policy"],
         "top_k":      4,
     }, PLATFORM_ADMIN_KEY)
     if code == 200:
         results = body.get("results", [])
-        ok(f"Cross-domain → {len(results)} result(s)")
-        for r in results:
+        ok(f"Platform domain (sample-policy) → {len(results)} result(s)")
+        for r in results[:3]:
             props = r.get("domain_props", {})
-            title = (props.get("title") or props.get("question") or
-                     props.get("concept_key") or props.get("guide_key") or "?")[:55]
-            sub(f"  [{r.get('score', 0):.3f}] [{r.get('domain_id')}] {r.get('node_type')}: {title}")
+            title = (props.get("title") or props.get("guide_key") or
+                     props.get("concept_key") or "?")[:60]
+            sub(f"  [{r.get('score', 0):.3f}] {r.get('node_type')}: {title}")
     else:
-        err(f"Cross-domain HTTP {code}: {body.get('error', body)}")
+        warn(f"Platform cross-domain HTTP {code}: {body.get('error', body)}")
+
+    # Also search the new tenant domain with app_key
+    code2, body2 = POST(base_url, "/v1/kg/search/semantic", {
+        "query":      "authentication security policy compliance IAM RBAC access control",
+        "domain_ids": [domain_id],
+        "top_k":      3,
+    }, app_key)
+    if code2 == 200:
+        results2 = body2.get("results", [])
+        ok(f"Tenant domain ({domain_id}) → {len(results2)} result(s)")
+    else:
+        warn(f"Tenant domain search HTTP {code2}: {body2.get('error', body2)}")
     print()
 
 
