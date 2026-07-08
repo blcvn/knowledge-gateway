@@ -42,13 +42,24 @@ func SeedApps() []App {
 	now := time.Date(2026, 6, 17, 10, 5, 0, 0, time.UTC)
 	return []App{
 		{
-			ID:           "00000000-admin-0000-admin-000000000000",
+			ID:           "00000000-a000-0000-a000-000000000000",
 			TenantID:     PlatformTenantID,
 			Slug:         "platform-admin",
 			Name:         "Platform Admin",
 			Type:         "admin_tool",
 			APIKeyHash:   APIKeyHash("kgsk_platform_admin"),
 			APIKeyPrefix: "kgsk_pla",
+			Status:       "active",
+			CreatedAt:    now,
+		},
+		{
+			ID:           "00000000-0000-4000-a000-000000000002",
+			TenantID:     PlatformTenantID,
+			Slug:         "platform-seed-writer",
+			Name:         "Platform Seed Writer",
+			Type:         "ingestion_producer",
+			APIKeyHash:   APIKeyHash("kgsk_seed_writer"),
+			APIKeyPrefix: "kgsk_see",
 			Status:       "active",
 			CreatedAt:    now,
 		},
@@ -64,7 +75,7 @@ func SeedApps() []App {
 			CreatedAt:    now,
 		},
 		{
-			ID:           "11111111-admin-1111-admin-111111111111",
+			ID:           "11111111-a111-1111-a111-111111111111",
 			TenantID:     "11111111-1111-1111-1111-111111111111",
 			Slug:         "test-alpha-admin",
 			Name:         "Test Alpha Admin",
@@ -88,18 +99,31 @@ func SeedApps() []App {
 	}
 }
 
+
 func SeedGrants() []AccessGrant {
 	return []AccessGrant{
 		{
 			ID:              "grant-alpha-read-beta-domain",
 			GrantorTenantID: "22222222-2222-2222-2222-222222222222",
-			GrantorAppID:    "22222222-bbbb-2222-bbbb-222222222222",
+			GrantorAppID:    "22222222-2222-4222-a222-222222222222",
 			GranteeTenantID: "11111111-1111-1111-1111-111111111111",
-			GranteeAppID:    "11111111-aaaa-1111-aaaa-111111111111",
+			GranteeAppID:    "11111111-1111-4111-a111-111111111111",
 			ScopeType:       "domain",
 			ScopeValue:      "shared-domain",
 			Permission:      "read",
 			Status:          "active",
 		},
+		{
+			ID:              "grant-seed-writer-sample-policy",
+			GrantorTenantID: PlatformTenantID,
+			GrantorAppID:    "00000000-0000-4000-a000-000000000001",
+			GranteeTenantID: PlatformTenantID,
+			GranteeAppID:    "00000000-0000-4000-a000-000000000002",
+			ScopeType:       "domain",
+			ScopeValue:      "sample-policy",
+			Permission:      "write",
+			Status:          "active",
+		},
 	}
 }
+

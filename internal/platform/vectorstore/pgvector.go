@@ -66,7 +66,7 @@ INSERT INTO kg_vector_documents (
 		}
 		base := len(args) + 1
 		builder.WriteString(fmt.Sprintf(
-			"($%d, $%d, $%d, $%d, NULLIF($%d, ''), $%d, $%d, NULLIF($%d, ''), $%d, $%d, $%d::jsonb, $%d::vector, NOW(), NOW())",
+			"($%d, $%d, $%d, $%d, NULLIF($%d::text, '')::uuid, $%d, $%d, NULLIF($%d, ''), $%d, $%d, $%d::jsonb, $%d::vector, NOW(), NOW())",
 			base,
 			base+1,
 			base+2,
@@ -80,6 +80,7 @@ INSERT INTO kg_vector_documents (
 			base+10,
 			base+11,
 		))
+
 		args = append(args,
 			doc.NodeID,
 			doc.NodeType,
@@ -364,6 +365,7 @@ SELECT
     is_deleted,
     COALESCE(status_value, '') AS status_value,
     authority_score,
+    COALESCE(sync_version, 0) AS sync_version,
     domain_props,
     updated_at,
     1 - (embedding <=> $1::vector) AS score

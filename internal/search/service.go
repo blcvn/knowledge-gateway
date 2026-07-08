@@ -318,7 +318,10 @@ func (s *Service) searchWithVectorAdapter(actor access.Identity, req SemanticSea
 				continue
 			}
 		}
-		if _, ok := scope.visibility[nodeKey(doc.OwnerTenantID, doc.OwnerAppID)]; !ok {
+		// Check visibility: accept if actor has exact tenant:app access OR tenant-wide access (app_id="")
+		_, exactVisible := scope.visibility[nodeKey(doc.OwnerTenantID, doc.OwnerAppID)]
+		_, tenantWide := scope.visibility[nodeKey(doc.OwnerTenantID, "")]
+		if !exactVisible && !tenantWide {
 			continue
 		}
 		if scope.allHaveStatus && cfg != nil && doc.StatusValue != "" && !slices.Contains(cfg.ValidStatusValues, doc.StatusValue) {
@@ -545,10 +548,24 @@ func (s *Service) prepareSearchScope(actor access.Identity, domainIDs []string) 
 		statusConfigs:  map[string]*ontology.StatusFieldConfig{},
 		allHaveStatus:  true,
 	}
+	// Identify tenants with wildcard app access (app_id == "" means all apps in that tenant)
+	wildcardTenants := map[string]bool{}
 	for _, owner := range visibleOwners {
-		scope.aclTokens = append(scope.aclTokens, nodeKey(owner.TenantID, owner.AppID))
+		if strings.TrimSpace(owner.AppID) == "" {
+			wildcardTenants[owner.TenantID] = true
+		}
+	}
+
+	for _, owner := range visibleOwners {
+		// For wildcard tenants (app_id == ""), the owner_tenant_id SQL filter is sufficient.
+		// Adding acl tokens with empty app_id would never match node-level ACL entries (which
+		// always contain a specific app_id), causing the acl_visible_to overlap check to fail.
+		if !wildcardTenants[owner.TenantID] {
+			scope.aclTokens = append(scope.aclTokens, nodeKey(owner.TenantID, owner.AppID))
+		}
 		scope.ownerTenantIDs = append(scope.ownerTenantIDs, owner.TenantID)
-		if strings.TrimSpace(owner.AppID) != "" {
+		// Only restrict by app_id when the tenant does NOT have wildcard access
+		if strings.TrimSpace(owner.AppID) != "" && !wildcardTenants[owner.TenantID] {
 			scope.ownerAppIDs = append(scope.ownerAppIDs, owner.AppID)
 		}
 	}
@@ -558,7 +575,7 @@ func (s *Service) prepareSearchScope(actor access.Identity, domainIDs []string) 
 		}
 		scope.domainSet[domainID] = struct{}{}
 		if s.profiles != nil {
-			if _, err := s.profiles.Resolve(domainID, actor.TenantID, actor.AppID); err != nil {
+			if _, err := s.profiles.Resolve(domainID, actor.TenantID, actor.AppID); err != nil && !errors.Is(err, ontology.ErrNotFound) {
 				return searchScope{}, err
 			}
 		}
@@ -655,6 +672,10 @@ func (s *Service) resolveProfileForSearch(actor access.Identity, domainIDs []str
 		}
 		resolved, err := s.profiles.Resolve(domainID, actor.TenantID, actor.AppID)
 		if err != nil {
+			if errors.Is(err, ontology.ErrNotFound) {
+				// No search profile configured — use system defaults
+				return ontology.ResolvedSearchProfile{}, nil
+			}
 			return ontology.ResolvedSearchProfile{}, err
 		}
 		return resolved, nil
@@ -740,8 +761,11 @@ func vectorFilterMode(resolved ontology.ResolvedSearchProfile) string {
 }
 
 func vectorIndexHint(resolved ontology.ResolvedSearchProfile) string {
-	if resolved.QueryStrategy.Key != "" {
-		return resolved.QueryStrategy.Key
+	key := resolved.QueryStrategy.Key
+	// "default" strategy uses sequential scan — no special index hint needed.
+	// Only force index hint for custom strategies (e.g. hnsw_custom, deep_traversal).
+	if key != "" && key != "default" {
+		return key
 	}
 	return ""
 }
