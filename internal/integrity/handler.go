@@ -3,6 +3,7 @@ package integrity
 import (
 	"errors"
 	"net/http"
+	"github.com/gorilla/mux"
 
 	"kg-service/internal/access"
 	"kg-service/internal/httpapi/respond"
@@ -18,7 +19,7 @@ func NewHandler(service *Service) Handler {
 
 func (h Handler) TenantIntegrity(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	resp, err := h.service.TenantIntegrity(identity, r.PathValue("tenant_id"))
+	resp, err := h.service.TenantIntegrity(identity, mux.Vars(r)["tenant_id"])
 	if err != nil {
 		writeError(w, err)
 		return
@@ -38,7 +39,7 @@ func (h Handler) MissingBridges(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) OrphanScan(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	resp, err := h.service.OrphanScan(identity, r.PathValue("tenant_id"))
+	resp, err := h.service.OrphanScan(identity, mux.Vars(r)["tenant_id"])
 	if err != nil {
 		writeError(w, err)
 		return
@@ -48,7 +49,7 @@ func (h Handler) OrphanScan(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) RebuildProjection(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	resp, err := h.service.RebuildProjection(identity, r.PathValue("tenant_id"))
+	resp, err := h.service.RebuildProjection(identity, mux.Vars(r)["tenant_id"])
 	if err != nil {
 		writeError(w, err)
 		return
@@ -58,7 +59,7 @@ func (h Handler) RebuildProjection(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) PurgeOrphans(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	resp, err := h.service.PurgeOrphans(identity, r.PathValue("tenant_id"))
+	resp, err := h.service.PurgeOrphans(identity, mux.Vars(r)["tenant_id"])
 	if err != nil {
 		writeError(w, err)
 		return

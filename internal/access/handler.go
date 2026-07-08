@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"github.com/gorilla/mux"
 	"strconv"
 	"strings"
 
@@ -58,7 +59,7 @@ func (h Handler) CreateTenant(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetTenant(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	tenant, err := h.service.GetTenant(identity, r.PathValue("tenant_id"))
+	tenant, err := h.service.GetTenant(identity, mux.Vars(r)["tenant_id"])
 	if err != nil {
 		writeError(w, err)
 		return
@@ -74,7 +75,7 @@ func (h Handler) UpdateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := IdentityFromContext(r.Context())
-	tenant, err := h.service.UpdateTenant(identity, r.PathValue("tenant_id"), req)
+	tenant, err := h.service.UpdateTenant(identity, mux.Vars(r)["tenant_id"], req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -84,7 +85,7 @@ func (h Handler) UpdateTenant(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) DeleteTenant(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	tenant, err := h.service.SuspendTenant(identity, r.PathValue("tenant_id"))
+	tenant, err := h.service.SuspendTenant(identity, mux.Vars(r)["tenant_id"])
 	if err != nil {
 		writeError(w, err)
 		return
@@ -104,7 +105,7 @@ func (h Handler) CreateApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := IdentityFromContext(r.Context())
-	app, err := h.service.CreateApp(identity, r.PathValue("tenant_id"), req)
+	app, err := h.service.CreateApp(identity, mux.Vars(r)["tenant_id"], req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -114,7 +115,7 @@ func (h Handler) CreateApp(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) RotateAppKey(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	rotated, err := h.service.RotateAppKey(identity, r.PathValue("tenant_id"), r.PathValue("app_id"))
+	rotated, err := h.service.RotateAppKey(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["app_id"])
 	if err != nil {
 		writeError(w, err)
 		return
@@ -124,7 +125,7 @@ func (h Handler) RotateAppKey(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) ListApps(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	apps, err := h.service.ListApps(identity, r.PathValue("tenant_id"))
+	apps, err := h.service.ListApps(identity, mux.Vars(r)["tenant_id"])
 	if err != nil {
 		writeError(w, err)
 		return
@@ -141,7 +142,7 @@ func (h Handler) ListApps(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	app, err := h.service.RevokeApp(identity, r.PathValue("tenant_id"), r.PathValue("app_id"))
+	app, err := h.service.RevokeApp(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["app_id"])
 	if err != nil {
 		writeError(w, err)
 		return
@@ -197,7 +198,7 @@ func (h Handler) ListGrants(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) DeleteGrant(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	grant, err := h.service.RevokeGrant(identity, r.PathValue("id"))
+	grant, err := h.service.RevokeGrant(identity, mux.Vars(r)["id"])
 	if err != nil {
 		writeError(w, err)
 		return

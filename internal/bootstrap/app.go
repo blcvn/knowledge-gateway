@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/mux"
 	kratos "github.com/go-kratos/kratos/v2"
 	kratoslog "github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -202,12 +203,23 @@ func (a *App) writeRoute(next http.Handler) http.Handler {
 	return a.accessMiddleware.RequireIdentity(next)
 }
 
+// httpToKratosHandler bridges a standard http.Handler into a Kratos HandlerFunc.
+// Kratos uses gorilla/mux internally, which stores path vars via mux.Vars(req).
+// Go 1.22's r.PathValue() reads from a different location in the request context,
+// so we must bridge them: extract gorilla vars and inject via r.SetPathValue().
 func httpToKratosHandler(handler http.Handler) httptransport.HandlerFunc {
 	return func(ctx httptransport.Context) error {
 		if handler == nil {
 			return nil
 		}
-		handler.ServeHTTP(ctx.Response(), ctx.Request())
+		req := ctx.Request()
+		// Bridge gorilla/mux path vars → Go 1.22 r.PathValue()
+		if vars := mux.Vars(req); len(vars) > 0 {
+			for k, v := range vars {
+				req.SetPathValue(k, v)
+			}
+		}
+		handler.ServeHTTP(ctx.Response(), req)
 		return nil
 	}
 }

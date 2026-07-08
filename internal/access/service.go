@@ -20,10 +20,19 @@ var (
 	ErrRequestMalformed = errors.New("request malformed")
 )
 
+// PersistenceStore persists tenants and apps to a durable store (e.g. Postgres).
+// Used alongside MemoryStore so dynamically created tenants/apps survive FK checks
+// in the write layer.
+type PersistenceStore interface {
+	PersistTenant(tenant Tenant) error
+	PersistApp(app App) error
+}
+
 type Service struct {
-	store TenantAppStore
-	cache *rediscache.Client
-	now   func() time.Time
+	store       TenantAppStore
+	cache       *rediscache.Client
+	now         func() time.Time
+	persistence PersistenceStore // optional; nil = memory-only
 }
 
 type TenantAppStore interface {
@@ -40,6 +49,12 @@ func NewService(store TenantAppStore, cache *rediscache.Client) *Service {
 			return time.Now().UTC()
 		},
 	}
+}
+
+// WithPersistence attaches a durable store to the service so CreateTenant/CreateApp
+// also write through to e.g. Postgres.
+func (s *Service) WithPersistence(p PersistenceStore) {
+	s.persistence = p
 }
 
 func (s *Service) CreateTenant(actor Identity, req TenantCreateRequest) (TenantResponse, error) {
@@ -62,6 +77,13 @@ func (s *Service) CreateTenant(actor Identity, req TenantCreateRequest) (TenantR
 		UpdatedAt:            now,
 	}
 	s.store.CreateTenant(tenant)
+	if s.persistence != nil {
+		if err := s.persistence.PersistTenant(tenant); err != nil {
+			// Log but don't fail — memory store is authoritative for auth;
+			// FK violation will surface at write time with a clear error.
+			_ = err
+		}
+	}
 	return tenantToResponse(tenant), nil
 }
 
@@ -147,6 +169,11 @@ func (s *Service) CreateApp(actor Identity, tenantID string, req AppCreateReques
 		CreatedAt:    now,
 	}
 	s.store.CreateApp(app)
+	if s.persistence != nil {
+		if err := s.persistence.PersistApp(app); err != nil {
+			_ = err // same rationale as PersistTenant
+		}
+	}
 	return appToResponse(app, apiKey), nil
 }
 

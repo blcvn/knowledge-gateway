@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"github.com/gorilla/mux"
 	"strconv"
 
 	"kg-service/internal/access"
@@ -38,7 +39,7 @@ func (h Handler) ExecuteTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.ExecuteTemplateWithOptions(identity, r.PathValue("domain_id"), r.PathValue("template_name"), req.Params, req.AppID, req.Mode)
+	result, err := h.service.ExecuteTemplateWithOptions(identity, mux.Vars(r)["domain_id"], mux.Vars(r)["template_name"], req.Params, req.AppID, req.Mode)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -64,7 +65,7 @@ func (h Handler) GraphSearch(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetNode(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	node, err := h.service.GetNodeForAppWithMode(identity, r.URL.Query().Get("app_id"), r.PathValue("id"), r.URL.Query().Get("mode"))
+	node, err := h.service.GetNodeForAppWithMode(identity, r.URL.Query().Get("app_id"), mux.Vars(r)["id"], r.URL.Query().Get("mode"))
 	if err != nil {
 		writeError(w, err)
 		return
