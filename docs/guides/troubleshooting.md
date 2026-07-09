@@ -46,6 +46,24 @@ Checks:
 
 Use [Integration Workflows](./integration.md) and [API Reference](../api/README.md) to verify the correct sequence and route family.
 
+## Control Plane Is Not Ready
+
+Symptoms:
+
+- `503 Service Unavailable`
+- error code `SERVICE_UNAVAILABLE`
+- message like `Control plane is not ready`
+
+Checks:
+
+- Confirm tenant and app provisioning completed successfully in the relationship DB-backed access plane.
+- Confirm ontology domains, node types, relationship types, templates, and status configs exist in relationship DB before the first write.
+- Confirm you are using the API key returned by the same app create flow, not a copied or stale key.
+- Confirm Redis is only serving cache state; it should not be the only place where tenant/app or ontology data exist.
+- If the service recently restarted, verify the durable rows still exist and the app was not depending on process-local memory.
+
+This status means the service cannot prove the durable control-plane state needed for a safe write. It is not a caller payload error.
+
 ## Forbidden Access
 
 Symptoms:
@@ -57,8 +75,12 @@ Checks:
 
 - Confirm you are using the expected tenant or app key.
 - Call `GET /v1/access/resolve` to inspect visible owners.
-- Confirm a cross-tenant or cross-app grant exists when shared visibility is expected.
+- Confirm the domain is actually writable by that tenant or app.
+- For shared-domain writes, confirm a cross-tenant `write` or `admin` grant exists for the
+  relevant owner and scope.
 - Re-check the domain or node owner scope.
+- If the write failed with `503 Service Unavailable`, follow the control-plane checks above before
+  treating it as a payload or permission issue.
 
 If shared access should exist but still looks wrong after grant changes, operator follow-up may involve [Grant Incident Response](../operations/grant-incident-response.md).
 
@@ -71,6 +93,18 @@ Symptoms:
 Checks:
 
 - Confirm the route path parameters are correct.
+- For tenant/app routes, prefer the seeded tenant UUID over the slug. For example, use
+  `11111111-1111-1111-1111-111111111111` instead of `test-alpha`.
+- Call `GET /v1/access/resolve` first so you know which tenant and app the bearer token resolved
+  to.
+- For write failures against a visible domain, confirm you are not targeting a platform-owned or
+  foreign-owned domain without an explicit grant.
+- For tenant-owned write bootstraps, confirm the domain was created under the tenant that will own
+  the writes.
+- Check the logs:
+  - `route miss ...` means the router did not match the request.
+  - `access route debug ...` means the route matched but the handler saw an empty `PathValue` or
+    the service returned `ErrNotFound`.
 - Confirm the template is active before calling it.
 - Confirm the node, job, grant, or domain identifier exists in visible scope.
 - Confirm you are not using an inactive or draft-only template name.
@@ -81,6 +115,8 @@ Checks:
 
 - Confirm the caller has visibility to the expected owners and domains.
 - Confirm writes completed and produced the expected projected state for bootstrap flows.
+- Confirm the difference between visible domains and writable domains when shared data is
+  intentionally read-only.
 - Confirm you are querying the correct `domain_id` or template name.
 - Use the integrity endpoints to inspect drift or bridge gaps.
 

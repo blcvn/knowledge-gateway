@@ -547,7 +547,7 @@ func (r *Repository) insertNode(ctx context.Context, node write.NodeRecord) erro
 			id, node_type, domain_id, owner_tenant_id, owner_app_id, visibility, properties, domain_version, external_ref, status_value, is_deleted, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), NULLIF($10, ''), $11, $12, $13)
 	`, node.ID, node.NodeType, node.DomainID, node.OwnerTenantID, nullString(node.OwnerAppID), node.Visibility, node.Properties, node.DomainVersion, node.ExternalRef, node.StatusValue, node.IsDeleted, node.CreatedAt, node.UpdatedAt)
-	return normalizeWriteError(err)
+	return normalizeRepositoryError(err)
 }
 
 func (r *Repository) insertRelationship(ctx context.Context, rel write.RelationshipRecord) error {
@@ -556,7 +556,7 @@ func (r *Repository) insertRelationship(ctx context.Context, rel write.Relations
 			id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, is_deleted, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10)
 	`, rel.ID, rel.RelType, rel.FromNodeID, rel.ToNodeID, rel.DomainID, rel.OwnerTenantID, nullString(rel.OwnerAppID), rel.DomainVersion, rel.Properties, rel.CreatedAt)
-	return err
+	return normalizeRepositoryError(err)
 }
 
 func (r *Repository) insertOutbox(ctx context.Context, event write.OutboxEvent) error {
@@ -621,7 +621,7 @@ func (r *Repository) SealGraphVersion(ctx context.Context, request write.GraphVe
 			updated_at = EXCLUDED.updated_at
 	`, request.OwnerTenantID, nullString(request.OwnerAppID), request.GraphScope, now)
 	if err != nil {
-		return write.GraphIdentityRecord{}, write.GraphVersionRecord{}, err
+		return write.GraphIdentityRecord{}, write.GraphVersionRecord{}, normalizeRepositoryError(err)
 	}
 	var identity write.GraphIdentityRecord
 	var headVersionID sql.NullString
@@ -660,7 +660,7 @@ func (r *Repository) SealGraphVersion(ctx context.Context, request write.GraphVe
 		WHERE identifier_id = $1
 	`, identity.IdentifierID, nextVersion, versionID, now)
 	if err != nil {
-		return write.GraphIdentityRecord{}, write.GraphVersionRecord{}, err
+		return write.GraphIdentityRecord{}, write.GraphVersionRecord{}, normalizeRepositoryError(err)
 	}
 	if len(request.Entities) > 0 {
 		query, args, err := buildGraphVersionEntitiesInsertQuery(versionID, request.Entities)
@@ -1366,6 +1366,20 @@ func normalizeWriteError(err error) error {
 	msg := err.Error()
 	if strings.Contains(msg, "external_ref") || strings.Contains(msg, "kg_nodes_external_ref_key") || strings.Contains(msg, "duplicate key value") {
 		return errors.Join(write.ErrDuplicateExternalRef, err)
+	}
+	return err
+}
+
+func normalizeRepositoryError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if normalized := normalizeWriteError(err); normalized != err {
+		return normalized
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "owner_tenant_id_fkey") || strings.Contains(msg, "owner_app_id_fkey") {
+		return errors.Join(write.ErrControlPlaneNotReady, err)
 	}
 	return err
 }

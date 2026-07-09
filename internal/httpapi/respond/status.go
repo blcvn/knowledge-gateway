@@ -10,6 +10,7 @@ const (
 	CodeValidationFailed       = "VALIDATION_FAILED"
 	CodeProjectionInconsistent = "PROJECTION_INCONSISTENT"
 	CodeSyncScopeLocked        = "SYNC_SCOPE_LOCKED"
+	CodeServiceUnavailable     = "SERVICE_UNAVAILABLE"
 	CodeTooManyRequests        = "TOO_MANY_REQUESTS"
 	CodeRequestTimedOut        = "REQUEST_TIMEOUT"
 	CodeInternal               = "INTERNAL_ERROR"
@@ -31,6 +32,8 @@ func StatusFor(kind string) int {
 		return http.StatusConflict
 	case CodeSyncScopeLocked:
 		return http.StatusConflict
+	case CodeServiceUnavailable:
+		return http.StatusServiceUnavailable
 	case CodeTooManyRequests:
 		return http.StatusTooManyRequests
 	case CodeRequestTimedOut:

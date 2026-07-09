@@ -123,6 +123,9 @@ func mustCreateQueryTemplate(logger *runtimeobs.Logger, service *ontology.Servic
 		Description:  template.Description,
 	}); err != nil {
 		if isAlreadyExists(err) {
+			if _, activateErr := service.ActivateQueryTemplate(actor, tenantID, template.DomainID, template.TemplateName); activateErr != nil {
+				logger.Printf("bootstrap activate template %s.%s tenant=%s: %v", template.DomainID, template.TemplateName, tenantID, activateErr)
+			}
 			return
 		}
 		logger.Printf("bootstrap template %s.%s tenant=%s: %v", template.DomainID, template.TemplateName, tenantID, err)

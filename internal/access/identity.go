@@ -30,6 +30,9 @@ func NewIdentityResolver(apps AppStore, cache *rediscache.Client) *IdentityResol
 }
 
 func (r *IdentityResolver) Resolve(authorizationHeader string) (Identity, error) {
+	if r == nil || r.apps == nil {
+		return Identity{}, ErrUnauthorized
+	}
 	apiKey, err := bearerToken(authorizationHeader)
 	if err != nil {
 		return Identity{}, err
@@ -39,17 +42,27 @@ func (r *IdentityResolver) Resolve(authorizationHeader string) (Identity, error)
 	cacheKey := "apikey:" + hash
 
 	var cached identityCacheEntry
-	if ok, err := r.cache.GetJSON(cacheKey, &cached); err == nil && ok {
-		if cached.Status != "active" {
-			return Identity{}, ErrUnauthorized
+	cacheHit := false
+	if r != nil && r.cache != nil {
+		if ok, err := r.cache.GetJSON(cacheKey, &cached); err == nil && ok {
+			cacheHit = true
 		}
-
-		return Identity{TenantID: cached.TenantID, AppID: cached.AppID, AppType: cached.AppType}, nil
 	}
 
 	app, ok := r.apps.GetAppByAPIKeyHash(hash)
-	if !ok || app.Status != "active" {
-		r.cache.Delete(cacheKey)
+	if !ok {
+		if cacheHit && cached.Status == "active" {
+			return Identity{TenantID: cached.TenantID, AppID: cached.AppID, AppType: cached.AppType}, nil
+		}
+		if r != nil && r.cache != nil {
+			r.cache.Delete(cacheKey)
+		}
+		return Identity{}, ErrUnauthorized
+	}
+	if app.Status != "active" {
+		if r != nil && r.cache != nil {
+			r.cache.Delete(cacheKey)
+		}
 		return Identity{}, ErrUnauthorized
 	}
 
@@ -59,8 +72,13 @@ func (r *IdentityResolver) Resolve(authorizationHeader string) (Identity, error)
 		AppType:  app.Type,
 		Status:   app.Status,
 	}
-	if err := r.cache.SetJSON(cacheKey, entry, identityCacheTTL); err != nil {
-		return Identity{}, err
+	if cacheHit && cached == entry {
+		return Identity{TenantID: app.TenantID, AppID: app.ID, AppType: app.Type}, nil
+	}
+	if r != nil && r.cache != nil {
+		if err := r.cache.SetJSON(cacheKey, entry, identityCacheTTL); err != nil {
+			return Identity{}, err
+		}
 	}
 
 	return Identity{TenantID: app.TenantID, AppID: app.ID, AppType: app.Type}, nil

@@ -25,6 +25,11 @@ Notes:
 - The app create and rotate-key flows are the only times plaintext API keys are returned.
 - The bootstrap repo also ships seeded keys for local testing; those are conveniences, not a production pattern.
 - JSON body fields named `tenant_id` or `app_id` are not trusted from clients because middleware strips them before handlers run.
+- Tenant and app creation are expected to durably provision the relationship DB rows that
+  authentication and write ownership checks rely on.
+- `POST /v1/tenants/{tenant_id}/apps` makes a tenant-owned app, but a visible domain is not automatically writable.
+- If you plan to write into a tenant-owned domain, create that domain under the tenant that will own the writes.
+- If you plan to write into a platform-owned or foreign-owned shared domain, add an explicit `write` or `admin` grant for that owner and scope first.
 - If you want a shorter operational checklist, use [Tenant And App Setup](./tenant-app-setup.md).
 
 ## 3. Model Ontology Before Writing Data
@@ -62,7 +67,11 @@ Write-path expectations:
 - relationship creation returns `201 Created`
 - application-facing writes persist only to `relationshipdb`
 - graph, vector, and full-text stores are projection targets maintained asynchronously by jobs/workers
-- writes are still subject to visibility and ontology validation
+- writes are still subject to visibility, ontology validation, and ownership-based authorization
+- if the service cannot confirm durable tenant/app or ontology state, it returns a service-unavailable signal rather than a misleading payload error
+- visibility does not imply write authority for platform-owned or foreign-owned domains
+- tenant-owned domains are writable by the owning tenant when the ontology schema also validates
+- cross-tenant shared domains require an explicit write-capable grant before they are treated as writable
 - downstream projection behavior is bootstrap-oriented today, so treat async status as local evaluation behavior rather than a finalized production SLA
 - scope-aware writes check existing graph identity before linking records so different knowledge graphs stay separated, for example distinct code graph projects or repos
 
@@ -113,6 +122,12 @@ Use the access endpoints when data must be shared:
 
 This is the cleanest way to validate whether a consumer should be able to read or search another owner's projected data.
 
+Use this path to separate concerns:
+
+- `GET /v1/access/resolve` tells you what the caller can see
+- the write routes tell you what the caller can actually mutate
+- if a domain is visible but not writable, verify ownership and grants rather than assuming the app is misconfigured
+
 ## 7. Validate Projection Health During Evaluation
 
 For bootstrap evaluation and local demos:
@@ -123,6 +138,17 @@ For bootstrap evaluation and local demos:
 These routes are useful when writes succeed but read/search behavior does not look right.
 
 If you are validating a deployed environment, pair these requests with the deployment flow in [Deployment Guide](./deployment.md) and the repeatable checks in [Testing Guide](./testing.md).
+
+## Diagnose Source-Of-Truth Drift
+
+If authentication succeeds but write or ontology behavior looks wrong:
+
+1. Call `GET /v1/access/resolve` with the exact API key you plan to use.
+2. Confirm the returned tenant and app match the durable rows created during onboarding.
+3. Check the relevant ontology domain with `GET /v1/ontology/domains/{domain_id}`.
+4. Confirm the ontology rows exist in relationship DB and were not only created in process memory.
+5. If `POST /v1/kg/write/nodes` returns `503 Service Unavailable`, treat that as control-plane drift or incomplete provisioning, not a payload problem.
+6. If you still see `500 Internal Server Error`, inspect the logs for the underlying relationship DB failure and the exact FK or schema mismatch.
 
 ## Bootstrap Examples You Can Use Immediately
 

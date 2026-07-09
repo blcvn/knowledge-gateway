@@ -537,7 +537,7 @@ func newParityFixture(t *testing.T) parityFixture {
 	}
 
 	writeStore := write.NewMemoryStore()
-	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, &recordingSessionManager{}, nil)
+	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, nil, &recordingSessionManager{}, nil)
 	bridge, err := writeSvc.CreateNode(actor, write.NodeCreateRequest{
 		DomainID:   "noi_bo_hop_dong",
 		NodeType:   "PhuLucHopDong",
@@ -656,7 +656,7 @@ func newMCPFixtureWithLimiter(t *testing.T, tierLimits map[string]int) (Handler,
 	}
 
 	writeStore := write.NewMemoryStore()
-	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, &recordingSessionManager{}, nil)
+	writeSvc := write.NewService(writeStore, ontologySvc, accessResolver, nil, &recordingSessionManager{}, nil)
 	bridge, err := writeSvc.CreateNode(actor, write.NodeCreateRequest{
 		DomainID:   "noi_bo_hop_dong",
 		NodeType:   "PhuLucHopDong",
