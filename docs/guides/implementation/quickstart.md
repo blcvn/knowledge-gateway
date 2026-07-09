@@ -28,8 +28,8 @@ Expected result: a JSON response with `service`, `postgres`, and `redis` fields.
 
 Available local bootstrap keys:
 
-- Platform admin: `kgsk_platform_admin`
-- Tenant alpha admin: `kgsk_test_alpha_admin`
+- Platform admin: `kgsk_platform_admin` (`00000000-0000-4000-8000-000000000001`)
+- Tenant alpha admin: `kgsk_test_alpha_admin` (`11111111-1111-4111-8111-111111111111`)
 - Tenant alpha app: `kgsk_test_alpha`
 - Tenant beta app: `kgsk_test_beta`
 
@@ -103,5 +103,8 @@ Search results are filtered by the caller's visibility and by deletion state.
 
 - Writes land in `relationshipdb` first, and graph/vector/full-text projections are synchronized asynchronously.
 - Some read, search, sync, and integrity behavior still relies on in-memory bootstrap implementations.
+- A visible domain is not automatically writable. For tenant-owned bootstrap, create the domain
+  under the tenant that will own the writes. For platform-owned or foreign-owned shared domains,
+  add a matching `write` or `admin` grant first.
 - Caller-supplied `tenant_id` and `app_id` fields in JSON bodies are ignored by middleware; identity comes from the API key.
 - The local seeded credentials are not a production provisioning model.

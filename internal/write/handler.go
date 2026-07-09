@@ -37,6 +37,8 @@ func (h Handler) CreateNode(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 		case errors.Is(err, ErrValidation):
 			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		case errors.Is(err, ErrControlPlaneNotReady):
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 		default:
 			respond.Error(w, respond.StatusFor(respond.CodeInternal), respond.CodeInternal, "Internal server error", nil)
 		}
@@ -78,6 +80,8 @@ func (h Handler) OpenSyncSession(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 		case errors.Is(err, ErrValidation):
 			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		case errors.Is(err, ErrControlPlaneNotReady):
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 		case errors.Is(err, ErrScopeLocked):
 			respond.Error(w, respond.StatusFor(respond.CodeSyncScopeLocked), respond.CodeSyncScopeLocked, "Sync scope is locked", nil)
 		default:
@@ -104,6 +108,8 @@ func (h Handler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 		case errors.Is(err, ErrValidation):
 			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		case errors.Is(err, ErrControlPlaneNotReady):
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 		case errors.Is(err, ErrNotFound):
 			respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
 		default:
@@ -167,6 +173,8 @@ func (h Handler) CreateRelationship(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 		case errors.Is(err, ErrValidation):
 			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		case errors.Is(err, ErrControlPlaneNotReady):
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 		case errors.Is(err, ErrNotFound):
 			respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
 		default:
@@ -317,6 +325,8 @@ func writeError(w http.ResponseWriter, err error) {
 		respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
 	case errors.Is(err, ErrValidation):
 		respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+	case errors.Is(err, ErrControlPlaneNotReady):
+		respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 	case errors.Is(err, ErrScopeLocked):
 		respond.Error(w, respond.StatusFor(respond.CodeSyncScopeLocked), respond.CodeSyncScopeLocked, "Sync scope is locked", nil)
 	default:

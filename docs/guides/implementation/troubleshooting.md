@@ -57,7 +57,9 @@ Checks:
 
 - Confirm you are using the expected tenant or app key.
 - Call `GET /v1/access/resolve` to inspect visible owners.
-- Confirm a cross-tenant or cross-app grant exists when shared visibility is expected.
+- Confirm the domain is actually writable by that tenant or app.
+- For shared-domain writes, confirm a cross-tenant `write` or `admin` grant exists for the
+  relevant owner and scope.
 - Re-check the domain or node owner scope.
 
 If shared access should exist but still looks wrong after grant changes, escalate to the kg-service team for operator follow-up.
@@ -72,6 +74,10 @@ Checks:
 
 - Confirm the route path parameters are correct.
 - Confirm the template is active before calling it.
+- For write failures against a visible domain, confirm you are not targeting a platform-owned or
+  foreign-owned domain without an explicit grant.
+- For tenant-owned write bootstraps, confirm the domain was created under the tenant that will own
+  the writes.
 - Confirm the node, job, grant, or domain identifier exists in visible scope.
 - Confirm you are not using an inactive or draft-only template name.
 
@@ -81,6 +87,8 @@ Checks:
 
 - Confirm the caller has visibility to the expected owners and domains.
 - Confirm writes completed and produced the expected projected state for bootstrap flows.
+- Confirm the difference between visible domains and writable domains when shared data is
+  intentionally read-only.
 - Confirm you are querying the correct `domain_id` or template name.
 - Use the integrity endpoints to inspect drift or bridge gaps.
 

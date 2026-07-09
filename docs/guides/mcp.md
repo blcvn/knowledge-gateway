@@ -79,7 +79,7 @@ curl -s \
   -X POST \
   -H "Authorization: Bearer kgsk_test_alpha_admin" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kg_read_pattern","arguments":{"domain_id":"sample-policy","template_name":"action-guide","params":{"topic_key":"returns"},"app_id":"11111111-admin-1111-admin-111111111111","mode":"realtime"}}}' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"kg_read_pattern","arguments":{"domain_id":"sample-policy","template_name":"action-guide","params":{"topic_key":"returns"},"app_id":"11111111-1111-4111-8111-111111111111","mode":"realtime"}}}' \
   http://127.0.0.1:8082/v1/mcp/messages/<session_id>
 ```
 
@@ -90,7 +90,7 @@ curl -s \
   -X POST \
   -H "Authorization: Bearer kgsk_test_alpha_admin" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"kg_get_node","arguments":{"id":"<node_id>","app_id":"11111111-admin-1111-admin-111111111111","mode":"realtime"}}}' \
+  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"kg_get_node","arguments":{"id":"<node_id>","app_id":"11111111-1111-4111-8111-111111111111","mode":"realtime"}}}' \
   http://127.0.0.1:8082/v1/mcp/messages/<session_id>
 ```
 

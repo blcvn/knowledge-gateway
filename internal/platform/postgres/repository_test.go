@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -57,5 +58,19 @@ func TestBuildGraphVersionEntitiesInsertQueryUsesVersionID(t *testing.T) {
 		if args[i] != "version-123" {
 			t.Fatalf("args[%d] = %v, want version-123", i, args[i])
 		}
+	}
+}
+
+func TestNormalizeRepositoryErrorFlagsControlPlaneFkDrift(t *testing.T) {
+	err := normalizeRepositoryError(errors.New(`insert or update on table "kg_graph_identifiers" violates foreign key constraint "kg_graph_identifiers_owner_app_id_fkey"`))
+	if !errors.Is(err, write.ErrControlPlaneNotReady) {
+		t.Fatalf("normalizeRepositoryError() = %v, want control plane sentinel", err)
+	}
+}
+
+func TestNormalizeRepositoryErrorPreservesDuplicateExternalRef(t *testing.T) {
+	err := normalizeRepositoryError(errors.New(`duplicate key value violates unique constraint "kg_nodes_external_ref_key"`))
+	if !errors.Is(err, write.ErrDuplicateExternalRef) {
+		t.Fatalf("normalizeRepositoryError() = %v, want duplicate external ref sentinel", err)
 	}
 }

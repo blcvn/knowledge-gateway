@@ -2,6 +2,13 @@ package access
 
 import "time"
 
+const (
+	PlatformAdminAppID  = "00000000-0000-4000-8000-000000000001"
+	TestAlphaAdminAppID = "11111111-1111-4111-8111-111111111111"
+	TestAlphaAppID      = "11111111-aaaa-1111-aaaa-111111111111"
+	TestBetaAppID       = "22222222-bbbb-2222-bbbb-222222222222"
+)
+
 func SeedTenants() []Tenant {
 	now := time.Date(2026, 6, 17, 10, 0, 0, 0, time.UTC)
 	return []Tenant{
@@ -42,7 +49,7 @@ func SeedApps() []App {
 	now := time.Date(2026, 6, 17, 10, 5, 0, 0, time.UTC)
 	return []App{
 		{
-			ID:           "00000000-a000-0000-a000-000000000000",
+			ID:           PlatformAdminAppID,
 			TenantID:     PlatformTenantID,
 			Slug:         "platform-admin",
 			Name:         "Platform Admin",
@@ -53,29 +60,7 @@ func SeedApps() []App {
 			CreatedAt:    now,
 		},
 		{
-			ID:           "00000000-0000-4000-a000-000000000002",
-			TenantID:     PlatformTenantID,
-			Slug:         "platform-seed-writer",
-			Name:         "Platform Seed Writer",
-			Type:         "ingestion_producer",
-			APIKeyHash:   APIKeyHash("kgsk_seed_writer"),
-			APIKeyPrefix: "kgsk_see",
-			Status:       "active",
-			CreatedAt:    now,
-		},
-		{
-			ID:           "11111111-aaaa-1111-aaaa-111111111111",
-			TenantID:     "11111111-1111-1111-1111-111111111111",
-			Slug:         "test-alpha-app",
-			Name:         "Test Alpha App",
-			Type:         "agent_consumer",
-			APIKeyHash:   APIKeyHash("kgsk_test_alpha"),
-			APIKeyPrefix: "kgsk_tes",
-			Status:       "active",
-			CreatedAt:    now,
-		},
-		{
-			ID:           "11111111-a111-1111-a111-111111111111",
+			ID:           TestAlphaAdminAppID,
 			TenantID:     "11111111-1111-1111-1111-111111111111",
 			Slug:         "test-alpha-admin",
 			Name:         "Test Alpha Admin",
@@ -86,7 +71,7 @@ func SeedApps() []App {
 			CreatedAt:    now,
 		},
 		{
-			ID:           "22222222-bbbb-2222-bbbb-222222222222",
+			ID:           TestBetaAppID,
 			TenantID:     "22222222-2222-2222-2222-222222222222",
 			Slug:         "test-beta-app",
 			Name:         "Test Beta App",

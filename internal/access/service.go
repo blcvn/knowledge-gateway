@@ -77,13 +77,7 @@ func (s *Service) CreateTenant(actor Identity, req TenantCreateRequest) (TenantR
 		UpdatedAt:            now,
 	}
 	s.store.CreateTenant(tenant)
-	if s.persistence != nil {
-		if err := s.persistence.PersistTenant(tenant); err != nil {
-			// Log but don't fail — memory store is authoritative for auth;
-			// FK violation will surface at write time with a clear error.
-			_ = err
-		}
-	}
+	s.invalidateTenantDerivedState(tenant.ID)
 	return tenantToResponse(tenant), nil
 }
 
@@ -121,6 +115,7 @@ func (s *Service) UpdateTenant(actor Identity, tenantID string, req TenantUpdate
 	if !ok {
 		return TenantResponse{}, ErrNotFound
 	}
+	s.invalidateTenantDerivedState(updated.ID)
 	return tenantToResponse(updated), nil
 }
 
@@ -169,11 +164,7 @@ func (s *Service) CreateApp(actor Identity, tenantID string, req AppCreateReques
 		CreatedAt:    now,
 	}
 	s.store.CreateApp(app)
-	if s.persistence != nil {
-		if err := s.persistence.PersistApp(app); err != nil {
-			_ = err // same rationale as PersistTenant
-		}
-	}
+	s.syncAppDerivedState(app, apiKey, "")
 	return appToResponse(app, apiKey), nil
 }
 
@@ -200,7 +191,7 @@ func (s *Service) RotateAppKey(actor Identity, tenantID, appID string) (RotateKe
 		return RotateKeyResponse{}, ErrNotFound
 	}
 
-	s.cache.Delete("apikey:" + oldHash)
+	s.syncAppDerivedState(app, apiKey, oldHash)
 	return RotateKeyResponse{
 		APIKey:    apiKey,
 		RotatedAt: rotatedAt,
@@ -240,8 +231,7 @@ func (s *Service) RevokeApp(actor Identity, tenantID, appID string) (AppResponse
 		return AppResponse{}, ErrNotFound
 	}
 
-	s.cache.Delete("apikey:" + updated.APIKeyHash)
-	s.cache.Delete("acl:" + updated.TenantID + ":" + updated.ID)
+	s.syncAppDerivedState(updated, "", "")
 	return appToResponse(updated, ""), nil
 }
 
@@ -502,12 +492,56 @@ func grantToResponse(grant AccessGrant) GrantResponse {
 }
 
 func (s *Service) invalidateGrantCaches(grant AccessGrant) {
+	if s == nil || s.cache == nil {
+		return
+	}
 	s.cache.Delete("acl:" + grant.GranteeTenantID + ":" + grant.GranteeAppID)
 	if grant.GranteeAppID == "" {
-		for _, app := range s.store.ListAppsByTenant(grant.GranteeTenantID) {
-			s.cache.Delete("acl:" + grant.GranteeTenantID + ":" + app.ID)
-		}
+		s.cache.DeletePrefix("acl:" + grant.GranteeTenantID + ":")
 	}
+}
+
+func (s *Service) invalidateTenantDerivedState(tenantID string) {
+	if s == nil || s.cache == nil {
+		return
+	}
+	s.cache.DeletePrefix("acl:" + tenantID + ":")
+}
+
+func (s *Service) syncAppDerivedState(app App, apiKey string, oldHash string) {
+	if s == nil || s.cache == nil {
+		return
+	}
+	if strings.TrimSpace(oldHash) != "" {
+		s.cache.Delete("apikey:" + oldHash)
+	}
+	if app.Status != "active" {
+		if strings.TrimSpace(app.APIKeyHash) != "" {
+			s.cache.Delete("apikey:" + app.APIKeyHash)
+		}
+		if strings.TrimSpace(apiKey) != "" {
+			s.cache.Delete("apikey:" + APIKeyHash(apiKey))
+		}
+		s.cache.DeletePrefix("acl:" + app.TenantID + ":")
+		return
+	}
+	if strings.TrimSpace(app.APIKeyHash) != "" {
+		_ = s.cache.SetJSON("apikey:"+app.APIKeyHash, identityCacheEntry{
+			TenantID: app.TenantID,
+			AppID:    app.ID,
+			AppType:  app.Type,
+			Status:   app.Status,
+		}, identityCacheTTL)
+	}
+	if strings.TrimSpace(apiKey) != "" {
+		_ = s.cache.SetJSON("apikey:"+APIKeyHash(apiKey), identityCacheEntry{
+			TenantID: app.TenantID,
+			AppID:    app.ID,
+			AppType:  app.Type,
+			Status:   app.Status,
+		}, identityCacheTTL)
+	}
+	s.cache.DeletePrefix("acl:" + app.TenantID + ":")
 }
 
 func tenantToResponse(tenant Tenant) TenantResponse {

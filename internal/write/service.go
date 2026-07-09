@@ -23,11 +23,12 @@ import (
 )
 
 var (
-	ErrForbidden        = errors.New("forbidden")
-	ErrValidation       = errors.New("validation")
-	ErrNotFound         = errors.New("not found")
-	ErrScopeLocked      = errors.New("sync scope locked")
-	ErrSessionAbandoned = errors.New("sync session abandoned")
+	ErrForbidden            = errors.New("forbidden")
+	ErrValidation           = errors.New("validation")
+	ErrNotFound             = errors.New("not found")
+	ErrScopeLocked          = errors.New("sync scope locked")
+	ErrSessionAbandoned     = errors.New("sync session abandoned")
+	ErrControlPlaneNotReady = errors.New("control plane not ready")
 )
 
 type AccessResolver interface {
@@ -53,10 +54,16 @@ type AuditLogger interface {
 	RecordWriteAudit(actor access.Identity, ownerTenantID, ownerAppID, action, resourceType, resourceID, outcome, reason string, metadata map[string]any)
 }
 
+type OwnerRegistry interface {
+	GetTenant(id string) (access.Tenant, bool)
+	GetAppByID(id string) (access.App, bool)
+}
+
 type Service struct {
 	store               Repository
 	ontology            OntologyResolver
 	accessResolver      AccessResolver
+	ownerRegistry       OwnerRegistry
 	sessionManager      SessionManager
 	auditLogger         AuditLogger
 	ftsBackendKind      string
@@ -68,11 +75,12 @@ type Service struct {
 	now                 func() time.Time
 }
 
-func NewService(store Repository, ontology OntologyResolver, accessResolver AccessResolver, sessionManager SessionManager, auditLogger AuditLogger) *Service {
+func NewService(store Repository, ontology OntologyResolver, accessResolver AccessResolver, ownerRegistry OwnerRegistry, sessionManager SessionManager, auditLogger AuditLogger) *Service {
 	return &Service{
 		store:               store,
 		ontology:            ontology,
 		accessResolver:      accessResolver,
+		ownerRegistry:       ownerRegistry,
 		sessionManager:      sessionManager,
 		auditLogger:         auditLogger,
 		syncEtaDefaultMs:    5000,
@@ -83,6 +91,29 @@ func NewService(store Repository, ontology OntologyResolver, accessResolver Acce
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (s *Service) ensureOwnerIdentityReady(actor access.Identity) error {
+	if s == nil || s.ownerRegistry == nil {
+		return nil
+	}
+
+	tenant, ok := s.ownerRegistry.GetTenant(actor.TenantID)
+	if !ok {
+		log.Printf("write owner identity mismatch tenant=%s app=%s owner_tenant_id=%s owner_app_id=%s reason=tenant_missing", actor.TenantID, actor.AppID, actor.TenantID, actor.AppID)
+		return fmt.Errorf("%w: owner tenant is not durably provisioned", ErrControlPlaneNotReady)
+	}
+	app, ok := s.ownerRegistry.GetAppByID(actor.AppID)
+	if !ok {
+		log.Printf("write owner identity mismatch tenant=%s app=%s owner_tenant_id=%s owner_app_id=%s reason=app_missing", actor.TenantID, actor.AppID, actor.TenantID, actor.AppID)
+		return fmt.Errorf("%w: owner app is not durably provisioned", ErrControlPlaneNotReady)
+	}
+	if app.TenantID != actor.TenantID {
+		log.Printf("write owner identity mismatch tenant=%s app=%s owner_tenant_id=%s owner_app_id=%s reason=app_tenant_mismatch durable_owner_tenant_id=%s tenant_status=%s app_status=%s", actor.TenantID, actor.AppID, actor.TenantID, actor.AppID, app.TenantID, tenant.Status, app.Status)
+		return fmt.Errorf("%w: owner app belongs to a different tenant", ErrControlPlaneNotReady)
+	}
+	log.Printf("write owner identity ready tenant=%s app=%s owner_tenant_id=%s owner_app_id=%s tenant_status=%s app_status=%s", actor.TenantID, actor.AppID, actor.TenantID, actor.AppID, tenant.Status, app.Status)
+	return nil
 }
 
 func (s *Service) SetSyncETAConfig(defaultMs int) {
@@ -234,6 +265,9 @@ func (s *Service) OpenSyncSession(ctx context.Context, actor access.Identity, re
 	}
 	if strings.TrimSpace(req.GraphScope) == "" {
 		return SyncSessionResponse{}, errors.Join(ErrValidation, errors.New("graph_scope is required"))
+	}
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return SyncSessionResponse{}, err
 	}
 	log.Printf("write open_sync_session start tenant=%s app=%s domain=%s graph_scope=%s", actor.TenantID, actor.AppID, req.DomainID, req.GraphScope)
 	domain, err := s.ontology.GetVisibleDomain(actor, req.DomainID)
@@ -457,6 +491,9 @@ func relationshipIDs(rels []RelationshipRecord) []string {
 }
 
 func (s *Service) IngestDocument(actor access.Identity, req IngestDocumentRequest) (IngestJobResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return IngestJobResponse{}, err
+	}
 	if !canRunIngest(actor) {
 		return IngestJobResponse{}, ErrForbidden
 	}
@@ -610,6 +647,9 @@ func (s *Service) CreateNode(actor access.Identity, req NodeCreateRequest) (Node
 }
 
 func (s *Service) CreateNodeWithContext(ctx context.Context, actor access.Identity, req NodeCreateRequest) (NodeCreateResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return NodeCreateResponse{}, err
+	}
 	var resp NodeCreateResponse
 	_, err := s.sessionManager.Within(ctx, session.WriteIdentity{
 		TenantID: actor.TenantID,
@@ -629,6 +669,9 @@ func (s *Service) CreateNodeWithContext(ctx context.Context, actor access.Identi
 }
 
 func (s *Service) CreateNodesBulkWithContext(ctx context.Context, actor access.Identity, req NodeBulkCreateRequest) (NodeBulkCreateResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return NodeBulkCreateResponse{}, err
+	}
 	if len(req.Nodes) == 0 {
 		return NodeBulkCreateResponse{Succeeded: []NodeCreateResponse{}, Failed: []BulkItemError{}}, nil
 	}
@@ -912,6 +955,9 @@ func (s *Service) UpdateNode(actor access.Identity, nodeID string, req NodeUpdat
 }
 
 func (s *Service) UpdateNodeWithContext(ctx context.Context, actor access.Identity, nodeID string, req NodeUpdateRequest) (NodeUpdateResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return NodeUpdateResponse{}, err
+	}
 	if err := validateNodeUpdateRequest(req); err != nil {
 		return NodeUpdateResponse{}, errors.Join(ErrValidation, err)
 	}
@@ -1142,6 +1188,9 @@ func (s *Service) DeleteNodeWithContext(ctx context.Context, actor access.Identi
 }
 
 func (s *Service) DeleteNodeWithVersion(ctx context.Context, actor access.Identity, nodeID, graphVersionID string) (NodeDeleteResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return NodeDeleteResponse{}, err
+	}
 	if strings.TrimSpace(graphVersionID) != "" {
 		var resp NodeDeleteResponse
 		_, err := s.sessionManager.Within(ctx, session.WriteIdentity{
@@ -1216,6 +1265,9 @@ func (s *Service) CreateRelationship(actor access.Identity, req RelationshipCrea
 }
 
 func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor access.Identity, req RelationshipCreateRequest) (RelationshipCreateResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return RelationshipCreateResponse{}, err
+	}
 	var resp RelationshipCreateResponse
 	_, err := s.sessionManager.Within(ctx, session.WriteIdentity{
 		TenantID: actor.TenantID,
@@ -1235,6 +1287,9 @@ func (s *Service) CreateRelationshipWithContext(ctx context.Context, actor acces
 }
 
 func (s *Service) CreateRelationshipsBulkWithContext(ctx context.Context, actor access.Identity, req RelationshipBulkCreateRequest) (RelationshipBulkCreateResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return RelationshipBulkCreateResponse{}, err
+	}
 	if len(req.Relationships) == 0 {
 		return RelationshipBulkCreateResponse{Succeeded: []RelationshipCreateResponse{}, Failed: []BulkItemError{}}, nil
 	}
@@ -1447,6 +1502,9 @@ func (s *Service) CreateRelationshipsBulkWithContext(ctx context.Context, actor 
 }
 
 func (s *Service) DeleteRelationshipsBulkWithContext(ctx context.Context, actor access.Identity, req RelationshipBulkDeleteRequest) (RelationshipBulkDeleteResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return RelationshipBulkDeleteResponse{}, err
+	}
 	ids := make([]string, 0, len(req.RelationshipIDs))
 	seen := map[string]struct{}{}
 	for _, id := range req.RelationshipIDs {
@@ -1618,6 +1676,9 @@ func (s *Service) DeleteNodesByExternalRefPrefixWithContext(ctx context.Context,
 }
 
 func (s *Service) DeleteNodesByExternalRefPrefixWithVersion(ctx context.Context, actor access.Identity, req NodeDeleteByExternalRefPrefixRequest, graphVersionID string) (NodeDeleteByExternalRefPrefixResponse, error) {
+	if err := s.ensureOwnerIdentityReady(actor); err != nil {
+		return NodeDeleteByExternalRefPrefixResponse{}, err
+	}
 	prefix := strings.TrimSpace(req.ExternalRefPrefix)
 	if prefix == "" {
 		return NodeDeleteByExternalRefPrefixResponse{}, errors.Join(ErrValidation, errors.New("external_ref_prefix is required"))

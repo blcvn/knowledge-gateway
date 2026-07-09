@@ -3,6 +3,7 @@ package access
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"github.com/gorilla/mux"
 	"strconv"
@@ -59,7 +60,9 @@ func (h Handler) CreateTenant(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetTenant(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	tenant, err := h.service.GetTenant(identity, mux.Vars(r)["tenant_id"])
+	tenantID := r.PathValue("tenant_id")
+	tenant, err := h.service.GetTenant(identity, tenantID)
+	logTenantRouteDebug("get_tenant", tenantID, "", false, err)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -75,7 +78,9 @@ func (h Handler) UpdateTenant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := IdentityFromContext(r.Context())
-	tenant, err := h.service.UpdateTenant(identity, mux.Vars(r)["tenant_id"], req)
+	tenantID := r.PathValue("tenant_id")
+	tenant, err := h.service.UpdateTenant(identity, tenantID, req)
+	logTenantRouteDebug("update_tenant", tenantID, "", false, err)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -85,7 +90,9 @@ func (h Handler) UpdateTenant(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) DeleteTenant(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	tenant, err := h.service.SuspendTenant(identity, mux.Vars(r)["tenant_id"])
+	tenantID := r.PathValue("tenant_id")
+	tenant, err := h.service.SuspendTenant(identity, tenantID)
+	logTenantRouteDebug("delete_tenant", tenantID, "", false, err)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -105,7 +112,9 @@ func (h Handler) CreateApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := IdentityFromContext(r.Context())
-	app, err := h.service.CreateApp(identity, mux.Vars(r)["tenant_id"], req)
+	tenantID := r.PathValue("tenant_id")
+	app, err := h.service.CreateApp(identity, tenantID, req)
+	logTenantRouteDebug("create_app", tenantID, "", false, err)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -115,7 +124,10 @@ func (h Handler) CreateApp(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) RotateAppKey(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	rotated, err := h.service.RotateAppKey(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["app_id"])
+	tenantID := r.PathValue("tenant_id")
+	appID := r.PathValue("app_id")
+	rotated, err := h.service.RotateAppKey(identity, tenantID, appID)
+	logTenantRouteDebug("rotate_app_key", tenantID, appID, true, err)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -125,7 +137,9 @@ func (h Handler) RotateAppKey(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) ListApps(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	apps, err := h.service.ListApps(identity, mux.Vars(r)["tenant_id"])
+	tenantID := r.PathValue("tenant_id")
+	apps, err := h.service.ListApps(identity, tenantID)
+	logTenantRouteDebug("list_apps", tenantID, "", false, err)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -142,7 +156,10 @@ func (h Handler) ListApps(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	app, err := h.service.RevokeApp(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["app_id"])
+	tenantID := r.PathValue("tenant_id")
+	appID := r.PathValue("app_id")
+	app, err := h.service.RevokeApp(identity, tenantID, appID)
+	logTenantRouteDebug("delete_app", tenantID, appID, true, err)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -252,6 +269,13 @@ func writeError(w http.ResponseWriter, err error) {
 	default:
 		respond.Error(w, respond.StatusFor(respond.CodeInternal), respond.CodeInternal, "Internal server error", nil)
 	}
+}
+
+func logTenantRouteDebug(operation, tenantID, appID string, requireAppID bool, err error) {
+	if strings.TrimSpace(tenantID) != "" && (!requireAppID || strings.TrimSpace(appID) != "") && !errors.Is(err, ErrNotFound) {
+		return
+	}
+	log.Printf("access route debug operation=%s tenant_id=%q app_id=%q err=%v", operation, tenantID, appID, err)
 }
 
 func parsePage(r *http.Request) respond.Page {
