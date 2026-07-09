@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"github.com/gorilla/mux"
 	"strings"
 
 	"kg-service/internal/access"
@@ -38,7 +37,7 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) Message(w http.ResponseWriter, r *http.Request) {
-	sessionID := mux.Vars(r)["session_id"]
+	sessionID := r.PathValue("session_id")
 	identity, ok := h.service.IdentityForSession(sessionID)
 	if !ok {
 		writeRPCError(w, nil, -32000, "invalid session")

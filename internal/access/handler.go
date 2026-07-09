@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"github.com/gorilla/mux"
 	"strconv"
 	"strings"
 
@@ -215,7 +214,7 @@ func (h Handler) ListGrants(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) DeleteGrant(w http.ResponseWriter, r *http.Request) {
 	identity, _ := IdentityFromContext(r.Context())
-	grant, err := h.service.RevokeGrant(identity, mux.Vars(r)["id"])
+	grant, err := h.service.RevokeGrant(identity, r.PathValue("id"))
 	if err != nil {
 		writeError(w, err)
 		return

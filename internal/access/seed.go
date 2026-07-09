@@ -71,6 +71,17 @@ func SeedApps() []App {
 			CreatedAt:    now,
 		},
 		{
+			ID:           TestAlphaAppID,
+			TenantID:     "11111111-1111-1111-1111-111111111111",
+			Slug:         "test-alpha-app",
+			Name:         "Test Alpha App",
+			Type:         "agent_consumer",
+			APIKeyHash:   APIKeyHash("kgsk_test_alpha"),
+			APIKeyPrefix: "kgsk_tes",
+			Status:       "active",
+			CreatedAt:    now,
+		},
+		{
 			ID:           TestBetaAppID,
 			TenantID:     "22222222-2222-2222-2222-222222222222",
 			Slug:         "test-beta-app",
@@ -84,15 +95,14 @@ func SeedApps() []App {
 	}
 }
 
-
 func SeedGrants() []AccessGrant {
 	return []AccessGrant{
 		{
 			ID:              "grant-alpha-read-beta-domain",
 			GrantorTenantID: "22222222-2222-2222-2222-222222222222",
-			GrantorAppID:    "22222222-2222-4222-a222-222222222222",
+			GrantorAppID:    TestBetaAppID,
 			GranteeTenantID: "11111111-1111-1111-1111-111111111111",
-			GranteeAppID:    "11111111-1111-4111-a111-111111111111",
+			GranteeAppID:    TestAlphaAppID,
 			ScopeType:       "domain",
 			ScopeValue:      "shared-domain",
 			Permission:      "read",
@@ -111,4 +121,3 @@ func SeedGrants() []AccessGrant {
 		},
 	}
 }
-

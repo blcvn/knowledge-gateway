@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/mux"
 	kratos "github.com/go-kratos/kratos/v2"
 	kratoslog "github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -287,7 +286,7 @@ func (a *App) initAccess() error {
 		return err
 	}
 	a.logger.Printf("embedding router chain: %s", strings.Join(embeddingChain(a.config), " -> "))
-		writeService := write.NewService(writeRepo, ontologyService, accessResolver, store, sessionManager, service)
+	writeService := write.NewService(writeRepo, ontologyService, accessResolver, store, sessionManager, service)
 	writeService.SetSyncETAConfig(a.config.SyncEtaDefaultMs)
 	writeService.SetSyncLagConfig(a.config.SyncLagToleranceMs, a.config.SyncLagStuckRetries)
 	writeService.SetFTSBackendKind(a.config.FTS.Kind)
