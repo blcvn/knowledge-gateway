@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"github.com/gorilla/mux"
 
 	"kg-service/internal/access"
 	"kg-service/internal/httpapi/respond"
@@ -25,7 +24,7 @@ func (h Handler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity, _ := access.IdentityFromContext(r.Context())
-	domain, err := h.service.CreateDomain(identity, mux.Vars(r)["tenant_id"], req)
+	domain, err := h.service.CreateDomain(identity, r.PathValue("tenant_id"), req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -40,7 +39,7 @@ func (h Handler) CreateNodeType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity, _ := access.IdentityFromContext(r.Context())
-	schema, err := h.service.CreateNodeType(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["domain_id"], req)
+	schema, err := h.service.CreateNodeType(identity, r.PathValue("tenant_id"), r.PathValue("domain_id"), req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -55,7 +54,7 @@ func (h Handler) CreateRelType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity, _ := access.IdentityFromContext(r.Context())
-	schema, err := h.service.CreateRelType(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["domain_id"], req)
+	schema, err := h.service.CreateRelType(identity, r.PathValue("tenant_id"), r.PathValue("domain_id"), req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -65,7 +64,7 @@ func (h Handler) CreateRelType(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetEffective(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	domains, err := h.service.GetEffectiveDomains(identity, mux.Vars(r)["tenant_id"])
+	domains, err := h.service.GetEffectiveDomains(identity, r.PathValue("tenant_id"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -75,7 +74,7 @@ func (h Handler) GetEffective(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetDomain(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	domain, err := h.service.GetDomainDetails(identity, mux.Vars(r)["domain_id"])
+	domain, err := h.service.GetDomainDetails(identity, r.PathValue("domain_id"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -85,7 +84,7 @@ func (h Handler) GetDomain(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetSearchProfile(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	profile, err := h.service.Resolve(mux.Vars(r)["domain_id"], identity.TenantID, identity.AppID)
+	profile, err := h.service.Resolve(r.PathValue("domain_id"), identity.TenantID, identity.AppID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -100,7 +99,7 @@ func (h Handler) UpsertSearchProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity, _ := access.IdentityFromContext(r.Context())
-	profile, err := h.service.UpsertSearchProfile(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["domain_id"], req)
+	profile, err := h.service.UpsertSearchProfile(identity, r.PathValue("tenant_id"), r.PathValue("domain_id"), req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -119,7 +118,7 @@ func (h Handler) CreateQueryStrategy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity, _ := access.IdentityFromContext(r.Context())
-	strategy, err := h.service.UpsertQueryStrategy(identity, mux.Vars(r)["tenant_id"], req)
+	strategy, err := h.service.UpsertQueryStrategy(identity, r.PathValue("tenant_id"), req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -133,9 +132,9 @@ func (h Handler) UpdateQueryStrategy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	req.Key = mux.Vars(r)["key"]
+	req.Key = r.PathValue("key")
 	identity, _ := access.IdentityFromContext(r.Context())
-	strategy, err := h.service.UpsertQueryStrategy(identity, mux.Vars(r)["tenant_id"], req)
+	strategy, err := h.service.UpsertQueryStrategy(identity, r.PathValue("tenant_id"), req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -150,7 +149,7 @@ func (h Handler) CreateQueryTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity, _ := access.IdentityFromContext(r.Context())
-	template, err := h.service.CreateQueryTemplate(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["domain_id"], req)
+	template, err := h.service.CreateQueryTemplate(identity, r.PathValue("tenant_id"), r.PathValue("domain_id"), req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -160,7 +159,7 @@ func (h Handler) CreateQueryTemplate(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) ActivateQueryTemplate(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	template, err := h.service.ActivateQueryTemplate(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["domain_id"], mux.Vars(r)["name"])
+	template, err := h.service.ActivateQueryTemplate(identity, r.PathValue("tenant_id"), r.PathValue("domain_id"), r.PathValue("name"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -175,7 +174,7 @@ func (h Handler) UpsertStatusFieldConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	identity, _ := access.IdentityFromContext(r.Context())
-	config, err := h.service.UpsertStatusFieldConfig(identity, mux.Vars(r)["tenant_id"], mux.Vars(r)["domain_id"], req)
+	config, err := h.service.UpsertStatusFieldConfig(identity, r.PathValue("tenant_id"), r.PathValue("domain_id"), req)
 	if err != nil {
 		writeError(w, err)
 		return

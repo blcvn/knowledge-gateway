@@ -241,6 +241,64 @@ func TestSyncSessionLifecycleOnMemoryStore(t *testing.T) {
 	}
 }
 
+func TestOpenSyncSessionUsesAuthenticatedSeededIdentity(t *testing.T) {
+	svc, store := newTestService(t)
+
+	cache, err := rediscache.New(config.RedisConfig{Host: "127.0.0.1", Port: 6379, DB: 0})
+	if err != nil {
+		t.Fatalf("rediscache.New() error = %v", err)
+	}
+	accessStore := access.NewMemoryStore()
+	accessStore.Seed(access.SeedTenants(), access.SeedApps(), access.SeedGrants())
+	identityResolver := access.NewIdentityResolver(accessStore, &cache)
+
+	actor, err := identityResolver.Resolve("Bearer kgsk_test_alpha_admin")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if actor.AppID != access.TestAlphaAdminAppID {
+		t.Fatalf("resolved app id = %q, want %q", actor.AppID, access.TestAlphaAdminAppID)
+	}
+
+	sessionResp, err := svc.OpenSyncSession(context.Background(), actor, OpenSyncSessionRequest{
+		DomainID:   "noi_bo_hop_dong",
+		GraphScope: "project:auth-sync",
+	})
+	if err != nil {
+		t.Fatalf("OpenSyncSession() error = %v", err)
+	}
+	if sessionResp.GraphIdentifierID == "" || sessionResp.GraphVersionID == "" {
+		t.Fatalf("session response missing ids: %+v", sessionResp)
+	}
+	if got := svc.sessionManager.(*recordingSessionManager).LastScope.Identity; got.TenantID != actor.TenantID || got.AppID != actor.AppID {
+		t.Fatalf("session identity = %+v, want %+v", got, session.WriteIdentity{TenantID: actor.TenantID, AppID: actor.AppID})
+	}
+	graphIdentity, ok := store.GetGraphIdentityByID(context.Background(), sessionResp.GraphIdentifierID)
+	if !ok {
+		t.Fatalf("GetGraphIdentityByID(%s) missing", sessionResp.GraphIdentifierID)
+	}
+	if graphIdentity.OwnerAppID != actor.AppID {
+		t.Fatalf("graph identity owner app = %q, want %q", graphIdentity.OwnerAppID, actor.AppID)
+	}
+}
+
+func TestOpenSyncSessionRejectsPlatformVisibleDomainWithoutGrant(t *testing.T) {
+	svc, _ := newTestService(t)
+	actor := access.Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    access.TestAlphaAdminAppID,
+		AppType:  "admin_tool",
+	}
+
+	_, err := svc.OpenSyncSession(context.Background(), actor, OpenSyncSessionRequest{
+		DomainID:   "sample-registry",
+		GraphScope: "project:platform-visible",
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("OpenSyncSession() error = %v, want forbidden", err)
+	}
+}
+
 func TestMemoryStoreCleanupExpiredSyncSessionDoesNotReleaseNewerLease(t *testing.T) {
 	store := NewMemoryStore()
 	now := time.Now().UTC()
@@ -735,7 +793,7 @@ func TestCrossTenantWriteGrantAllowsAndRevokeDeniesMutation(t *testing.T) {
 	}
 	store := NewMemoryStore()
 	seedBridgeTarget(store)
-	svc := NewService(store, ontologyService, accessResolver, &recordingSessionManager{}, nil)
+	svc := NewService(store, ontologyService, accessResolver, nil, &recordingSessionManager{}, nil)
 	grantActor := access.Identity{
 		TenantID: "22222222-2222-2222-2222-222222222222",
 		AppID:    "22222222-bbbb-2222-bbbb-222222222222",
@@ -1283,7 +1341,7 @@ func newTestService(t *testing.T) (*Service, *MemoryStore) {
 
 	store := NewMemoryStore()
 	seedBridgeTarget(store)
-	return NewService(store, ontologyService, accessResolver, &recordingSessionManager{}, nil), store
+	return NewService(store, ontologyService, accessResolver, nil, &recordingSessionManager{}, nil), store
 }
 
 func TestCreateNodeRequiresBridgePropertyWhenRuleIsConfigured(t *testing.T) {
@@ -1329,7 +1387,7 @@ func TestCreateNodeBuildsBridgeRelationshipsAndTracksSessionScope(t *testing.T) 
 	sessionManager := &recordingSessionManager{}
 	store := NewMemoryStore()
 	seedBridgeTarget(store)
-	svc := NewService(store, ontologyService, accessResolver, sessionManager, nil)
+	svc := NewService(store, ontologyService, accessResolver, nil, sessionManager, nil)
 
 	resp, err := svc.CreateNode(access.Identity{
 		TenantID: "11111111-1111-1111-1111-111111111111",
@@ -1533,7 +1591,7 @@ func TestWriteServiceEmitsAuditEntriesForSuccessfulMutations(t *testing.T) {
 	store := NewMemoryStore()
 	seedBridgeTarget(store)
 	auditLogger := &fakeAuditLogger{}
-	svc := NewService(store, ontologyService, accessResolver, &recordingSessionManager{}, auditLogger)
+	svc := NewService(store, ontologyService, accessResolver, nil, &recordingSessionManager{}, auditLogger)
 	actor := access.Identity{
 		TenantID: "11111111-1111-1111-1111-111111111111",
 		AppID:    "11111111-admin-1111-admin-111111111111",

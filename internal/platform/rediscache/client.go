@@ -3,6 +3,7 @@ package rediscache
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,6 +40,9 @@ func New(cfg config.RedisConfig) (Client, error) {
 }
 
 func (c *Client) SetJSON(key string, value any, ttl time.Duration) error {
+	if c == nil {
+		return nil
+	}
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -56,6 +60,9 @@ func (c *Client) SetJSON(key string, value any, ttl time.Duration) error {
 }
 
 func (c *Client) GetJSON(key string, target any) (bool, error) {
+	if c == nil {
+		return false, nil
+	}
 	c.mu.RLock()
 	item, ok := c.entries[key]
 	c.mu.RUnlock()
@@ -78,7 +85,23 @@ func (c *Client) GetJSON(key string, target any) (bool, error) {
 }
 
 func (c *Client) Delete(key string) {
+	if c == nil {
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.entries, key)
+}
+
+func (c *Client) DeletePrefix(prefix string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key := range c.entries {
+		if strings.HasPrefix(key, prefix) {
+			delete(c.entries, key)
+		}
+	}
 }

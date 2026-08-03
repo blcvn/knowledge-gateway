@@ -1753,7 +1753,7 @@ func newWorkerFixture(t *testing.T) workerFixture {
 	}
 
 	store := write.NewMemoryStore()
-	writeSvc := write.NewService(store, ontologySvc, accessResolver, &recordingSessionManager{}, nil)
+	writeSvc := write.NewService(store, ontologySvc, accessResolver, nil, &recordingSessionManager{}, nil)
 	parent, err := writeSvc.CreateNode(actor, write.NodeCreateRequest{
 		DomainID:   "test-domain",
 		NodeType:   "Parent",

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"github.com/gorilla/mux"
 
 	"kg-service/internal/access"
 	"kg-service/internal/httpapi/respond"
@@ -37,6 +36,8 @@ func (h Handler) CreateNode(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 		case errors.Is(err, ErrValidation):
 			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		case errors.Is(err, ErrControlPlaneNotReady):
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 		default:
 			respond.Error(w, respond.StatusFor(respond.CodeInternal), respond.CodeInternal, "Internal server error", nil)
 		}
@@ -78,6 +79,8 @@ func (h Handler) OpenSyncSession(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 		case errors.Is(err, ErrValidation):
 			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		case errors.Is(err, ErrControlPlaneNotReady):
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 		case errors.Is(err, ErrScopeLocked):
 			respond.Error(w, respond.StatusFor(respond.CodeSyncScopeLocked), respond.CodeSyncScopeLocked, "Sync scope is locked", nil)
 		default:
@@ -96,14 +99,17 @@ func (h Handler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.UpdateNodeWithContext(r.Context(), identity, mux.Vars(r)["id"], req)
+	nodeID := r.PathValue("id")
+	result, err := h.service.UpdateNodeWithContext(r.Context(), identity, nodeID, req)
 	if err != nil {
-		log.Printf("write update_node failed tenant=%s app=%s node_id=%s graph_version_id=%s err=%v", identity.TenantID, identity.AppID, mux.Vars(r)["id"], req.GraphVersionID, err)
+		log.Printf("write update_node failed tenant=%s app=%s node_id=%s graph_version_id=%s err=%v", identity.TenantID, identity.AppID, nodeID, req.GraphVersionID, err)
 		switch {
 		case errors.Is(err, ErrForbidden):
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 		case errors.Is(err, ErrValidation):
 			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		case errors.Is(err, ErrControlPlaneNotReady):
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 		case errors.Is(err, ErrNotFound):
 			respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
 		default:
@@ -117,9 +123,10 @@ func (h Handler) UpdateNode(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.DeleteNodeWithVersion(r.Context(), identity, mux.Vars(r)["id"], r.URL.Query().Get("graph_version_id"))
+	nodeID := r.PathValue("id")
+	result, err := h.service.DeleteNodeWithVersion(r.Context(), identity, nodeID, r.URL.Query().Get("graph_version_id"))
 	if err != nil {
-		log.Printf("write delete_node failed tenant=%s app=%s node_id=%s graph_version_id=%s err=%v", identity.TenantID, identity.AppID, mux.Vars(r)["id"], r.URL.Query().Get("graph_version_id"), err)
+		log.Printf("write delete_node failed tenant=%s app=%s node_id=%s graph_version_id=%s err=%v", identity.TenantID, identity.AppID, nodeID, r.URL.Query().Get("graph_version_id"), err)
 		switch {
 		case errors.Is(err, ErrForbidden):
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
@@ -167,6 +174,8 @@ func (h Handler) CreateRelationship(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
 		case errors.Is(err, ErrValidation):
 			respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+		case errors.Is(err, ErrControlPlaneNotReady):
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 		case errors.Is(err, ErrNotFound):
 			respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
 		default:
@@ -197,8 +206,9 @@ func (h Handler) CreateRelationshipsBulk(w http.ResponseWriter, r *http.Request)
 
 func (h Handler) CommitSyncSession(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	if err := h.service.CommitSyncSession(r.Context(), identity, mux.Vars(r)["id"]); err != nil {
-		log.Printf("write commit_sync_session failed tenant=%s app=%s session_id=%s err=%v", identity.TenantID, identity.AppID, mux.Vars(r)["id"], err)
+	sessionID := r.PathValue("id")
+	if err := h.service.CommitSyncSession(r.Context(), identity, sessionID); err != nil {
+		log.Printf("write commit_sync_session failed tenant=%s app=%s session_id=%s err=%v", identity.TenantID, identity.AppID, sessionID, err)
 		switch {
 		case errors.Is(err, ErrForbidden):
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
@@ -220,8 +230,9 @@ func (h Handler) CommitSyncSession(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) AbandonSyncSession(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	if err := h.service.AbandonSyncSession(r.Context(), identity, mux.Vars(r)["id"]); err != nil {
-		log.Printf("write abandon_sync_session failed tenant=%s app=%s session_id=%s err=%v", identity.TenantID, identity.AppID, mux.Vars(r)["id"], err)
+	sessionID := r.PathValue("id")
+	if err := h.service.AbandonSyncSession(r.Context(), identity, sessionID); err != nil {
+		log.Printf("write abandon_sync_session failed tenant=%s app=%s session_id=%s err=%v", identity.TenantID, identity.AppID, sessionID, err)
 		switch {
 		case errors.Is(err, ErrForbidden):
 			respond.Error(w, respond.StatusFor(respond.CodeForbidden), respond.CodeForbidden, "Forbidden", nil)
@@ -282,7 +293,7 @@ func (h Handler) IngestDocument(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) GetIngestJob(w http.ResponseWriter, r *http.Request) {
 	identity, _ := access.IdentityFromContext(r.Context())
-	result, err := h.service.GetIngestJob(identity, mux.Vars(r)["job_id"])
+	result, err := h.service.GetIngestJob(identity, r.PathValue("job_id"))
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrForbidden):
@@ -317,6 +328,8 @@ func writeError(w http.ResponseWriter, err error) {
 		respond.Error(w, respond.StatusFor(respond.CodeNotFound), respond.CodeNotFound, "Resource not found", nil)
 	case errors.Is(err, ErrValidation):
 		respond.Error(w, respond.StatusFor(respond.CodeValidationFailed), respond.CodeValidationFailed, err.Error(), nil)
+	case errors.Is(err, ErrControlPlaneNotReady):
+		respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, "Control plane is not ready", nil)
 	case errors.Is(err, ErrScopeLocked):
 		respond.Error(w, respond.StatusFor(respond.CodeSyncScopeLocked), respond.CodeSyncScopeLocked, "Sync scope is locked", nil)
 	default:

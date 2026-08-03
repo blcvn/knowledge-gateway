@@ -2,9 +2,11 @@ package access
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -28,7 +30,7 @@ func TestIdentityResolverResolvesAndCachesActiveApp(t *testing.T) {
 	if identity.TenantID != "11111111-1111-1111-1111-111111111111" {
 		t.Fatalf("TenantID = %q", identity.TenantID)
 	}
-	if identity.AppID != "11111111-aaaa-1111-aaaa-111111111111" {
+	if identity.AppID != TestAlphaAppID {
 		t.Fatalf("AppID = %q", identity.AppID)
 	}
 
@@ -40,6 +42,46 @@ func TestIdentityResolverResolvesAndCachesActiveApp(t *testing.T) {
 	}
 	if identity.AppID == "" {
 		t.Fatal("cached identity is empty")
+	}
+}
+
+func TestIdentityResolverFallsBackToCanonicalAppWhenCacheDrifts(t *testing.T) {
+	cache := mustNewCache(t)
+	store := NewMemoryStore()
+	store.Seed(SeedTenants(), SeedApps(), nil)
+
+	stale := identityCacheEntry{
+		TenantID: "99999999-9999-9999-9999-999999999999",
+		AppID:    "99999999-9999-9999-9999-999999999998",
+		AppType:  "hybrid",
+		Status:   "active",
+	}
+	if err := cache.SetJSON("apikey:"+APIKeyHash("kgsk_test_alpha"), stale, time.Minute); err != nil {
+		t.Fatalf("SetJSON() error = %v", err)
+	}
+
+	resolver := NewIdentityResolver(store, cache)
+	identity, err := resolver.Resolve("Bearer kgsk_test_alpha")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if identity.TenantID != "11111111-1111-1111-1111-111111111111" {
+		t.Fatalf("TenantID = %q", identity.TenantID)
+	}
+	if identity.AppID != TestAlphaAppID {
+		t.Fatalf("AppID = %q", identity.AppID)
+	}
+
+	var cached identityCacheEntry
+	ok, err := cache.GetJSON("apikey:"+APIKeyHash("kgsk_test_alpha"), &cached)
+	if err != nil {
+		t.Fatalf("GetJSON() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("expected refreshed cache entry")
+	}
+	if cached.TenantID != identity.TenantID || cached.AppID != identity.AppID {
+		t.Fatalf("cached identity = %#v, want %#v", cached, identity)
 	}
 }
 
@@ -76,6 +118,14 @@ func TestAccessResolverIncludesPlatformTenantAndGrants(t *testing.T) {
 	}
 	if !foundGrant {
 		t.Fatal("expected grant-derived visibility")
+	}
+}
+
+func TestSeededWriteAppIDsAreUUIDBacked(t *testing.T) {
+	for _, appID := range []string{PlatformAdminAppID, TestAlphaAdminAppID, TestAlphaAppID, TestBetaAppID} {
+		if !uuidPattern.MatchString(appID) {
+			t.Fatalf("app id %q is not UUID-backed", appID)
+		}
 	}
 }
 
@@ -167,9 +217,9 @@ func TestIdentityResolverRejectsRevokedAppAndExpiredGrants(t *testing.T) {
 
 	if _, err := service.RevokeApp(Identity{
 		TenantID: "11111111-1111-1111-1111-111111111111",
-		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppID:    TestAlphaAdminAppID,
 		AppType:  "admin_tool",
-	}, "11111111-1111-1111-1111-111111111111", "11111111-aaaa-1111-aaaa-111111111111"); err != nil {
+	}, "11111111-1111-1111-1111-111111111111", TestAlphaAppID); err != nil {
 		t.Fatalf("RevokeApp() error = %v", err)
 	}
 
@@ -225,6 +275,8 @@ func TestIdentityResolverRejectsRevokedAppAndExpiredGrants(t *testing.T) {
 		}
 	}
 }
+
+var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 func TestMiddlewareUsesFreshIdentityPerRequest(t *testing.T) {
 	cache := mustNewCache(t)
@@ -443,6 +495,18 @@ func TestServiceCreateAppListRotateAndRevoke(t *testing.T) {
 		t.Fatal("CreateApp() api key is empty")
 	}
 
+	var cached identityCacheEntry
+	ok, err := cache.GetJSON("apikey:"+APIKeyHash(created.APIKey), &cached)
+	if err != nil {
+		t.Fatalf("CreateApp() cache GetJSON error = %v", err)
+	}
+	if !ok {
+		t.Fatal("CreateApp() did not warm identity cache")
+	}
+	if cached.AppID != created.ID || cached.TenantID != created.TenantID {
+		t.Fatalf("CreateApp() cached identity = %#v", cached)
+	}
+
 	apps, err := service.ListApps(actor, "11111111-1111-1111-1111-111111111111")
 	if err != nil {
 		t.Fatalf("ListApps() error = %v", err)
@@ -459,6 +523,21 @@ func TestServiceCreateAppListRotateAndRevoke(t *testing.T) {
 		t.Fatal("RotateAppKey() did not issue a new key")
 	}
 
+	ok, err = cache.GetJSON("apikey:"+APIKeyHash(created.APIKey), &cached)
+	if err != nil {
+		t.Fatalf("RotateAppKey() old cache GetJSON error = %v", err)
+	}
+	if ok {
+		t.Fatal("RotateAppKey() left old api key cached")
+	}
+	ok, err = cache.GetJSON("apikey:"+APIKeyHash(rotated.APIKey), &cached)
+	if err != nil {
+		t.Fatalf("RotateAppKey() new cache GetJSON error = %v", err)
+	}
+	if !ok || cached.AppID != created.ID {
+		t.Fatalf("RotateAppKey() cached identity = %#v", cached)
+	}
+
 	revoked, err := service.RevokeApp(actor, created.TenantID, created.ID)
 	if err != nil {
 		t.Fatalf("RevokeApp() error = %v", err)
@@ -469,6 +548,58 @@ func TestServiceCreateAppListRotateAndRevoke(t *testing.T) {
 	if revoked.RevokedAt == nil {
 		t.Fatal("RevokeApp() revoked_at is nil")
 	}
+
+	ok, err = cache.GetJSON("apikey:"+APIKeyHash(rotated.APIKey), &cached)
+	if err != nil {
+		t.Fatalf("RevokeApp() cache GetJSON error = %v", err)
+	}
+	if ok {
+		t.Fatal("RevokeApp() left revoked api key cached")
+	}
+}
+
+func TestServiceReturnsNotFoundForMissingTenantSlugAndWrongTenantIDs(t *testing.T) {
+	cache := mustNewCache(t)
+	store := NewMemoryStore()
+	store.Seed(SeedTenants(), SeedApps(), nil)
+	service := NewService(store, cache)
+	platformAdmin := Identity{
+		TenantID: PlatformTenantID,
+		AppID:    "00000000-admin-0000-admin-000000000000",
+		AppType:  "admin_tool",
+	}
+
+	t.Run("get missing tenant", func(t *testing.T) {
+		_, err := service.GetTenant(platformAdmin, "ffffffff-ffff-ffff-ffff-ffffffffffff")
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("GetTenant() error = %v, want not found", err)
+		}
+	})
+
+	t.Run("create app with slug instead of tenant id", func(t *testing.T) {
+		_, err := service.CreateApp(platformAdmin, "test-alpha", AppCreateRequest{
+			Slug: "slugged-app",
+			Name: "Slugged App",
+			Type: "agent_consumer",
+		})
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("CreateApp() error = %v, want not found", err)
+		}
+	})
+
+	t.Run("list apps with slug instead of tenant id", func(t *testing.T) {
+		_, err := service.ListApps(platformAdmin, "test-alpha")
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("ListApps() error = %v, want not found", err)
+		}
+	})
+
+	t.Run("wrong tenant for app lookup", func(t *testing.T) {
+		_, err := service.RotateAppKey(platformAdmin, "11111111-1111-1111-1111-111111111111", "22222222-bbbb-2222-bbbb-222222222222")
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("RotateAppKey() error = %v, want not found", err)
+		}
+	})
 }
 
 func TestServiceCreateListAndRevokeGrant(t *testing.T) {
@@ -836,6 +967,46 @@ func TestCreateGrantHandlerReturnsCreated(t *testing.T) {
 
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTenantAppHandlersReturnNotFoundForSlugAndWrongTenantPaths(t *testing.T) {
+	cache := mustNewCache(t)
+	store := NewMemoryStore()
+	store.Seed(SeedTenants(), SeedApps(), nil)
+	handler := NewHandler(NewAccessResolver(store, store, cache), NewService(store, cache))
+	platformAdmin := Identity{
+		TenantID: PlatformTenantID,
+		AppID:    "00000000-admin-0000-admin-000000000000",
+		AppType:  "admin_tool",
+	}
+
+	getTenantReq := httptest.NewRequest(http.MethodGet, "/v1/tenants/test-alpha", nil)
+	getTenantReq.SetPathValue("tenant_id", "test-alpha")
+	getTenantReq = getTenantReq.WithContext(ContextWithIdentity(getTenantReq.Context(), platformAdmin))
+	getTenantRec := httptest.NewRecorder()
+	handler.GetTenant(getTenantRec, getTenantReq)
+	if getTenantRec.Code != http.StatusNotFound {
+		t.Fatalf("GetTenant() status = %d body=%s", getTenantRec.Code, getTenantRec.Body.String())
+	}
+
+	createAppReq := httptest.NewRequest(http.MethodPost, "/v1/tenants/test-alpha/apps", strings.NewReader(`{"slug":"slugged-app","name":"Slugged App","type":"agent_consumer"}`))
+	createAppReq.SetPathValue("tenant_id", "test-alpha")
+	createAppReq = createAppReq.WithContext(ContextWithIdentity(createAppReq.Context(), platformAdmin))
+	createAppRec := httptest.NewRecorder()
+	handler.CreateApp(createAppRec, createAppReq)
+	if createAppRec.Code != http.StatusNotFound {
+		t.Fatalf("CreateApp() status = %d body=%s", createAppRec.Code, createAppRec.Body.String())
+	}
+
+	rotateReq := httptest.NewRequest(http.MethodPost, "/v1/tenants/11111111-1111-1111-1111-111111111111/apps/22222222-bbbb-2222-bbbb-222222222222/rotate-key", nil)
+	rotateReq.SetPathValue("tenant_id", "11111111-1111-1111-1111-111111111111")
+	rotateReq.SetPathValue("app_id", "22222222-bbbb-2222-bbbb-222222222222")
+	rotateReq = rotateReq.WithContext(ContextWithIdentity(rotateReq.Context(), platformAdmin))
+	rotateRec := httptest.NewRecorder()
+	handler.RotateAppKey(rotateRec, rotateReq)
+	if rotateRec.Code != http.StatusNotFound {
+		t.Fatalf("RotateAppKey() status = %d body=%s", rotateRec.Code, rotateRec.Body.String())
 	}
 }
 

@@ -1,6 +1,7 @@
 package access
 
 import (
+	"reflect"
 	"slices"
 	"time"
 
@@ -20,11 +21,17 @@ func NewAccessResolver(tenants TenantStore, grants GrantStore, cache *rediscache
 }
 
 func (r *AccessResolver) ResolveVisibleOwners(identity Identity) ([]VisibleOwner, error) {
+	if r == nil || r.tenants == nil || r.grants == nil {
+		return nil, nil
+	}
 	cacheKey := "acl:" + identity.TenantID + ":" + identity.AppID
 
 	var cached []VisibleOwner
-	if ok, err := r.cache.GetJSON(cacheKey, &cached); err == nil && ok {
-		return cached, nil
+	cacheHit := false
+	if r != nil && r.cache != nil {
+		if ok, err := r.cache.GetJSON(cacheKey, &cached); err == nil && ok {
+			cacheHit = true
+		}
 	}
 
 	owners := []VisibleOwner{
@@ -62,8 +69,13 @@ func (r *AccessResolver) ResolveVisibleOwners(identity Identity) ([]VisibleOwner
 	}
 
 	owners = dedupeVisibleOwners(owners)
-	if err := r.cache.SetJSON(cacheKey, owners, accessCacheTTL); err != nil {
-		return nil, err
+	if cacheHit && reflect.DeepEqual(cached, owners) {
+		return cached, nil
+	}
+	if r != nil && r.cache != nil {
+		if err := r.cache.SetJSON(cacheKey, owners, accessCacheTTL); err != nil {
+			return nil, err
+		}
 	}
 
 	return owners, nil

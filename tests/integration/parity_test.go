@@ -193,6 +193,8 @@ func TestReplaySurvivesRestart(t *testing.T) {
 }
 
 type integrationFixture struct {
+	accessStore   *access.MemoryStore
+	accessSvc     *access.Service
 	store         *write.MemoryStore
 	ontologySvc   *ontology.Service
 	writeSvc      *write.Service
@@ -208,6 +210,27 @@ type integrationFixture struct {
 	sessionMgr    *recordingSessionManager
 }
 
+type stubOwnerRegistry struct {
+	tenants map[string]access.Tenant
+	apps    map[string]access.App
+}
+
+func (s *stubOwnerRegistry) GetTenant(id string) (access.Tenant, bool) {
+	if s == nil {
+		return access.Tenant{}, false
+	}
+	tenant, ok := s.tenants[id]
+	return tenant, ok
+}
+
+func (s *stubOwnerRegistry) GetAppByID(id string) (access.App, bool) {
+	if s == nil {
+		return access.App{}, false
+	}
+	app, ok := s.apps[id]
+	return app, ok
+}
+
 func newIntegrationFixture(t testing.TB) integrationFixture {
 	t.Helper()
 
@@ -221,7 +244,7 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 	accessSvc := access.NewService(accessStore, &cache)
 
 	ontologyStore := ontology.NewMemoryStore()
-	ontologyStore.Seed(
+		ontologyStore.Seed(
 		ontology.SeedDomains(),
 		ontology.SeedVersions(),
 		ontology.SeedNodeTypes(),
@@ -230,12 +253,12 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 		ontology.SeedQueryTemplates(),
 		ontology.SeedStatusFieldConfigs(),
 	)
-	ontologySvc := ontology.NewService(ontologyStore, accessResolver)
-	actor := access.Identity{
-		TenantID: "11111111-1111-1111-1111-111111111111",
-		AppID:    "11111111-admin-1111-admin-111111111111",
-		AppType:  "admin_tool",
-	}
+		ontologySvc := ontology.NewService(ontologyStore, accessResolver)
+		actor := access.Identity{
+			TenantID: "11111111-1111-1111-1111-111111111111",
+			AppID:    access.TestAlphaAdminAppID,
+			AppType:  "admin_tool",
+		}
 	if _, err := ontologySvc.CreateDomain(actor, actor.TenantID, ontology.DomainCreateRequest{ID: "integration-domain", Name: "Integration Domain"}); err != nil && !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("CreateDomain() error = %v", err)
 	}
@@ -270,7 +293,7 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 	}
 	sessionMgr := &recordingSessionManager{}
 	store := write.NewMemoryStore()
-	writeSvc := write.NewService(store, ontologySvc, accessResolver, sessionMgr, accessSvc)
+	writeSvc := write.NewService(store, ontologySvc, accessResolver, accessStore, sessionMgr, accessSvc)
 	readSvc := read.NewService(store, ontologySvc, accessResolver, accessSvc)
 	searchSvc := search.NewService(store, ontologySvc, accessResolver, accessSvc)
 	integritySvc := integrity.NewService(store, ontologyStore, nil)
@@ -279,6 +302,8 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 	searchSvc.SetFTSAdapter(runtime.FTSAdapter())
 
 	return integrationFixture{
+		accessStore:   accessStore,
+		accessSvc:     accessSvc,
 		store:         store,
 		ontologySvc:   ontologySvc,
 		writeSvc:      writeSvc,
@@ -292,5 +317,159 @@ func newIntegrationFixture(t testing.TB) integrationFixture {
 		actor:         actor,
 		cache:         cache,
 		sessionMgr:    sessionMgr,
+	}
+}
+
+func TestOnboardedAppCanAuthenticateAndWrite(t *testing.T) {
+	fixture := newIntegrationFixture(t)
+
+	platformAdmin := access.Identity{
+		TenantID: access.PlatformTenantID,
+		AppID:    access.PlatformAdminAppID,
+		AppType:  "admin_tool",
+	}
+	tenantResp, err := fixture.accessSvc.CreateTenant(platformAdmin, access.TenantCreateRequest{
+		Slug: "integration-onboarded",
+		Name: "Integration Onboarded Tenant",
+		Tier: "pro",
+	})
+	if err != nil {
+		t.Fatalf("CreateTenant() error = %v", err)
+	}
+	appResp, err := fixture.accessSvc.CreateApp(platformAdmin, tenantResp.ID, access.AppCreateRequest{
+		Slug: "integration-writer",
+		Name: "Integration Writer",
+		Type: "admin_tool",
+	})
+	if err != nil {
+		t.Fatalf("CreateApp() error = %v", err)
+	}
+	if appResp.APIKey == "" {
+		t.Fatal("CreateApp() returned empty api key")
+	}
+
+	actor := access.Identity{}
+	authReq, err := http.NewRequest(http.MethodGet, "/v1/access/resolve", nil)
+	if err != nil {
+		t.Fatalf("http.NewRequest() error = %v", err)
+	}
+	authReq.Header.Set("Authorization", "Bearer "+appResp.APIKey)
+	authRec := httptest.NewRecorder()
+	authHandler := access.NewMiddleware(access.NewIdentityResolver(fixture.accessStore, &fixture.cache)).RequireIdentity(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var ok bool
+		actor, ok = access.IdentityFromContext(r.Context())
+		if !ok {
+			http.Error(w, "missing identity", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	authHandler.ServeHTTP(authRec, authReq)
+	if authRec.Code != http.StatusNoContent {
+		t.Fatalf("auth status = %d body=%s", authRec.Code, authRec.Body.String())
+	}
+	if actor.TenantID != tenantResp.ID || actor.AppID != appResp.ID {
+		t.Fatalf("resolved identity = %+v, want tenant=%s app=%s", actor, tenantResp.ID, appResp.ID)
+	}
+
+	_, err = fixture.ontologySvc.CreateDomain(platformAdmin, tenantResp.ID, ontology.DomainCreateRequest{
+		ID:         "integration-onboarded-domain",
+		Name:       "Integration Onboarded Domain",
+		Status:     "active",
+		Visibility: "private",
+	})
+	if err != nil {
+		t.Fatalf("CreateDomain() error = %v", err)
+	}
+	_, err = fixture.ontologySvc.CreateNodeType(platformAdmin, tenantResp.ID, "integration-onboarded-domain", ontology.NodeTypeCreateRequest{
+		NodeTypeName:  "Doc",
+		RequiredProps: []ontology.PropertySchema{{Name: "title", Type: "string"}},
+		OptionalProps: []ontology.PropertySchema{{Name: "status", Type: "string"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateNodeType() error = %v", err)
+	}
+
+	writeReq := httptest.NewRequest(http.MethodPost, "/v1/kg/write/nodes", strings.NewReader(`{"domain_id":"integration-onboarded-domain","node_type":"Doc","properties":{"title":"Onboarded Doc","status":"active"}}`))
+	writeReq.Header.Set("Authorization", "Bearer "+appResp.APIKey)
+	writeRec := httptest.NewRecorder()
+	middleware := access.NewMiddleware(access.NewIdentityResolver(fixture.accessStore, &fixture.cache))
+	middleware.RequireIdentity(http.HandlerFunc(fixture.writeHandler.CreateNode)).ServeHTTP(writeRec, writeReq)
+	if writeRec.Code != http.StatusAccepted {
+		t.Fatalf("CreateNode() status = %d body=%s", writeRec.Code, writeRec.Body.String())
+	}
+	nodes := fixture.store.ListNodes()
+	if len(nodes) != 1 {
+		t.Fatalf("ListNodes() len = %d, want 1", len(nodes))
+	}
+	if nodes[0].OwnerTenantID != tenantResp.ID || nodes[0].OwnerAppID != appResp.ID {
+		t.Fatalf("stored owner identity = tenant=%s app=%s, want tenant=%s app=%s", nodes[0].OwnerTenantID, nodes[0].OwnerAppID, tenantResp.ID, appResp.ID)
+	}
+}
+
+func TestAuthenticatedWriteReturnsServiceUnavailableWhenDurableOwnerAppIsMissing(t *testing.T) {
+	fixture := newIntegrationFixture(t)
+
+	platformAdmin := access.Identity{
+		TenantID: access.PlatformTenantID,
+		AppID:    access.PlatformAdminAppID,
+		AppType:  "admin_tool",
+	}
+	tenantResp, err := fixture.accessSvc.CreateTenant(platformAdmin, access.TenantCreateRequest{
+		Slug: "integration-stale-owner",
+		Name: "Integration Stale Owner Tenant",
+		Tier: "pro",
+	})
+	if err != nil {
+		t.Fatalf("CreateTenant() error = %v", err)
+	}
+	appResp, err := fixture.accessSvc.CreateApp(platformAdmin, tenantResp.ID, access.AppCreateRequest{
+		Slug: "integration-stale-writer",
+		Name: "Integration Stale Writer",
+		Type: "admin_tool",
+	})
+	if err != nil {
+		t.Fatalf("CreateApp() error = %v", err)
+	}
+	tenant, ok := fixture.accessStore.GetTenant(tenantResp.ID)
+	if !ok {
+		t.Fatalf("GetTenant(%s) = missing", tenantResp.ID)
+	}
+	_, ok = fixture.accessStore.GetAppByID(appResp.ID)
+	if !ok {
+		t.Fatalf("GetAppByID(%s) = missing", appResp.ID)
+	}
+	_, err = fixture.ontologySvc.CreateDomain(platformAdmin, tenantResp.ID, ontology.DomainCreateRequest{
+		ID:         "integration-stale-owner-domain",
+		Name:       "Integration Stale Owner Domain",
+		Status:     "active",
+		Visibility: "private",
+	})
+	if err != nil {
+		t.Fatalf("CreateDomain() error = %v", err)
+	}
+	_, err = fixture.ontologySvc.CreateNodeType(platformAdmin, tenantResp.ID, "integration-stale-owner-domain", ontology.NodeTypeCreateRequest{
+		NodeTypeName:  "Doc",
+		RequiredProps: []ontology.PropertySchema{{Name: "title", Type: "string"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateNodeType() error = %v", err)
+	}
+
+	staleRegistry := &stubOwnerRegistry{
+		tenants: map[string]access.Tenant{tenantResp.ID: tenant},
+		apps:    map[string]access.App{},
+	}
+	accessResolver := access.NewAccessResolver(fixture.accessStore, fixture.accessStore, &fixture.cache)
+	writeSvc := write.NewService(fixture.store, fixture.ontologySvc, accessResolver, staleRegistry, fixture.sessionMgr, fixture.accessSvc)
+	writeHandler := write.NewHandler(writeSvc)
+
+	writeReq := httptest.NewRequest(http.MethodPost, "/v1/kg/write/nodes", strings.NewReader(`{"domain_id":"integration-stale-owner-domain","node_type":"Doc","properties":{"title":"Should Fail Before FK"}}`))
+	writeReq.Header.Set("Authorization", "Bearer "+appResp.APIKey)
+	writeRec := httptest.NewRecorder()
+	middleware := access.NewMiddleware(access.NewIdentityResolver(fixture.accessStore, &fixture.cache))
+	middleware.RequireIdentity(http.HandlerFunc(writeHandler.CreateNode)).ServeHTTP(writeRec, writeReq)
+	if writeRec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("CreateNode() status = %d body=%s", writeRec.Code, writeRec.Body.String())
 	}
 }

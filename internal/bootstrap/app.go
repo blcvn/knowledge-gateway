@@ -3,12 +3,12 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gorilla/mux"
 	kratos "github.com/go-kratos/kratos/v2"
 	kratoslog "github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -17,6 +17,7 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	httptransport "github.com/go-kratos/kratos/v2/transport/http"
+	"github.com/gorilla/mux"
 	"go.opentelemetry.io/otel"
 	otelmetric "go.opentelemetry.io/otel/metric"
 
@@ -49,7 +50,7 @@ type App struct {
 
 	accessHandler        access.Handler
 	accessMiddleware     access.Middleware
-	accessStore          *access.MemoryStore
+	accessStore          access.TenantAppStore
 	integrityHandler     integrity.Handler
 	metricsHandler       observability.Handler
 	mcpHandler           mcp.Handler
@@ -112,6 +113,10 @@ func New(cfg config.Config) (*kratos.App, error) {
 			),
 			metrics.Server(httpServerMetrics(cfg)...),
 		),
+		httptransport.NotFoundHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("route miss method=%s path=%s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		})),
 	)
 	app.registerRoutes(httpServer.Route(""))
 
@@ -212,14 +217,11 @@ func httpToKratosHandler(handler http.Handler) httptransport.HandlerFunc {
 		if handler == nil {
 			return nil
 		}
-		req := ctx.Request()
-		// Bridge gorilla/mux path vars → Go 1.22 r.PathValue()
-		if vars := mux.Vars(req); len(vars) > 0 {
-			for k, v := range vars {
-				req.SetPathValue(k, v)
-			}
+		request := ctx.Request()
+		for key, value := range mux.Vars(request) {
+			request.SetPathValue(key, value)
 		}
-		handler.ServeHTTP(ctx.Response(), req)
+		handler.ServeHTTP(ctx.Response(), request)
 		return nil
 	}
 }
@@ -242,8 +244,8 @@ func (a *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) initAccess() error {
-	store := access.NewMemoryStore()
-	store.Seed(access.SeedTenants(), access.SeedApps(), access.SeedGrants())
+	store := postgres.NewRepository(a.pgDB)
+	seedAccessData(store)
 	a.accessStore = store
 
 	identityResolver := access.NewIdentityResolver(store, &a.redis)
@@ -255,17 +257,16 @@ func (a *App) initAccess() error {
 		"pro":        a.config.RateLimit.ProPerMinute,
 		"enterprise": a.config.RateLimit.EnterprisePerMinute,
 	})
-	ontologyStore := ontology.NewMemoryStore()
-	ontologyService := ontology.NewService(ontologyStore, accessResolver)
+	ontologyService := ontology.NewService(store, accessResolver)
 	a.searchResolver = ontologyService
 	bootstrapIdentity := access.Identity{
 		TenantID: access.PlatformTenantID,
-		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppID:    access.PlatformAdminAppID,
 		AppType:  "admin_tool",
 	}
 	bootstrapSampleOntology(a.logger, ontologyService, bootstrapIdentity)
-	ontologyStore.Seed(nil, nil, nil, nil, ontology.SeedCrossDomainRules(), nil, nil)
-	writeRepo := postgres.NewRepository(a.pgDB)
+	seedCrossDomainRules(store)
+	writeRepo := store
 	sessionManager := postgres.NewSessionManager(a.pgDB)
 	var err error
 	a.embeddingRouter, err = buildEmbeddingRouter(a.config)
@@ -285,7 +286,7 @@ func (a *App) initAccess() error {
 		return err
 	}
 	a.logger.Printf("embedding router chain: %s", strings.Join(embeddingChain(a.config), " -> "))
-	writeService := write.NewService(writeRepo, ontologyService, accessResolver, sessionManager, service)
+	writeService := write.NewService(writeRepo, ontologyService, accessResolver, store, sessionManager, service)
 	writeService.SetSyncETAConfig(a.config.SyncEtaDefaultMs)
 	writeService.SetSyncLagConfig(a.config.SyncLagToleranceMs, a.config.SyncLagStuckRetries)
 	writeService.SetFTSBackendKind(a.config.FTS.Kind)
@@ -306,7 +307,7 @@ func (a *App) initAccess() error {
 	searchService.SetVectorAdapter(a.vectorAdapter)
 	searchService.SetFTSAdapter(a.ftsAdapter)
 	searchService.SetSearchProfileResolver(a.searchResolver)
-	integrityService := integrity.NewService(writeRepo, ontologyStore, runtimeWorker)
+	integrityService := integrity.NewService(writeRepo, store, runtimeWorker)
 	mcpService := mcp.NewService(readService, searchService, writeService, ontologyService, accessResolver, integrityService, runtimeWorker)
 
 	a.accessMiddleware = access.NewMiddleware(identityResolver, rateLimiter)
@@ -319,6 +320,24 @@ func (a *App) initAccess() error {
 	a.searchHandler = search.NewHandler(searchService)
 	a.writeHandler = write.NewHandler(writeService)
 	return nil
+}
+
+func seedAccessData(store *postgres.Repository) {
+	for _, tenant := range access.SeedTenants() {
+		store.CreateTenant(tenant)
+	}
+	for _, app := range access.SeedApps() {
+		store.CreateApp(app)
+	}
+	for _, grant := range access.SeedGrants() {
+		store.CreateGrant(grant)
+	}
+}
+
+func seedCrossDomainRules(store *postgres.Repository) {
+	for _, rule := range ontology.SeedCrossDomainRules() {
+		store.CreateCrossDomainRule(rule)
+	}
 }
 
 func (a *App) runProjectionWorker(ctx context.Context) {
