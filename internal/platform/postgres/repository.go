@@ -1078,7 +1078,7 @@ func (r *Repository) CleanupExpiredSyncSession(ctx context.Context, versionID st
 func (r *Repository) cleanupExpiredSyncSessionInTx(ctx context.Context, versionID string) error {
 	var identityID, ownerTenantID, ownerAppID, graphScope string
 	row := r.queryRow(ctx, `
-		SELECT i.identifier_id, i.owner_tenant_id, COALESCE(i.owner_app_id, ''), i.graph_scope
+		SELECT i.identifier_id, i.owner_tenant_id, COALESCE(i.owner_app_id::text, ''), i.graph_scope
 		FROM kg_graph_versions v
 		JOIN kg_graph_identifiers i ON i.identifier_id = v.identifier_id
 		WHERE v.version_id = $1
@@ -1094,10 +1094,14 @@ func (r *Repository) cleanupExpiredSyncSessionInTx(ctx context.Context, versionI
 	`, versionID); err != nil {
 		return err
 	}
+	// The empty string has to be nulled out while the parameter is still text. Written as
+	// NULLIF($2, '') the parameter is inferred as uuid from the comparison against owner_app_id,
+	// and coercing the '' literal to uuid then fails at execution — every call, not only those with
+	// no app id — so this sweep could never release a lease at all.
 	_, err := r.exec(ctx, `
 		DELETE FROM kg_graph_scope_leases
 		WHERE owner_tenant_id = $1
-		  AND owner_app_id IS NOT DISTINCT FROM NULLIF($2, '')
+		  AND owner_app_id IS NOT DISTINCT FROM NULLIF($2::text, '')::uuid
 		  AND graph_scope = $3
 		  AND version_id = $4
 	`, ownerTenantID, ownerAppID, graphScope, versionID)
@@ -1332,34 +1336,43 @@ func (r *Repository) ListProjectionVersions() []write.ProjectionVersionRecord {
 		return nil
 	}
 	defer rows.Close()
-	result := make([]write.ProjectionVersionRecord, 0)
-	for rows.Next() {
-		var record write.ProjectionVersionRecord
-		var graphSyncedAt, vectorSyncedAt sql.NullTime
-		if err := rows.Scan(
-			&record.EntityID,
-			&record.EntityKind,
-			&record.SourceVersion,
-			&record.SourceEventID,
-			&record.SourceUpdatedAt,
-			&record.GraphBackend,
-			&record.GraphVersion,
-			&graphSyncedAt,
-			&record.VectorBackend,
-			&record.VectorVersion,
-			&vectorSyncedAt,
-		); err != nil {
-			continue
-		}
-		if graphSyncedAt.Valid {
-			record.LastGraphSyncedAt = graphSyncedAt.Time
-		}
-		if vectorSyncedAt.Valid {
-			record.LastVectorSyncedAt = vectorSyncedAt.Time
-		}
-		result = append(result, record)
+	return scanProjectionVersionRows(rows)
+}
+
+// ListRecentNodeProjectionVersionsByDomain returns the most recently updated node projections in a
+// domain, newest first, capped at limit.
+//
+// The sync-lag estimate needs only a few dozen recent samples, but the shape it used to reach them
+// was ListProjectionVersions followed by one GetNodeByID per row — every projection row in the
+// database, for every bulk write. Write latency therefore grew with the total number of nodes ever
+// projected across all tenants: at 1,339 rows a 500-node bulk took roughly a minute and exceeded the
+// caller's timeout, which is fatal to a migration that has hundreds of thousands of nodes to copy.
+//
+// Filtering and ordering belong in SQL, where the join to kg_nodes replaces those N round trips with
+// one query. The predicates mirror the ones estimateSyncETA applies in Go so the sample set is
+// unchanged.
+func (r *Repository) ListRecentNodeProjectionVersionsByDomain(domainID string, limit int) []write.ProjectionVersionRecord {
+	if strings.TrimSpace(domainID) == "" || limit <= 0 {
+		return nil
 	}
-	return result
+	rows, err := r.query(context.Background(), `
+		SELECT pv.entity_id, pv.entity_kind, pv.source_version, pv.source_event_id, pv.source_updated_at,
+		       COALESCE(pv.graph_backend, ''), COALESCE(pv.graph_version, 0), pv.graph_synced_at,
+		       COALESCE(pv.vector_backend, ''), COALESCE(pv.vector_version, 0), pv.vector_synced_at
+		FROM kg_projection_versions pv
+		JOIN kg_nodes n ON n.id = pv.entity_id
+		WHERE pv.entity_kind = 'kg_node'
+		  AND n.domain_id = $1
+		  AND pv.source_version <> 0
+		  AND pv.graph_synced_at IS NOT NULL
+		ORDER BY pv.source_updated_at DESC
+		LIMIT $2
+	`, domainID, limit)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	return scanProjectionVersionRows(rows)
 }
 
 func (r *Repository) ListProjectionVersionsBatch(afterEntityKind, afterEntityID string, limit int) []write.ProjectionVersionRecord {
@@ -1383,6 +1396,13 @@ func (r *Repository) ListProjectionVersionsBatch(afterEntityKind, afterEntityID 
 		return nil
 	}
 	defer rows.Close()
+	return scanProjectionVersionRows(rows)
+}
+
+// scanProjectionVersionRows decodes the projection-version column list shared by the queries above.
+// A row that fails to decode is skipped rather than failing the batch: these records drive lag
+// estimates and background sweeps, where one unreadable row must not hide the rest.
+func scanProjectionVersionRows(rows *sql.Rows) []write.ProjectionVersionRecord {
 	result := make([]write.ProjectionVersionRecord, 0)
 	for rows.Next() {
 		var record write.ProjectionVersionRecord

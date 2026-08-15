@@ -709,6 +709,9 @@ func (s *Service) CreateNodesBulkWithContext(ctx context.Context, actor access.I
 	}
 	drafts := make([]bulkNodeDraft, 0, len(req.Nodes))
 	result := NodeBulkCreateResponse{Succeeded: []NodeCreateResponse{}, Failed: []BulkItemError{}}
+	// The lag estimate depends only on the domain, so it is computed once for the batch. Called per
+	// node it multiplied an already expensive query by the batch size.
+	syncETAByDomain := map[string]int{}
 	for idx, item := range req.Nodes {
 		node, bridges, err := s.previewNodeCreateWithBridge(actor, item, lookup)
 		if err != nil {
@@ -716,6 +719,11 @@ func (s *Service) CreateNodesBulkWithContext(ctx context.Context, actor access.I
 			continue
 		}
 		lookup.staged[node.ID] = node
+		syncETA, ok := syncETAByDomain[node.DomainID]
+		if !ok {
+			syncETA = estimateSyncETA(s.store, node.DomainID, s.syncEtaDefaultMs)
+			syncETAByDomain[node.DomainID] = syncETA
+		}
 		drafts = append(drafts, bulkNodeDraft{
 			node:        node,
 			bridges:     bridges,
@@ -724,7 +732,7 @@ func (s *Service) CreateNodesBulkWithContext(ctx context.Context, actor access.I
 				NodeID:        node.ID,
 				DomainVersion: node.DomainVersion,
 				Status:        "processing",
-				SyncETAMs:     estimateSyncETA(s.store, node.DomainID, s.syncEtaDefaultMs),
+				SyncETAMs:     syncETA,
 			},
 		})
 	}
@@ -1842,29 +1850,27 @@ type syncETAReader interface {
 	GetNodeByID(id string) (NodeRecord, bool)
 }
 
+// recentNodeProjectionReader is the bounded form of the sample query, implemented by stores that can
+// filter and order in the database.
+//
+// The generic path below reads every projection row and then resolves each one's node individually
+// to learn its domain. That is one round trip per row of the whole table, on the hot path of every
+// write, so write latency grew with the total number of nodes ever projected — enough to push a
+// 500-node bulk past a minute on a database holding barely a thousand rows.
+type recentNodeProjectionReader interface {
+	ListRecentNodeProjectionVersionsByDomain(domainID string, limit int) []ProjectionVersionRecord
+}
+
+// syncETASampleSize is the number of recent projections the median lag is taken over.
+const syncETASampleSize = 30
+
 func estimateSyncETA(store syncETAReader, domainID string, defaultMs int) int {
 	if store == nil || defaultMs <= 0 {
 		return defaultMs
 	}
-	records := make([]ProjectionVersionRecord, 0, 30)
-	for _, record := range store.ListProjectionVersions() {
-		if record.EntityKind != "kg_node" || record.SourceVersion == 0 || record.LastGraphSyncedAt.IsZero() || record.SourceUpdatedAt.IsZero() {
-			continue
-		}
-		node, ok := store.GetNodeByID(record.EntityID)
-		if !ok || node.DomainID != domainID {
-			continue
-		}
-		records = append(records, record)
-	}
+	records := recentNodeProjections(store, domainID)
 	if len(records) < 5 {
 		return defaultMs
-	}
-	sort.Slice(records, func(i, j int) bool {
-		return records[i].SourceUpdatedAt.After(records[j].SourceUpdatedAt)
-	})
-	if len(records) > 30 {
-		records = records[:30]
 	}
 	lags := make([]float64, 0, len(records))
 	for _, record := range records {
@@ -1883,6 +1889,35 @@ func estimateSyncETA(store syncETAReader, domainID string, defaultMs int) int {
 		median = (lags[mid-1] + lags[mid]) / 2
 	}
 	return int(math.Ceil(median * 1.5))
+}
+
+// recentNodeProjections returns the newest node projections in a domain, capped at the sample size.
+//
+// Both paths apply the same filters and ordering, so the estimate does not depend on which store is
+// behind it; they differ only in where the work happens.
+func recentNodeProjections(store syncETAReader, domainID string) []ProjectionVersionRecord {
+	if bounded, ok := store.(recentNodeProjectionReader); ok {
+		return bounded.ListRecentNodeProjectionVersionsByDomain(domainID, syncETASampleSize)
+	}
+
+	records := make([]ProjectionVersionRecord, 0, syncETASampleSize)
+	for _, record := range store.ListProjectionVersions() {
+		if record.EntityKind != "kg_node" || record.SourceVersion == 0 || record.LastGraphSyncedAt.IsZero() || record.SourceUpdatedAt.IsZero() {
+			continue
+		}
+		node, ok := store.GetNodeByID(record.EntityID)
+		if !ok || node.DomainID != domainID {
+			continue
+		}
+		records = append(records, record)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].SourceUpdatedAt.After(records[j].SourceUpdatedAt)
+	})
+	if len(records) > syncETASampleSize {
+		records = records[:syncETASampleSize]
+	}
+	return records
 }
 
 func classifyReplicaLag(replicaVersion, sourceVersion int64, sourceEventID string, lastSyncedAt time.Time, events map[string]OutboxEvent, maxRetries int, lagToleranceWindow time.Duration) string {
