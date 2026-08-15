@@ -19,6 +19,17 @@ type ProjectionStore interface {
 	ListRelationships() []write.RelationshipRecord
 }
 
+// ScopeReader pages through a graph scope in the write source of truth.
+//
+// It is a separate interface from ProjectionStore, not an extension of it, for the same reason the
+// read service keeps sourceStore and index apart: a scope read must never be served from the
+// asynchronous projections. A caller that writes a graph and immediately reads it back — which is
+// what a single unit of agent work does — would otherwise see the pre-write state.
+type ScopeReader interface {
+	ListNodesByScope(ctx context.Context, query write.ScopeQuery) ([]write.NodeRecord, string, error)
+	ListRelationshipsByScope(ctx context.Context, query write.ScopeQuery) ([]write.RelationshipRecord, string, error)
+}
+
 type GraphIndex interface {
 	ExecuteTemplate(actor access.Identity, domainID string, compiled CompiledTemplate, bound map[string]any, visibility map[string]struct{}, statusCfg *ontology.StatusFieldConfig, maxRows int, queryTimeout time.Duration, now func() time.Time) ([]map[string]any, error)
 	GetNode(actor access.Identity, nodeID string, visibility map[string]struct{}) (NodeResponse, bool)

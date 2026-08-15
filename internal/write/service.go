@@ -1302,7 +1302,7 @@ func (s *Service) CreateRelationshipsBulkWithContext(ctx context.Context, actor 
 	drafts := make([]bulkRelDraft, 0, len(req.Relationships))
 	result := RelationshipBulkCreateResponse{Succeeded: []RelationshipCreateResponse{}, Failed: []BulkItemError{}}
 	for idx, item := range req.Relationships {
-		rel, err := s.previewRelationshipCreate(actor, item, s.store)
+		rel, err := s.previewRelationshipCreate(actor, item, s.store, s.store)
 		if err != nil {
 			result.Failed = append(result.Failed, BulkItemError{Index: idx, Error: err.Error()})
 			continue
@@ -1920,6 +1920,55 @@ type nodeReader interface {
 	GetNodeByExternalRef(externalRef string) (NodeRecord, bool)
 }
 
+// relationshipReader resolves the caller-owned identity of an edge. It is separate from nodeReader
+// because the bulk path needs a node lookup that can see nodes staged earlier in the same batch,
+// whereas relationship identity is always resolved against committed state.
+type relationshipReader interface {
+	GetRelationshipByExternalRef(externalRef string) (RelationshipRecord, bool)
+}
+
+// resolveRelationshipEndpoints fills FromNodeID / ToNodeID from the *ExternalRef forms when the
+// caller addressed the endpoints by their own references. An explicit node id always wins, so
+// existing callers are unaffected.
+//
+// This exists because a client that owns its identifiers does not know the UUIDs this service
+// minted. Without it, every edge write would have to be preceded by a read of both endpoints.
+func resolveRelationshipEndpoints(req *RelationshipCreateRequest, lookup nodeReader) error {
+	resolve := func(nodeID *string, ref, side string) error {
+		if strings.TrimSpace(*nodeID) != "" {
+			return nil
+		}
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			return nil
+		}
+		node, ok := lookup.GetNodeByExternalRef(ref)
+		if !ok || node.IsDeleted {
+			return fmt.Errorf("unknown %s_external_ref: %s", side, ref)
+		}
+		*nodeID = node.ID
+		return nil
+	}
+	if err := resolve(&req.FromNodeID, req.FromExternalRef, "from"); err != nil {
+		return err
+	}
+	return resolve(&req.ToNodeID, req.ToExternalRef, "to")
+}
+
+// relationshipIdentity decides whether a create is really an update. When the caller supplied an
+// external_ref that already exists, the write reuses that row's id and creation time, which turns
+// the downstream upsert-by-id into an in-place rewrite (and revives it if it was soft-deleted).
+// Without this, re-persisting the same logical graph would duplicate every edge.
+func relationshipIdentity(externalRef string, rels relationshipReader, now time.Time) (id string, createdAt time.Time) {
+	externalRef = strings.TrimSpace(externalRef)
+	if externalRef != "" && rels != nil {
+		if existing, ok := rels.GetRelationshipByExternalRef(externalRef); ok {
+			return existing.ID, existing.CreatedAt
+		}
+	}
+	return newID("rel"), now
+}
+
 type stagedNodeLookup struct {
 	base   nodeReader
 	staged map[string]NodeRecord
@@ -2340,6 +2389,9 @@ func (s *Service) deleteNodeInScope(ctx context.Context, scope session.SessionSc
 }
 
 func (s *Service) createRelationshipInScope(ctx context.Context, scope session.SessionScope, actor access.Identity, req RelationshipCreateRequest) (RelationshipCreateResponse, error) {
+	if err := resolveRelationshipEndpoints(&req, s.repositoryForScope(scope)); err != nil {
+		return RelationshipCreateResponse{}, errors.Join(ErrValidation, err)
+	}
 	if err := validateRelationshipCreateRequest(req); err != nil {
 		return RelationshipCreateResponse{}, errors.Join(ErrValidation, err)
 	}
@@ -2387,7 +2439,7 @@ func (s *Service) createRelationshipInScope(ctx context.Context, scope session.S
 		return RelationshipCreateResponse{}, err
 	}
 	now := s.now()
-	relID := newID("rel")
+	relID, createdAt := relationshipIdentity(req.ExternalRef, repo, now)
 	rel := RelationshipRecord{
 		ID:            relID,
 		RelType:       req.RelType,
@@ -2398,7 +2450,8 @@ func (s *Service) createRelationshipInScope(ctx context.Context, scope session.S
 		OwnerAppID:    actor.AppID,
 		DomainVersion: version.Version,
 		Properties:    req.Properties,
-		CreatedAt:     now,
+		ExternalRef:   strings.TrimSpace(req.ExternalRef),
+		CreatedAt:     createdAt,
 	}
 	graphScope := deriveGraphScopeForNode(fromNode)
 	identity, graphVersion, err := s.sealGraphVersion(ctx, repo, actor, graphScope, req.ReferenceID, "relationship upsert", graphVersionEntities("relationship", "UPSERT", relID))
@@ -2453,14 +2506,17 @@ func (s *Service) createRelationshipInScope(ctx context.Context, scope session.S
 
 func (s *Service) preflightRelationshipBulkCreate(actor access.Identity, reqs []RelationshipCreateRequest) error {
 	for _, req := range reqs {
-		if _, err := s.previewRelationshipCreate(actor, req, s.store); err != nil {
+		if _, err := s.previewRelationshipCreate(actor, req, s.store, s.store); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) previewRelationshipCreate(actor access.Identity, req RelationshipCreateRequest, lookup nodeReader) (RelationshipRecord, error) {
+func (s *Service) previewRelationshipCreate(actor access.Identity, req RelationshipCreateRequest, lookup nodeReader, rels relationshipReader) (RelationshipRecord, error) {
+	if err := resolveRelationshipEndpoints(&req, lookup); err != nil {
+		return RelationshipRecord{}, errors.Join(ErrValidation, err)
+	}
 	if err := validateRelationshipCreateRequest(req); err != nil {
 		return RelationshipRecord{}, errors.Join(ErrValidation, err)
 	}
@@ -2507,8 +2563,9 @@ func (s *Service) previewRelationshipCreate(actor access.Identity, req Relations
 		return RelationshipRecord{}, err
 	}
 	now := s.now()
+	relID, createdAt := relationshipIdentity(req.ExternalRef, rels, now)
 	return RelationshipRecord{
-		ID:            newID("rel"),
+		ID:            relID,
 		RelType:       req.RelType,
 		FromNodeID:    req.FromNodeID,
 		ToNodeID:      req.ToNodeID,
@@ -2517,7 +2574,8 @@ func (s *Service) previewRelationshipCreate(actor access.Identity, req Relations
 		OwnerAppID:    actor.AppID,
 		DomainVersion: version.Version,
 		Properties:    req.Properties,
-		CreatedAt:     now,
+		ExternalRef:   strings.TrimSpace(req.ExternalRef),
+		CreatedAt:     createdAt,
 	}, nil
 }
 

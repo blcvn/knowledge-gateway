@@ -85,6 +85,9 @@ Bootstrap workspace for the multi-tenant, domain-agnostic KG Service described i
 - `GET /v1/ontology/query-strategies`
 - `GET /v1/ontology/domains/{domain_id}`
 - `POST /v1/kg/write/nodes`
+- `POST /v1/kg/write/sync-sessions`
+- `POST /v1/kg/write/sync-sessions/{id}/commit`
+- `DELETE /v1/kg/write/sync-sessions/{id}`
 - `POST /v1/kg/write/nodes/bulk`
 - `PUT /v1/kg/write/nodes/{id}`
 - `DELETE /v1/kg/write/nodes/{id}`
@@ -92,11 +95,14 @@ Bootstrap workspace for the multi-tenant, domain-agnostic KG Service described i
 - `POST /v1/kg/write/relationships/bulk`
 - `DELETE /v1/kg/write/relationships/bulk`
 - `DELETE /v1/kg/write/nodes:by-external-ref-prefix`
+- `DELETE /v1/kg/write/relationships:by-external-ref`
+- `POST /v1/kg/write/graph:delete-by-scope`
 - `POST /v1/kg/write/ingest/document`
 - `GET /v1/kg/write/ingest/jobs/{job_id}`
 - `GET /v1/kg/read/templates`
 - `POST /v1/kg/read/template/{domain_id}/{template_name}`
 - `GET /v1/kg/read/nodes/{id}`
+- `POST /v1/kg/read/graph:by-scope`
 - `POST /v1/kg/search/semantic`
 - `POST /v1/kg/search/rag`
 - `POST /v1/kg/search/fulltext`

@@ -336,3 +336,39 @@ func writeError(w http.ResponseWriter, err error) {
 		respond.Error(w, respond.StatusFor(respond.CodeInternal), respond.CodeInternal, "Internal server error", nil)
 	}
 }
+
+// DeleteByScope serves POST /v1/kg/write/graph:delete-by-scope.
+func (h Handler) DeleteByScope(w http.ResponseWriter, r *http.Request) {
+	var req ScopeDeleteRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	identity, _ := access.IdentityFromContext(r.Context())
+	result, err := h.service.DeleteByScopeWithVersion(r.Context(), identity, req)
+	if err != nil {
+		log.Printf("write delete_by_scope failed tenant=%s app=%s graph_scope=%s err=%v", identity.TenantID, identity.AppID, req.GraphScope, err)
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, result)
+}
+
+// DeleteRelationshipsByExternalRef serves DELETE /v1/kg/write/relationships:by-external-ref.
+func (h Handler) DeleteRelationshipsByExternalRef(w http.ResponseWriter, r *http.Request) {
+	var req RelationshipDeleteByExternalRefRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	identity, _ := access.IdentityFromContext(r.Context())
+	result, err := h.service.DeleteRelationshipsByExternalRefWithVersion(r.Context(), identity, req)
+	if err != nil {
+		log.Printf("write delete_relationships_by_external_ref failed tenant=%s app=%s refs=%d err=%v", identity.TenantID, identity.AppID, len(req.ExternalRefs), err)
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, result)
+}

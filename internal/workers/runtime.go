@@ -50,6 +50,7 @@ type Repository interface {
 	UpsertProjectionVersion(ctx context.Context, record write.ProjectionVersionRecord) error
 	GetGraphVersionEntities(versionID string) []write.GraphVersionEntityRecord
 	ListPendingGraphVersionsBefore(cutoff time.Time) []write.GraphVersionRecord
+	ArchiveGraphVersions(ctx context.Context, keepCount int, olderThan time.Time) ([]string, error)
 	GetGraphIdentityByID(ctx context.Context, identifierID string) (write.GraphIdentityRecord, bool)
 	AbandonGraphVersion(ctx context.Context, versionID string) error
 	CleanupExpiredSyncSession(ctx context.Context, versionID string) error
@@ -466,6 +467,48 @@ func sessionCleanupIntervalFromEnv() time.Duration {
 	return time.Duration(parsed) * time.Minute
 }
 
+// staleSessionTTLFromEnv is how long a sync session may sit in PENDING_ENTITIES before the sweep
+// abandons it and releases its scope lease.
+//
+// The default stays at 2h — the same value this loop used before it became configurable — because
+// the sweep is service-wide: shortening it would abandon a long-running session belonging to any
+// client, not just the one whose deployment wanted a shorter window. A client that needs faster
+// recovery reclaims its own stale lease directly rather than lowering this for everyone.
+func staleSessionTTLFromEnv() time.Duration {
+	return durationEnv("KG_STALE_SESSION_TTL", 2*time.Hour)
+}
+
+// versionRetentionFromEnv is the age below which a sealed version is never archived.
+func versionRetentionFromEnv() time.Duration {
+	return durationEnv("KG_VERSION_RETENTION", 720*time.Hour)
+}
+
+// versionKeepCountFromEnv is how many recent versions of a graph stay ONLINE regardless of age.
+func versionKeepCountFromEnv() int {
+	const defaultKeep = 50
+	raw := strings.TrimSpace(os.Getenv("KG_VERSION_KEEP_COUNT"))
+	if raw == "" {
+		return defaultKeep
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed < 0 {
+		return defaultKeep
+	}
+	return parsed
+}
+
+func durationEnv(name string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
 func (r *Runtime) RunSessionCleanupLoop(ctx context.Context) {
 	if r == nil {
 		return
@@ -482,15 +525,36 @@ func (r *Runtime) RunSessionCleanupLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			r.cleanupExpiredSyncSessions(ctx)
+			r.archiveSupersededGraphVersions(ctx)
 		}
 	}
+}
+
+// archiveSupersededGraphVersions bounds the growth of kg_graph_versions and, more importantly, of
+// kg_graph_version_entities: every sealed write appends one manifest row per touched entity, so a
+// graph rewritten repeatedly accumulates manifest rows far faster than anything reads them.
+func (r *Runtime) archiveSupersededGraphVersions(ctx context.Context) int {
+	if r == nil || r.store == nil {
+		return 0
+	}
+	keepCount := versionKeepCountFromEnv()
+	cutoff := time.Now().UTC().Add(-versionRetentionFromEnv())
+	archived, err := r.store.ArchiveGraphVersions(ctx, keepCount, cutoff)
+	if err != nil {
+		r.logf("graph version archive failed keep_count=%d cutoff=%s err=%v", keepCount, cutoff.Format(time.RFC3339), err)
+		return 0
+	}
+	if len(archived) > 0 {
+		r.logf("graph version archive processed=%d keep_count=%d cutoff=%s", len(archived), keepCount, cutoff.Format(time.RFC3339))
+	}
+	return len(archived)
 }
 
 func (r *Runtime) cleanupExpiredSyncSessions(ctx context.Context) int {
 	if r == nil || r.store == nil {
 		return 0
 	}
-	cutoff := time.Now().UTC().Add(-2 * time.Hour)
+	cutoff := time.Now().UTC().Add(-staleSessionTTLFromEnv())
 	expired := r.store.ListPendingGraphVersionsBefore(cutoff)
 	if len(expired) == 0 {
 		return 0

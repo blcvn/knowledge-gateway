@@ -1218,6 +1218,102 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '500':
           $ref: '#/components/responses/InternalError'
+  /v1/kg/write/relationships:by-external-ref:
+    delete:
+      tags: [Write]
+      summary: Soft-delete relationships by caller-owned external reference
+      description: >
+        Removes exactly the named edges. References that do not resolve are reported as untouched
+        rather than as errors: the caller is asserting a desired end state, and an edge already
+        being gone satisfies it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationshipDeleteByExternalRefRequest'
+      responses:
+        '200':
+          description: Relationships deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipDeleteByExternalRefResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/write/graph:delete-by-scope:
+    post:
+      tags: [Write]
+      summary: Soft-delete every node and relationship in a graph scope
+      description: >
+        Requires an open sync session whose graph scope matches the request, so a scope-wide delete
+        always runs under a write lease and always leaves a manifest of what was removed. An empty
+        levels list means every level in the scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScopeDeleteRequest'
+      responses:
+        '200':
+          description: Scope deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScopeDeleteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v1/kg/read/graph:by-scope:
+    post:
+      tags: [Read]
+      summary: Read every live node and relationship of a graph scope
+      description: >
+        Serves the write source of truth, not the asynchronous graph/vector/full-text projections,
+        so a caller that persists a graph and reloads it within the same unit of work sees its own
+        write. Nodes and relationships paginate independently; a collection reports exhaustion via
+        its done flag, because an empty position means "first page".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphScopeReadRequest'
+      responses:
+        '200':
+          description: One page of the graph scope
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphScopeReadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: Configured store cannot page a graph scope
   /v1/kg/write/ingest/document:
     post:
       tags: [Write]
@@ -2642,6 +2738,179 @@ components:
             type: string
         count:
           type: integer
+    ScopeLevel:
+      type: object
+      required: [level]
+      description: One partition inside a graph scope.
+      properties:
+        level:
+          type: string
+          example: feature
+        feature_ref:
+          type: string
+          description: Narrows the level to a single partition. Omit to match every partition at this level.
+          example: F-001
+    ScopeFilterBase:
+      type: object
+      required: [domain_id, graph_scope]
+      properties:
+        domain_id:
+          type: string
+        graph_scope:
+          type: string
+          example: bas:kg:doc-1
+        levels:
+          type: array
+          description: Empty or omitted means every level in the scope.
+          items:
+            $ref: '#/components/schemas/ScopeLevel'
+    ScopeDeleteRequest:
+      allOf:
+        - $ref: '#/components/schemas/ScopeFilterBase'
+        - type: object
+          required: [graph_version_id]
+          properties:
+            graph_version_id:
+              type: string
+              description: Session/version the delete is recorded against. Its graph scope must match.
+    ScopeDeleteResponse:
+      type: object
+      required: [count]
+      properties:
+        node_ids:
+          type: array
+          items:
+            type: string
+        relationship_ids:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+    RelationshipDeleteByExternalRefRequest:
+      type: object
+      required: [external_refs]
+      properties:
+        external_refs:
+          type: array
+          items:
+            type: string
+        graph_version_id:
+          type: string
+          description: When set, each deletion is recorded against this version.
+    RelationshipDeleteByExternalRefResponse:
+      type: object
+      required: [count]
+      properties:
+        relationship_ids:
+          type: array
+          items:
+            type: string
+        external_refs:
+          type: array
+          description: Only the references that actually resolved.
+          items:
+            type: string
+        count:
+          type: integer
+    GraphScopeReadCursor:
+      type: object
+      description: >
+        Independent positions for nodes and relationships. The done flags express exhaustion, which
+        an empty position cannot: an empty position means "first page".
+      properties:
+        nodes:
+          type: string
+        relationships:
+          type: string
+        nodes_done:
+          type: boolean
+        relationships_done:
+          type: boolean
+    GraphScopeReadRequest:
+      allOf:
+        - $ref: '#/components/schemas/ScopeFilterBase'
+        - type: object
+          properties:
+            refs_only:
+              type: boolean
+              description: Return identity and partition attributes only, without property payloads.
+            limit:
+              type: integer
+              maximum: 1000
+            cursor:
+              $ref: '#/components/schemas/GraphScopeReadCursor'
+    GraphScopeNode:
+      type: object
+      properties:
+        id:
+          type: string
+        node_type:
+          type: string
+        domain_id:
+          type: string
+        owner_tenant_id:
+          type: string
+        owner_app_id:
+          type: string
+        visibility:
+          type: string
+        external_ref:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        domain_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    GraphScopeRelationship:
+      type: object
+      properties:
+        id:
+          type: string
+        rel_type:
+          type: string
+        from_node_id:
+          type: string
+        to_node_id:
+          type: string
+        domain_id:
+          type: string
+        owner_tenant_id:
+          type: string
+        owner_app_id:
+          type: string
+        external_ref:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        domain_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    GraphScopeReadResponse:
+      type: object
+      required: [nodes, relationships, next_cursor, has_more]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphScopeNode'
+        relationships:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphScopeRelationship'
+        next_cursor:
+          $ref: '#/components/schemas/GraphScopeReadCursor'
+        has_more:
+          type: boolean
     RelationshipBulkDeleteRequest:
       type: object
       required: [relationship_ids]

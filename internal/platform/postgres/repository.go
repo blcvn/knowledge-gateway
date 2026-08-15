@@ -308,7 +308,7 @@ func (r *Repository) CreateNodesBulkWithOutbox(ctx context.Context, nodes []writ
 
 func (r *Repository) GetRelationshipByID(id string) (write.RelationshipRecord, bool) {
 	row := r.queryRow(context.Background(), `
-		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, created_at
+		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
 		FROM kg_relationships
 		WHERE id = $1
 	`, id)
@@ -324,7 +324,7 @@ func (r *Repository) GetRelationshipsByIDs(ids []string) map[string]write.Relati
 		return map[string]write.RelationshipRecord{}
 	}
 	rows, err := r.query(context.Background(), `
-		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, created_at
+		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
 		FROM kg_relationships
 		WHERE id = ANY($1::text[])
 	`, arrayLiteral(ids))
@@ -339,6 +339,274 @@ func (r *Repository) GetRelationshipsByIDs(ids []string) map[string]write.Relati
 			continue
 		}
 		result[rel.ID] = rel
+	}
+	return result
+}
+
+// scopePredicate renders the level filter of a ScopeFilter as SQL, appending to args.
+//
+// The shape matters for the index: graph scope is always an equality match on the leading column of
+// idx_kg_{nodes,relationships}_graph_scope, and the level clause is an OR of equality matches on the
+// remaining two. An empty level list means "every level", which is a legitimate request (the whole
+// graph) and must produce no level predicate at all rather than a false one.
+func scopePredicate(filter write.ScopeFilter, args []any) (string, []any) {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(" AND domain_id = $%d", len(args)+1))
+	args = append(args, filter.DomainID)
+	sb.WriteString(fmt.Sprintf(" AND properties ->> '_kg_graph_scope' = $%d", len(args)+1))
+	args = append(args, filter.GraphScope)
+
+	if len(filter.Levels) == 0 {
+		return sb.String(), args
+	}
+
+	clauses := make([]string, 0, len(filter.Levels))
+	for _, level := range filter.Levels {
+		if strings.TrimSpace(level.FeatureRef) == "" {
+			clauses = append(clauses, fmt.Sprintf("properties ->> 'kg_level' = $%d", len(args)+1))
+			args = append(args, level.Level)
+			continue
+		}
+		clauses = append(clauses, fmt.Sprintf("(properties ->> 'kg_level' = $%d AND properties ->> 'feature_ref' = $%d)", len(args)+1, len(args)+2))
+		args = append(args, level.Level, level.FeatureRef)
+	}
+	sb.WriteString(" AND (" + strings.Join(clauses, " OR ") + ")")
+	return sb.String(), args
+}
+
+// ListNodesByScope returns one id-ordered page of live nodes in the scope.
+//
+// Ordering by id is not cosmetic: it is what makes the cursor stable. Any other order (or none)
+// lets a concurrent write shift rows between pages, so a caller paging through a scope would miss
+// rows or see them twice — and the executor's scoped load reads a whole partition this way.
+func (r *Repository) ListNodesByScope(ctx context.Context, query write.ScopeQuery) ([]write.NodeRecord, string, error) {
+	args := make([]any, 0, 8)
+	predicate, args := scopePredicate(query.ScopeFilter, args)
+
+	columns := "id, node_type, domain_id, owner_tenant_id, owner_app_id, visibility, properties, domain_version, external_ref, status_value, is_deleted, created_at, updated_at"
+	if query.RefsOnly {
+		// Identity plus the columns a caller needs to compute a delete delta and a feature
+		// cascade, with properties reduced to exactly those keys instead of the full payload.
+		columns = `id, node_type, domain_id, owner_tenant_id, owner_app_id, visibility,
+			jsonb_build_object(
+				'kg_level',    properties ->> 'kg_level',
+				'feature_ref', properties ->> 'feature_ref',
+				'reference_id', properties ->> 'reference_id'
+			) AS properties,
+			domain_version, external_ref, status_value, is_deleted, created_at, updated_at`
+	}
+
+	sql := "SELECT " + columns + " FROM kg_nodes WHERE NOT is_deleted" + predicate
+	if strings.TrimSpace(query.Cursor) != "" {
+		sql += fmt.Sprintf(" AND id > $%d", len(args)+1)
+		args = append(args, query.Cursor)
+	}
+	limit := write.ScopePageLimit(query.Limit)
+	sql += fmt.Sprintf(" ORDER BY id LIMIT %d", limit)
+
+	rows, err := r.query(ctx, sql, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	page := make([]write.NodeRecord, 0, limit)
+	for rows.Next() {
+		node, err := scanNode(rows)
+		if err != nil {
+			return nil, "", err
+		}
+		page = append(page, node)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	return page, write.ScopeNextCursor(len(page), limit, lastNodeID(page)), nil
+}
+
+func (r *Repository) ListRelationshipsByScope(ctx context.Context, query write.ScopeQuery) ([]write.RelationshipRecord, string, error) {
+	args := make([]any, 0, 8)
+	predicate, args := scopePredicate(query.ScopeFilter, args)
+
+	columns := "id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at"
+	if query.RefsOnly {
+		columns = `id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version,
+			jsonb_build_object(
+				'kg_level',    properties ->> 'kg_level',
+				'feature_ref', properties ->> 'feature_ref'
+			) AS properties,
+			external_ref, is_deleted, created_at`
+	}
+
+	sql := "SELECT " + columns + " FROM kg_relationships WHERE NOT is_deleted" + predicate
+	if strings.TrimSpace(query.Cursor) != "" {
+		sql += fmt.Sprintf(" AND id > $%d", len(args)+1)
+		args = append(args, query.Cursor)
+	}
+	limit := write.ScopePageLimit(query.Limit)
+	sql += fmt.Sprintf(" ORDER BY id LIMIT %d", limit)
+
+	rows, err := r.query(ctx, sql, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	page := make([]write.RelationshipRecord, 0, limit)
+	for rows.Next() {
+		rel, err := scanRelationship(rows)
+		if err != nil {
+			return nil, "", err
+		}
+		page = append(page, rel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	return page, write.ScopeNextCursor(len(page), limit, lastRelationshipID(page)), nil
+}
+
+// SoftDeleteNodesByScope tombstones every live node in the scope and returns them, so the caller
+// can record each one against the open graph version.
+func (r *Repository) SoftDeleteNodesByScope(ctx context.Context, filter write.ScopeFilter, deletedAt time.Time) ([]write.NodeRecord, error) {
+	args := make([]any, 0, 8)
+	args = append(args, deletedAt)
+	predicate, args := scopePredicate(filter, args)
+
+	rows, err := r.query(ctx, `
+		UPDATE kg_nodes
+		SET is_deleted = true, updated_at = $1
+		WHERE NOT is_deleted`+predicate+`
+		RETURNING id, node_type, domain_id, owner_tenant_id, owner_app_id, visibility, properties, domain_version, external_ref, status_value, is_deleted, created_at, updated_at
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	deleted := make([]write.NodeRecord, 0)
+	for rows.Next() {
+		node, err := scanNode(rows)
+		if err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, node)
+	}
+	return deleted, rows.Err()
+}
+
+func (r *Repository) SoftDeleteRelationshipsByScope(ctx context.Context, filter write.ScopeFilter) ([]write.RelationshipRecord, error) {
+	args := make([]any, 0, 8)
+	predicate, args := scopePredicate(filter, args)
+
+	rows, err := r.query(ctx, `
+		UPDATE kg_relationships
+		SET is_deleted = true
+		WHERE NOT is_deleted`+predicate+`
+		RETURNING id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	deleted := make([]write.RelationshipRecord, 0)
+	for rows.Next() {
+		rel, err := scanRelationship(rows)
+		if err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, rel)
+	}
+	return deleted, rows.Err()
+}
+
+// SoftDeleteRelationshipsByExternalRefs removes exactly the named edges. References that do not
+// resolve are silently absent from the result rather than an error: the caller is expressing a
+// desired end state ("these edges should be gone"), and one already being gone satisfies it.
+func (r *Repository) SoftDeleteRelationshipsByExternalRefs(ctx context.Context, externalRefs []string) ([]write.RelationshipRecord, error) {
+	refs := make([]string, 0, len(externalRefs))
+	for _, ref := range externalRefs {
+		if trimmed := strings.TrimSpace(ref); trimmed != "" {
+			refs = append(refs, trimmed)
+		}
+	}
+	if len(refs) == 0 {
+		return []write.RelationshipRecord{}, nil
+	}
+	rows, err := r.query(ctx, `
+		UPDATE kg_relationships
+		SET is_deleted = true
+		WHERE NOT is_deleted
+		  AND external_ref = ANY($1::text[])
+		RETURNING id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
+	`, arrayLiteral(refs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	deleted := make([]write.RelationshipRecord, 0, len(refs))
+	for rows.Next() {
+		rel, err := scanRelationship(rows)
+		if err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, rel)
+	}
+	return deleted, rows.Err()
+}
+
+func lastNodeID(page []write.NodeRecord) string {
+	if len(page) == 0 {
+		return ""
+	}
+	return page[len(page)-1].ID
+}
+
+func lastRelationshipID(page []write.RelationshipRecord) string {
+	if len(page) == 0 {
+		return ""
+	}
+	return page[len(page)-1].ID
+}
+
+// GetRelationshipByExternalRef resolves a relationship by its caller-owned reference. Like
+// GetNodeByExternalRef it deliberately does NOT filter is_deleted: the upsert path reads the
+// tombstone so it can revive that exact row instead of inserting a duplicate.
+func (r *Repository) GetRelationshipByExternalRef(externalRef string) (write.RelationshipRecord, bool) {
+	if strings.TrimSpace(externalRef) == "" {
+		return write.RelationshipRecord{}, false
+	}
+	row := r.queryRow(context.Background(), `
+		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
+		FROM kg_relationships
+		WHERE external_ref = $1
+	`, externalRef)
+	rel, err := scanRelationship(row)
+	if err != nil {
+		return write.RelationshipRecord{}, false
+	}
+	return rel, true
+}
+
+// GetRelationshipsByExternalRefs is the batch form used by bulk writes, so a bulk of N edges costs
+// one round trip rather than N.
+func (r *Repository) GetRelationshipsByExternalRefs(externalRefs []string) map[string]write.RelationshipRecord {
+	if len(externalRefs) == 0 {
+		return map[string]write.RelationshipRecord{}
+	}
+	rows, err := r.query(context.Background(), `
+		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
+		FROM kg_relationships
+		WHERE external_ref = ANY($1::text[])
+	`, arrayLiteral(externalRefs))
+	if err != nil {
+		return map[string]write.RelationshipRecord{}
+	}
+	defer rows.Close()
+	result := make(map[string]write.RelationshipRecord, len(externalRefs))
+	for rows.Next() {
+		rel, err := scanRelationship(rows)
+		if err != nil {
+			continue
+		}
+		result[rel.ExternalRef] = rel
 	}
 	return result
 }
@@ -358,7 +626,7 @@ func (r *Repository) CreateRelationshipsBulkWithOutbox(ctx context.Context, rels
 
 func (r *Repository) ListRelationships() []write.RelationshipRecord {
 	rows, err := r.query(context.Background(), `
-		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, created_at
+		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
 		FROM kg_relationships
 		ORDER BY created_at, id
 	`)
@@ -379,7 +647,7 @@ func (r *Repository) ListRelationships() []write.RelationshipRecord {
 
 func (r *Repository) ListRelationshipsBatch(afterID string, limit int) []write.RelationshipRecord {
 	query := `
-		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, created_at
+		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
 		FROM kg_relationships
 	`
 	args := []any{}
@@ -496,7 +764,7 @@ func (r *Repository) SoftDeleteRelationshipsWithOutbox(ctx context.Context, rela
 		SET is_deleted = true
 		WHERE id = ANY($1::uuid[])
 		  AND NOT is_deleted
-		RETURNING id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, created_at
+		RETURNING id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
 	`, arrayLiteral(relationshipIDs))
 	if err != nil {
 		return nil, err
@@ -550,12 +818,27 @@ func (r *Repository) insertNode(ctx context.Context, node write.NodeRecord) erro
 	return normalizeRepositoryError(err)
 }
 
+// insertRelationship upserts by primary key. The write path reuses an existing row's ID when the
+// caller supplied an external_ref that already exists, so "create" and "update" are the same
+// statement; the ON CONFLICT clause is what makes that reuse land on the existing row instead of
+// raising a duplicate-key error. is_deleted is written as false, which also revives a tombstone.
 func (r *Repository) insertRelationship(ctx context.Context, rel write.RelationshipRecord) error {
 	_, err := r.exec(ctx, `
 		INSERT INTO kg_relationships (
-			id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, is_deleted, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10)
-	`, rel.ID, rel.RelType, rel.FromNodeID, rel.ToNodeID, rel.DomainID, rel.OwnerTenantID, nullString(rel.OwnerAppID), rel.DomainVersion, rel.Properties, rel.CreatedAt)
+			id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, ''), false, $11)
+		ON CONFLICT (id) DO UPDATE SET
+			rel_type = EXCLUDED.rel_type,
+			from_node_id = EXCLUDED.from_node_id,
+			to_node_id = EXCLUDED.to_node_id,
+			domain_id = EXCLUDED.domain_id,
+			owner_tenant_id = EXCLUDED.owner_tenant_id,
+			owner_app_id = EXCLUDED.owner_app_id,
+			domain_version = EXCLUDED.domain_version,
+			properties = EXCLUDED.properties,
+			external_ref = EXCLUDED.external_ref,
+			is_deleted = EXCLUDED.is_deleted
+	`, rel.ID, rel.RelType, rel.FromNodeID, rel.ToNodeID, rel.DomainID, rel.OwnerTenantID, nullString(rel.OwnerAppID), rel.DomainVersion, rel.Properties, rel.ExternalRef, rel.CreatedAt)
 	return normalizeRepositoryError(err)
 }
 
@@ -1196,6 +1479,7 @@ func scanRelationship(row rowScanner) (write.RelationshipRecord, error) {
 	var rel write.RelationshipRecord
 	var properties []byte
 	var ownerApp sql.NullString
+	var externalRef sql.NullString
 	if err := row.Scan(
 		&rel.ID,
 		&rel.RelType,
@@ -1206,11 +1490,14 @@ func scanRelationship(row rowScanner) (write.RelationshipRecord, error) {
 		&ownerApp,
 		&rel.DomainVersion,
 		&properties,
+		&externalRef,
+		&rel.IsDeleted,
 		&rel.CreatedAt,
 	); err != nil {
 		return write.RelationshipRecord{}, err
 	}
 	rel.OwnerAppID = ownerApp.String
+	rel.ExternalRef = externalRef.String
 	if len(properties) > 0 {
 		if err := json.Unmarshal(properties, &rel.Properties); err != nil {
 			return write.RelationshipRecord{}, err
@@ -1292,10 +1579,10 @@ func buildNodeBulkUpsertQuery(nodes []write.NodeRecord) (string, []any, error) {
 
 func buildRelationshipBulkInsertQuery(rels []write.RelationshipRecord) (string, []any, error) {
 	var sb strings.Builder
-	args := make([]any, 0, len(rels)*11)
+	args := make([]any, 0, len(rels)*12)
 	sb.WriteString(`
 		INSERT INTO kg_relationships (
-			id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, is_deleted, created_at
+			id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
 		) VALUES
 	`)
 	for i, rel := range rels {
@@ -1307,8 +1594,8 @@ func buildRelationshipBulkInsertQuery(rels []write.RelationshipRecord) (string, 
 			return "", nil, err
 		}
 		base := len(args) + 1
-		sb.WriteString(fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)", base, base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+8, base+9, base+10))
-		args = append(args, rel.ID, rel.RelType, rel.FromNodeID, rel.ToNodeID, rel.DomainID, rel.OwnerTenantID, nullString(rel.OwnerAppID), rel.DomainVersion, payload, rel.IsDeleted, rel.CreatedAt)
+		sb.WriteString(fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, NULLIF($%d, ''), $%d, $%d)", base, base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+8, base+9, base+10, base+11))
+		args = append(args, rel.ID, rel.RelType, rel.FromNodeID, rel.ToNodeID, rel.DomainID, rel.OwnerTenantID, nullString(rel.OwnerAppID), rel.DomainVersion, payload, rel.ExternalRef, rel.IsDeleted, rel.CreatedAt)
 	}
 	sb.WriteString(`
 		ON CONFLICT (id) DO UPDATE SET
@@ -1320,6 +1607,7 @@ func buildRelationshipBulkInsertQuery(rels []write.RelationshipRecord) (string, 
 			owner_app_id = EXCLUDED.owner_app_id,
 			domain_version = EXCLUDED.domain_version,
 			properties = EXCLUDED.properties,
+			external_ref = EXCLUDED.external_ref,
 			is_deleted = EXCLUDED.is_deleted
 	`)
 	return sb.String(), args, nil
@@ -1441,4 +1729,72 @@ func nullTime(value time.Time) any {
 		return nil
 	}
 	return value
+}
+
+// ArchiveGraphVersions demotes superseded graph versions to OFFLINE and drops their entity
+// manifests, returning the versions it archived.
+//
+// Every sealed write appends one version plus one manifest row per touched entity, so a graph that
+// is rewritten often accumulates manifest rows far faster than anything reads them. The version
+// rows themselves are small and are kept as history; it is the manifests that are pruned.
+//
+// A version is archived only when all three hold: it is beyond the keep-count of most recent
+// versions for its graph, it is older than the retention cutoff, and it is not the current head.
+// Requiring all three means a busy graph keeps its recent history and a quiet graph keeps its head,
+// so no graph can be pruned back to nothing.
+func (r *Repository) ArchiveGraphVersions(ctx context.Context, keepCount int, olderThan time.Time) ([]string, error) {
+	if keepCount < 0 {
+		keepCount = 0
+	}
+	rows, err := r.query(ctx, `
+		WITH ranked AS (
+			SELECT v.version_id,
+			       v.identifier_id,
+			       v.created_at,
+			       row_number() OVER (PARTITION BY v.identifier_id ORDER BY v.version_number DESC) AS rank
+			FROM kg_graph_versions v
+			WHERE v.storage_class = 'ONLINE'
+			  AND v.version_status = 'SEALED'
+		),
+		victims AS (
+			SELECT ranked.version_id
+			FROM ranked
+			JOIN kg_graph_identifiers i ON i.identifier_id = ranked.identifier_id
+			WHERE ranked.rank > $1
+			  AND ranked.created_at < $2
+			  AND (i.head_version_id IS NULL OR i.head_version_id <> ranked.version_id)
+		)
+		UPDATE kg_graph_versions
+		SET storage_class = 'OFFLINE'
+		WHERE version_id IN (SELECT version_id FROM victims)
+		RETURNING version_id
+	`, keepCount, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	archived := make([]string, 0)
+	for rows.Next() {
+		var versionID string
+		if err := rows.Scan(&versionID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		archived = append(archived, versionID)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	if len(archived) == 0 {
+		return archived, nil
+	}
+
+	if _, err := r.exec(ctx, `
+		DELETE FROM kg_graph_version_entities
+		WHERE version_id = ANY($1::uuid[])
+	`, arrayLiteral(archived)); err != nil {
+		return nil, err
+	}
+	return archived, nil
 }

@@ -1265,6 +1265,9 @@ func (s *cleanupErrorStore) CleanupExpiredSyncSession(ctx context.Context, versi
 }
 
 func (f *failingStore) ListOutboxEvents() []write.OutboxEvent { return f.events }
+func (f *failingStore) ArchiveGraphVersions(ctx context.Context, keepCount int, olderThan time.Time) ([]string, error) {
+	return nil, nil
+}
 func (f *failingStore) ClaimOutboxBatch(ctx context.Context, pageSize int) ([]write.OutboxEvent, error) {
 	out := make([]write.OutboxEvent, 0, len(f.events))
 	for i := range f.events {
@@ -1499,6 +1502,50 @@ func (s *versionFixtureStore) ListProjectionVersions() []write.ProjectionVersion
 func (s *versionFixtureStore) GetGraphVersionEntities(versionID string) []write.GraphVersionEntityRecord {
 	return append([]write.GraphVersionEntityRecord(nil), s.graphVersionEntities[versionID]...)
 }
+// ArchiveGraphVersions mirrors the production retention rule against the fixture's in-memory
+// versions: beyond the keep-count, older than the cutoff, sealed, online, and not a head.
+func (s *versionFixtureStore) ArchiveGraphVersions(_ context.Context, keepCount int, olderThan time.Time) ([]string, error) {
+	if keepCount < 0 {
+		keepCount = 0
+	}
+	byIdentifier := map[string][]write.GraphVersionRecord{}
+	for _, version := range s.graphVersions {
+		if !strings.EqualFold(version.StorageClass, "ONLINE") || !strings.EqualFold(version.VersionStatus, "SEALED") {
+			continue
+		}
+		byIdentifier[version.IdentifierID] = append(byIdentifier[version.IdentifierID], version)
+	}
+	heads := map[string]struct{}{}
+	for _, identity := range s.graphIdentities {
+		if identity.HeadVersionID != "" {
+			heads[identity.HeadVersionID] = struct{}{}
+		}
+	}
+	archived := make([]string, 0)
+	for _, versions := range byIdentifier {
+		sort.Slice(versions, func(i, j int) bool { return versions[i].VersionNumber > versions[j].VersionNumber })
+		for rank, version := range versions {
+			if rank < keepCount || !version.CreatedAt.Before(olderThan) {
+				continue
+			}
+			if _, isHead := heads[version.VersionID]; isHead {
+				continue
+			}
+			archived = append(archived, version.VersionID)
+		}
+	}
+	sort.Strings(archived)
+	for _, versionID := range archived {
+		for idx := range s.graphVersions {
+			if s.graphVersions[idx].VersionID == versionID {
+				s.graphVersions[idx].StorageClass = "OFFLINE"
+			}
+		}
+		delete(s.graphVersionEntities, versionID)
+	}
+	return archived, nil
+}
+
 func (s *versionFixtureStore) ListPendingGraphVersionsBefore(cutoff time.Time) []write.GraphVersionRecord {
 	result := make([]write.GraphVersionRecord, 0)
 	for _, version := range s.graphVersions {

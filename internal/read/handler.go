@@ -138,3 +138,27 @@ func paginateBy[T any](items []T, page respond.Page, keyFn func(T) string) ([]T,
 	}
 	return slice, nextCursor, hasMore
 }
+
+// ReadGraphByScope serves POST /v1/kg/read/graph:by-scope.
+//
+// It is a POST despite being a read because the request carries a structured level filter and a
+// two-part cursor; encoding those in a query string would be lossy and awkward to escape.
+func (h Handler) ReadGraphByScope(w http.ResponseWriter, r *http.Request) {
+	var req GraphScopeReadRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, err)
+		return
+	}
+
+	identity, _ := access.IdentityFromContext(r.Context())
+	result, err := h.service.ReadGraphByScope(r.Context(), identity, req)
+	if err != nil {
+		if errors.Is(err, ErrScopeReadUnsupported) {
+			respond.Error(w, respond.StatusFor(respond.CodeServiceUnavailable), respond.CodeServiceUnavailable, err.Error(), nil)
+			return
+		}
+		writeError(w, err)
+		return
+	}
+	respond.OK(w, result)
+}

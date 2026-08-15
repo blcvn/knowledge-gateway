@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"kg-service/internal/platform/graphstore"
+	"kg-service/internal/write"
 )
 
 const (
@@ -35,6 +36,76 @@ type NodeResponse struct {
 	Relationships []string       `json:"relationships"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
+}
+
+// GraphScopeReadRequest asks for every live node and relationship of one graph scope, optionally
+// narrowed to specific levels. It is the read counterpart of a scoped write: a client that owns a
+// partitioned graph reloads exactly the slice it is about to rewrite.
+type GraphScopeReadRequest struct {
+	DomainID   string             `json:"domain_id"`
+	GraphScope string             `json:"graph_scope"`
+	Levels     []write.ScopeLevel `json:"levels,omitempty"`
+	// RefsOnly drops property payloads, leaving identity plus partition attributes. A caller
+	// computing which rows to delete needs only that, and a full read of a large slice purely to
+	// diff identifiers is wasteful.
+	RefsOnly bool                 `json:"refs_only,omitempty"`
+	Limit    int                  `json:"limit,omitempty"`
+	Cursor   GraphScopeReadCursor `json:"cursor,omitempty"`
+}
+
+// GraphScopeReadCursor paginates nodes and relationships independently. One combined cursor would
+// have to advance both collections in lockstep, which they do not: a scope can hold ten times more
+// nodes than edges, or the reverse.
+//
+// The Done flags exist because a position alone cannot express exhaustion: an empty position means
+// "start from the beginning", so a collection that ran out first would silently restart while the
+// other was still paging, and the caller would receive its rows twice.
+type GraphScopeReadCursor struct {
+	Nodes             string `json:"nodes,omitempty"`
+	Relationships     string `json:"relationships,omitempty"`
+	NodesDone         bool   `json:"nodes_done,omitempty"`
+	RelationshipsDone bool   `json:"relationships_done,omitempty"`
+}
+
+// IsZero reports whether both collections are exhausted, which is what "no more pages" means.
+func (c GraphScopeReadCursor) IsZero() bool {
+	return c.NodesDone && c.RelationshipsDone
+}
+
+type GraphScopeReadResponse struct {
+	Nodes         []GraphScopeNode         `json:"nodes"`
+	Relationships []GraphScopeRelationship `json:"relationships"`
+	NextCursor    GraphScopeReadCursor     `json:"next_cursor"`
+	// HasMore is derived from NextCursor so a client does not have to know the emptiness rule.
+	HasMore bool `json:"has_more"`
+}
+
+type GraphScopeNode struct {
+	ID            string         `json:"id"`
+	NodeType      string         `json:"node_type"`
+	DomainID      string         `json:"domain_id"`
+	OwnerTenantID string         `json:"owner_tenant_id"`
+	OwnerAppID    string         `json:"owner_app_id,omitempty"`
+	Visibility    string         `json:"visibility"`
+	ExternalRef   string         `json:"external_ref,omitempty"`
+	Properties    map[string]any `json:"properties"`
+	DomainVersion int            `json:"domain_version"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+}
+
+type GraphScopeRelationship struct {
+	ID            string         `json:"id"`
+	RelType       string         `json:"rel_type"`
+	FromNodeID    string         `json:"from_node_id"`
+	ToNodeID      string         `json:"to_node_id"`
+	DomainID      string         `json:"domain_id"`
+	OwnerTenantID string         `json:"owner_tenant_id"`
+	OwnerAppID    string         `json:"owner_app_id,omitempty"`
+	ExternalRef   string         `json:"external_ref,omitempty"`
+	Properties    map[string]any `json:"properties"`
+	DomainVersion int            `json:"domain_version"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 type TemplateExecutionRequest struct {

@@ -13,8 +13,12 @@ type Reader interface {
 	ListNodes() []NodeRecord
 	GetRelationshipByID(id string) (RelationshipRecord, bool)
 	GetRelationshipsByIDs(ids []string) map[string]RelationshipRecord
+	GetRelationshipByExternalRef(externalRef string) (RelationshipRecord, bool)
+	GetRelationshipsByExternalRefs(externalRefs []string) map[string]RelationshipRecord
 	ListRelationshipsBatch(afterID string, limit int) []RelationshipRecord
 	ListRelationships() []RelationshipRecord
+	ListNodesByScope(ctx context.Context, query ScopeQuery) ([]NodeRecord, string, error)
+	ListRelationshipsByScope(ctx context.Context, query ScopeQuery) ([]RelationshipRecord, string, error)
 }
 
 // OutboxReader exposes the durable sync event stream.
@@ -35,6 +39,9 @@ type Writer interface {
 	SoftDeleteNodeWithOutbox(ctx context.Context, node NodeRecord, event OutboxEvent) error
 	SoftDeleteNodesByExternalRefPrefix(ctx context.Context, prefix string, deletedAt time.Time) ([]NodeRecord, error)
 	SoftDeleteNodesByExternalRefPrefixWithOutbox(ctx context.Context, prefix string, deletedAt time.Time) ([]NodeRecord, error)
+	SoftDeleteNodesByScope(ctx context.Context, filter ScopeFilter, deletedAt time.Time) ([]NodeRecord, error)
+	SoftDeleteRelationshipsByScope(ctx context.Context, filter ScopeFilter) ([]RelationshipRecord, error)
+	SoftDeleteRelationshipsByExternalRefs(ctx context.Context, externalRefs []string) ([]RelationshipRecord, error)
 	CreateRelationshipWithOutbox(ctx context.Context, rel RelationshipRecord, event OutboxEvent) error
 	SoftDeleteRelationshipsWithOutbox(ctx context.Context, relationshipIDs []string, deletedAt time.Time) ([]RelationshipRecord, error)
 	CreateOutboxEvents(ctx context.Context, events []OutboxEvent) error
@@ -49,6 +56,7 @@ type Writer interface {
 	GetGraphVersionEntities(versionID string) []GraphVersionEntityRecord
 	AbandonGraphVersion(ctx context.Context, versionID string) error
 	CleanupExpiredSyncSession(ctx context.Context, versionID string) error
+	ArchiveGraphVersions(ctx context.Context, keepCount int, olderThan time.Time) ([]string, error)
 	GetGraphVersionByID(ctx context.Context, versionID string) (GraphVersionRecord, bool)
 	GetGraphIdentityByID(ctx context.Context, identifierID string) (GraphIdentityRecord, bool)
 	AcquireScopeLease(ctx context.Context, ownerTenantID, ownerAppID, graphScope, versionID string, expiresAt time.Time) error

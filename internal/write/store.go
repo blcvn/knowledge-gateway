@@ -17,6 +17,7 @@ type MemoryStore struct {
 	nodes                map[string]NodeRecord
 	externalRefs         map[string]string
 	rels                 map[string]RelationshipRecord
+	relExternalRefs      map[string]string
 	outbox               []OutboxEvent
 	projectionVersions   map[string]map[string]ProjectionVersionRecord
 	graphIdentities      map[string]GraphIdentityRecord
@@ -31,6 +32,7 @@ func NewMemoryStore() *MemoryStore {
 		nodes:                map[string]NodeRecord{},
 		externalRefs:         map[string]string{},
 		rels:                 map[string]RelationshipRecord{},
+		relExternalRefs:      map[string]string{},
 		outbox:               []OutboxEvent{},
 		projectionVersions:   map[string]map[string]ProjectionVersionRecord{},
 		graphIdentities:      map[string]GraphIdentityRecord{},
@@ -94,7 +96,7 @@ func (s *MemoryStore) CreateNodeBundle(_ context.Context, node NodeRecord, rels 
 		s.externalRefs[node.ExternalRef] = node.ID
 	}
 	for _, rel := range rels {
-		s.rels[rel.ID] = rel
+		s.putRelationshipLocked(rel)
 	}
 	s.outbox = append(s.outbox, event)
 	return nil
@@ -104,7 +106,7 @@ func (s *MemoryStore) CreateRelationshipsBulkWithOutbox(_ context.Context, rels 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, rel := range rels {
-		s.rels[rel.ID] = rel
+		s.putRelationshipLocked(rel)
 	}
 	for _, event := range events {
 		s.outbox = append(s.outbox, event)
@@ -302,7 +304,7 @@ func (s *MemoryStore) SoftDeleteNodesByExternalRefPrefixWithOutbox(_ context.Con
 func (s *MemoryStore) CreateRelationshipWithOutbox(_ context.Context, rel RelationshipRecord, event OutboxEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.rels[rel.ID] = rel
+	s.putRelationshipLocked(rel)
 	s.outbox = append(s.outbox, event)
 	return nil
 }
@@ -317,7 +319,7 @@ func (s *MemoryStore) SoftDeleteRelationshipsWithOutbox(_ context.Context, relat
 			continue
 		}
 		rel.IsDeleted = true
-		s.rels[id] = rel
+		s.putRelationshipLocked(rel)
 		deleted = append(deleted, rel)
 	}
 	_ = deletedAt
@@ -344,6 +346,207 @@ func (s *MemoryStore) UpdateOutboxStatus(_ context.Context, eventID, status stri
 		return nil
 	}
 	return nil
+}
+
+// scopeSortedNodes returns the store's nodes in id order, which is what makes cursor pagination
+// stable. Map iteration order would let a row appear on two pages, or on none.
+func (s *MemoryStore) scopeSortedNodes() []NodeRecord {
+	nodes := make([]NodeRecord, 0, len(s.nodes))
+	for _, node := range s.nodes {
+		nodes = append(nodes, node)
+	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
+	return nodes
+}
+
+func (s *MemoryStore) scopeSortedRelationships() []RelationshipRecord {
+	rels := make([]RelationshipRecord, 0, len(s.rels))
+	for _, rel := range s.rels {
+		rels = append(rels, rel)
+	}
+	sort.Slice(rels, func(i, j int) bool { return rels[i].ID < rels[j].ID })
+	return rels
+}
+
+// ListNodesByScope returns one page of the scope, newest cursor last. Deleted rows are excluded:
+// every caller of a scope read wants the current graph, and a tombstone is not part of it.
+func (s *MemoryStore) ListNodesByScope(_ context.Context, query ScopeQuery) ([]NodeRecord, string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	limit := ScopePageLimit(query.Limit)
+	page := make([]NodeRecord, 0, limit)
+	for _, node := range s.scopeSortedNodes() {
+		if node.IsDeleted || node.DomainID != query.DomainID {
+			continue
+		}
+		if propertyString(node.Properties, "_kg_graph_scope") != query.GraphScope {
+			continue
+		}
+		if !query.ScopeFilter.Matches(node.Properties) {
+			continue
+		}
+		if query.Cursor != "" && node.ID <= query.Cursor {
+			continue
+		}
+		page = append(page, node)
+		if len(page) == limit {
+			break
+		}
+	}
+	return page, ScopeNextCursor(len(page), limit, lastNodeID(page)), nil
+}
+
+func lastNodeID(page []NodeRecord) string {
+	if len(page) == 0 {
+		return ""
+	}
+	return page[len(page)-1].ID
+}
+
+func (s *MemoryStore) ListRelationshipsByScope(_ context.Context, query ScopeQuery) ([]RelationshipRecord, string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	limit := ScopePageLimit(query.Limit)
+	page := make([]RelationshipRecord, 0, limit)
+	for _, rel := range s.scopeSortedRelationships() {
+		if rel.IsDeleted || rel.DomainID != query.DomainID {
+			continue
+		}
+		if propertyString(rel.Properties, "_kg_graph_scope") != query.GraphScope {
+			continue
+		}
+		if !query.ScopeFilter.Matches(rel.Properties) {
+			continue
+		}
+		if query.Cursor != "" && rel.ID <= query.Cursor {
+			continue
+		}
+		page = append(page, rel)
+		if len(page) == limit {
+			break
+		}
+	}
+	return page, ScopeNextCursor(len(page), limit, lastRelationshipID(page)), nil
+}
+
+func lastRelationshipID(page []RelationshipRecord) string {
+	if len(page) == 0 {
+		return ""
+	}
+	return page[len(page)-1].ID
+}
+
+func (s *MemoryStore) SoftDeleteNodesByScope(_ context.Context, filter ScopeFilter, deletedAt time.Time) ([]NodeRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	deleted := make([]NodeRecord, 0)
+	for _, node := range s.scopeSortedNodes() {
+		if node.IsDeleted || node.DomainID != filter.DomainID {
+			continue
+		}
+		if propertyString(node.Properties, "_kg_graph_scope") != filter.GraphScope {
+			continue
+		}
+		if !filter.Matches(node.Properties) {
+			continue
+		}
+		node.IsDeleted = true
+		node.UpdatedAt = deletedAt
+		s.nodes[node.ID] = node
+		deleted = append(deleted, node)
+	}
+	return deleted, nil
+}
+
+func (s *MemoryStore) SoftDeleteRelationshipsByScope(_ context.Context, filter ScopeFilter) ([]RelationshipRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	deleted := make([]RelationshipRecord, 0)
+	for _, rel := range s.scopeSortedRelationships() {
+		if rel.IsDeleted || rel.DomainID != filter.DomainID {
+			continue
+		}
+		if propertyString(rel.Properties, "_kg_graph_scope") != filter.GraphScope {
+			continue
+		}
+		if !filter.Matches(rel.Properties) {
+			continue
+		}
+		rel.IsDeleted = true
+		s.putRelationshipLocked(rel)
+		deleted = append(deleted, rel)
+	}
+	return deleted, nil
+}
+
+func (s *MemoryStore) SoftDeleteRelationshipsByExternalRefs(_ context.Context, externalRefs []string) ([]RelationshipRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	deleted := make([]RelationshipRecord, 0, len(externalRefs))
+	for _, ref := range externalRefs {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		id, ok := s.relExternalRefs[ref]
+		if !ok {
+			continue
+		}
+		rel, ok := s.rels[id]
+		if !ok || rel.IsDeleted {
+			continue
+		}
+		rel.IsDeleted = true
+		s.putRelationshipLocked(rel)
+		deleted = append(deleted, rel)
+	}
+	return deleted, nil
+}
+
+// putRelationshipLocked is the single write path for relationships in the memory store. It keeps
+// the external_ref index in step with the record map; without one central place to do that, an
+// index entry survives a rewrite that moved or cleared the reference and later resolves to the
+// wrong relationship. Caller must hold s.mu.
+func (s *MemoryStore) putRelationshipLocked(rel RelationshipRecord) {
+	if existing, ok := s.rels[rel.ID]; ok && existing.ExternalRef != "" && existing.ExternalRef != rel.ExternalRef {
+		delete(s.relExternalRefs, existing.ExternalRef)
+	}
+	s.rels[rel.ID] = rel
+	if rel.ExternalRef != "" {
+		s.relExternalRefs[rel.ExternalRef] = rel.ID
+	}
+}
+
+// GetRelationshipByExternalRef mirrors GetNodeByExternalRef, including the deliberate absence of
+// an is_deleted filter: the upsert path reads the tombstone in order to revive that same row.
+func (s *MemoryStore) GetRelationshipByExternalRef(externalRef string) (RelationshipRecord, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if strings.TrimSpace(externalRef) == "" {
+		return RelationshipRecord{}, false
+	}
+	id, ok := s.relExternalRefs[externalRef]
+	if !ok {
+		return RelationshipRecord{}, false
+	}
+	rel, ok := s.rels[id]
+	return rel, ok
+}
+
+func (s *MemoryStore) GetRelationshipsByExternalRefs(externalRefs []string) map[string]RelationshipRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make(map[string]RelationshipRecord, len(externalRefs))
+	for _, externalRef := range externalRefs {
+		id, ok := s.relExternalRefs[externalRef]
+		if !ok {
+			continue
+		}
+		if rel, ok := s.rels[id]; ok {
+			result[externalRef] = rel
+		}
+	}
+	return result
 }
 
 func (s *MemoryStore) GetRelationshipByID(id string) (RelationshipRecord, bool) {
@@ -781,4 +984,59 @@ func (s *MemoryStore) ListProjectionVersionsBatch(afterEntityKind, afterEntityID
 		}
 	}
 	return result
+}
+
+// ArchiveGraphVersions moves sealed, superseded versions to OFFLINE and drops their entity
+// manifests. See the Postgres implementation for the retention rule; the two must agree.
+func (s *MemoryStore) ArchiveGraphVersions(_ context.Context, keepCount int, olderThan time.Time) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if keepCount < 0 {
+		keepCount = 0
+	}
+	archived := make([]string, 0)
+	for identifierID, versions := range s.graphVersions {
+		heads := map[string]struct{}{}
+		for _, identity := range s.graphIdentities {
+			if identity.IdentifierID == identifierID && identity.HeadVersionID != "" {
+				heads[identity.HeadVersionID] = struct{}{}
+			}
+		}
+
+		candidates := make([]GraphVersionRecord, 0, len(versions))
+		for _, version := range versions {
+			if strings.EqualFold(version.StorageClass, "ONLINE") && strings.EqualFold(version.VersionStatus, "SEALED") {
+				candidates = append(candidates, version)
+			}
+		}
+		sort.Slice(candidates, func(i, j int) bool { return candidates[i].VersionNumber > candidates[j].VersionNumber })
+
+		victims := map[string]struct{}{}
+		for rank, version := range candidates {
+			if rank < keepCount {
+				continue
+			}
+			if !version.CreatedAt.Before(olderThan) {
+				continue
+			}
+			if _, isHead := heads[version.VersionID]; isHead {
+				continue
+			}
+			victims[version.VersionID] = struct{}{}
+		}
+		if len(victims) == 0 {
+			continue
+		}
+		for idx := range versions {
+			if _, ok := victims[versions[idx].VersionID]; !ok {
+				continue
+			}
+			versions[idx].StorageClass = "OFFLINE"
+			delete(s.graphVersionEntities, versions[idx].VersionID)
+			archived = append(archived, versions[idx].VersionID)
+		}
+		s.graphVersions[identifierID] = versions
+	}
+	sort.Strings(archived)
+	return archived, nil
 }

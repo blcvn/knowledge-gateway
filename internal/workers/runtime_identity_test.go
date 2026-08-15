@@ -104,6 +104,9 @@ func (s *scopedNodeStore) GetGraphVersionEntities(versionID string) []write.Grap
 func (s *scopedNodeStore) ListPendingGraphVersionsBefore(cutoff time.Time) []write.GraphVersionRecord {
 	return nil
 }
+func (s *scopedNodeStore) ArchiveGraphVersions(ctx context.Context, keepCount int, olderThan time.Time) ([]string, error) {
+	return nil, nil
+}
 func (s *scopedNodeStore) GetGraphIdentityByID(ctx context.Context, identifierID string) (write.GraphIdentityRecord, bool) {
 	return write.GraphIdentityRecord{}, false
 }
