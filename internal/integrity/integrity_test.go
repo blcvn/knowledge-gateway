@@ -155,3 +155,81 @@ func (fakeRepairer) RebuildProjection(ctx context.Context, tenantID string) (Rep
 func (fakeRepairer) PurgeOrphans(ctx context.Context, tenantID string) (RepairReport, error) {
 	return RepairReport{PurgedRelationships: 1, PurgedVectorDocs: 1, ScannedAt: time.Now().UTC()}, nil
 }
+
+// The three handlers below read the tenant from the query string. Their routes carry no
+// {tenant_id} segment — only /v1/kg/integrity/tenant/{tenant_id} does — so reading a path value,
+// as they used to, produced the empty string on every request and the endpoints answered
+// "tenant_id is required" to everyone. openapi.yaml has always declared them as
+// TenantIDQueryRequired; the handlers had drifted from their own contract.
+//
+// Each test deliberately builds the request the way the router would: query string only, and no
+// SetPathValue. A test that called SetPathValue would pass against the broken code and prove
+// nothing.
+
+func TestOrphanScanReadsTenantFromQuery(t *testing.T) {
+	svc, actor := newIntegrityFixture(t)
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/kg/integrity/orphans?tenant_id="+actor.TenantID, nil)
+	req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
+	rec := httptest.NewRecorder()
+
+	handler.OrphanScan(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRebuildProjectionReadsTenantFromQuery(t *testing.T) {
+	svc, actor := newIntegrityFixture(t)
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/kg/integrity/repair/rebuild?tenant_id="+actor.TenantID, nil)
+	req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
+	rec := httptest.NewRecorder()
+
+	handler.RebuildProjection(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPurgeOrphansReadsTenantFromQuery(t *testing.T) {
+	svc, actor := newIntegrityFixture(t)
+	handler := NewHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/kg/integrity/repair/purge-orphans?tenant_id="+actor.TenantID, nil)
+	req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
+	rec := httptest.NewRecorder()
+
+	handler.PurgeOrphans(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Without a tenant the endpoints must still refuse — the fix must not turn a missing tenant into a
+// silent whole-platform operation.
+func TestRepairEndpointsRefuseWithoutTenant(t *testing.T) {
+	svc, actor := newIntegrityFixture(t)
+	handler := NewHandler(svc)
+
+	for name, call := range map[string]func(http.ResponseWriter, *http.Request){
+		"rebuild":       handler.RebuildProjection,
+		"purge-orphans": handler.PurgeOrphans,
+		"orphans":       handler.OrphanScan,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/kg/integrity/x", nil)
+		req = req.WithContext(access.ContextWithIdentity(req.Context(), actor))
+		rec := httptest.NewRecorder()
+
+		call(rec, req)
+
+		if rec.Code == http.StatusOK {
+			t.Errorf("%s: status = 200 without a tenant_id, want a refusal", name)
+		}
+	}
+}
