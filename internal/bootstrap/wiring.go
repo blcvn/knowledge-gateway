@@ -21,7 +21,7 @@ import (
 // (cache → retry → optional proxy). Route overrides inherit retry but
 // run their own provider.
 func buildEmbeddingRouter(cfg config.Config) (vector.EmbeddingRouter, error) {
-	defaultProvider, err := buildEmbeddingProvider(cfg.Embedding.Provider, cfg.Embedding.URL, cfg.Embedding.Model, cfg.Embedding.APIKey, cfg.Embedding.Dimensions)
+	defaultProvider, err := buildEmbeddingProvider(cfg.Embedding.Provider, cfg.Embedding.URL, cfg.Embedding.Model, cfg.Embedding.APIKey, cfg.Embedding.Dimensions, cfg.Embedding.MaxInputChars)
 	if err != nil {
 		return nil, err
 	}
@@ -39,14 +39,14 @@ func buildEmbeddingRouter(cfg config.Config) (vector.EmbeddingRouter, error) {
 		Domains: make(map[string]vector.EmbeddingProvider, len(cfg.Embedding.DomainRoutes)),
 	}
 	for tenantID, route := range cfg.Embedding.TenantRoutes {
-		p, err := buildEmbeddingProvider(route.Provider, route.URL, route.Model, route.APIKey, route.Dimensions)
+		p, err := buildEmbeddingProvider(route.Provider, route.URL, route.Model, route.APIKey, route.Dimensions, cfg.Embedding.MaxInputChars)
 		if err != nil {
 			return nil, fmt.Errorf("tenant route %q: %w", tenantID, err)
 		}
 		router.Tenants[tenantID] = applyEmbeddingMiddleware(p, cfg.Embedding)
 	}
 	for domainID, route := range cfg.Embedding.DomainRoutes {
-		p, err := buildEmbeddingProvider(route.Provider, route.URL, route.Model, route.APIKey, route.Dimensions)
+		p, err := buildEmbeddingProvider(route.Provider, route.URL, route.Model, route.APIKey, route.Dimensions, cfg.Embedding.MaxInputChars)
 		if err != nil {
 			return nil, fmt.Errorf("domain route %q: %w", domainID, err)
 		}
@@ -56,7 +56,7 @@ func buildEmbeddingRouter(cfg config.Config) (vector.EmbeddingRouter, error) {
 }
 
 // buildEmbeddingProvider creates the leaf provider (no middleware).
-func buildEmbeddingProvider(provider, url, model, apiKey string, dimensions int) (vector.EmbeddingProvider, error) {
+func buildEmbeddingProvider(provider, url, model, apiKey string, dimensions, maxInputChars int) (vector.EmbeddingProvider, error) {
 	switch provider {
 	case "", "deterministic":
 		dims := dimensions
@@ -66,11 +66,12 @@ func buildEmbeddingProvider(provider, url, model, apiKey string, dimensions int)
 		return vector.NewDeterministicProvider(dims), nil
 	case "http":
 		return vector.HTTPEmbeddingProvider{
-			URL:     url,
-			Model:   model,
-			APIKey:  apiKey,
-			Timeout: 30 * time.Second,
-			Dims:    dimensions,
+			URL:           url,
+			Model:         model,
+			APIKey:        apiKey,
+			Timeout:       30 * time.Second,
+			Dims:          dimensions,
+			MaxInputChars: maxInputChars,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported embedding provider: %s", provider)

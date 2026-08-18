@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type HTTPEmbeddingProvider struct {
@@ -22,6 +24,45 @@ type HTTPEmbeddingProvider struct {
 	// Set via EMBEDDING_DIMENSIONS. 0 means the dimension is inferred
 	// from the provider's response (works with unbounded vector columns).
 	Dims int
+
+	// MaxInputChars caps the text sent per input. 0 uses defaultMaxInputChars.
+	//
+	// This is not a tuning knob, it is a correctness guard. Embedding models reject input past
+	// their context window rather than truncating it: BGE-m3 answers
+	//
+	//	400 "This model's maximum context length is 8192 tokens. However, you requested 22003
+	//	tokens in the input for embedding generation."
+	//
+	// and a rejection propagates — one oversized node aborts the projection run it is part of, so
+	// every node after it goes unembedded too. Observed on real BAS data, where a rebuild stopped
+	// after 290 of ~6.500 nodes on a single 42.735-character node. Truncating loses the tail of one
+	// document; not truncating loses the index.
+	MaxInputChars int
+}
+
+// defaultMaxInputChars keeps input under an 8192-token window without knowing the tokenizer.
+//
+// Two characters per token is the worst case seen from this provider (it counted 22.003 tokens for
+// 44.006 characters of ASCII); Vietnamese prose measures closer to three. Sizing for the worst case
+// means the cap holds for both, at the cost of truncating some Vietnamese text earlier than strictly
+// necessary — the right trade, because the failure mode on the other side is a failed run rather
+// than a shorter vector.
+const defaultMaxInputChars = 16000
+
+// truncateForModel bounds one input, reporting whether it had to.
+func truncateForModel(text string, limit int) (string, bool) {
+	if limit <= 0 {
+		limit = defaultMaxInputChars
+	}
+	if len(text) <= limit {
+		return text, false
+	}
+	// Cut on a rune boundary so the payload stays valid UTF-8.
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut], true
 }
 
 func (p HTTPEmbeddingProvider) Dimensions() int { return p.Dims }
@@ -40,8 +81,12 @@ func (p HTTPEmbeddingProvider) Embed(ctx context.Context, text string) ([]float6
 		}
 		client = &http.Client{Timeout: timeout}
 	}
+	input, truncated := truncateForModel(text, p.MaxInputChars)
+	if truncated {
+		log.Printf("embedding input truncated from %d to %d characters to stay inside the model context window", len(text), len(input))
+	}
 	payload := map[string]any{
-		"input": []string{text},
+		"input": []string{input},
 	}
 	if strings.TrimSpace(p.Model) != "" {
 		payload["model"] = p.Model

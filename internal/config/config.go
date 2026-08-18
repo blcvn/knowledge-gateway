@@ -84,6 +84,11 @@ type EmbeddingConfig struct {
 	APIKey   string
 	ProxyURL string
 	CacheTTL time.Duration
+	// MaxInputChars caps the text sent per embedding input, guarding against the model rejecting
+	// input past its context window. See vector.HTTPEmbeddingProvider for why a cap is a
+	// correctness guard rather than a tuning knob. Set via EMBEDDING_MAX_INPUT_CHARS; 0 uses the
+	// provider default.
+	MaxInputChars int
 	// Dimensions is the vector dimension returned by the configured provider.
 	// Required when using VECTOR_ADAPTER=pgvector and HNSW indexing.
 	// Set via EMBEDDING_DIMENSIONS (default 0 = inferred from response).

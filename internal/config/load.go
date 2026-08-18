@@ -51,6 +51,10 @@ func Load() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	embeddingMaxInputChars, err := intEnv("EMBEDDING_MAX_INPUT_CHARS", 0)
+	if err != nil {
+		return Config{}, err
+	}
 	embeddingCacheTTLS, err := intEnv("EMBEDDING_CACHE_TTL_S", 0)
 	if err != nil {
 		errs = append(errs, err)
@@ -115,12 +119,13 @@ func Load() (Config, error) {
 			DB:       redisDB,
 		},
 		Embedding: EmbeddingConfig{
-			Provider:     stringEnv("EMBEDDING_PROVIDER", "deterministic"),
-			URL:          stringEnv("EMBEDDING_URL", ""),
-			Model:        stringEnv("EMBEDDING_MODEL", ""),
-			APIKey:       stringEnv("EMBEDDING_API_KEY", ""),
-			ProxyURL:     stringEnv("EMBEDDING_PROXY_URL", ""),
-			CacheTTL:     time.Duration(embeddingCacheTTLS) * time.Second,
+			Provider:      stringEnv("EMBEDDING_PROVIDER", "deterministic"),
+			URL:           stringEnv("EMBEDDING_URL", ""),
+			Model:         stringEnv("EMBEDDING_MODEL", ""),
+			APIKey:        stringEnv("EMBEDDING_API_KEY", ""),
+			ProxyURL:      stringEnv("EMBEDDING_PROXY_URL", ""),
+			MaxInputChars: embeddingMaxInputChars,
+			CacheTTL:      time.Duration(embeddingCacheTTLS) * time.Second,
 		},
 		Vector: AdapterConfig{
 			Kind:       stringEnv("VECTOR_ADAPTER", "memory"),
