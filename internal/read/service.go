@@ -24,6 +24,8 @@ var (
 
 type OntologyResolver interface {
 	GetVisibleDomain(actor access.Identity, domainID string) (ontology.Domain, error)
+	GetNodeType(domainID, nodeTypeName string) (ontology.NodeTypeSchema, error)
+	GetRelType(domainID, relTypeName, fromNodeType, toNodeType string) (ontology.RelTypeSchema, error)
 	GetQueryTemplate(domainID, templateName string) (ontology.QueryTemplate, error)
 	ListQueryTemplates(domainID string) []ontology.QueryTemplate
 	GetStatusFieldConfig(domainID string) (*ontology.StatusFieldConfig, error)
@@ -166,6 +168,57 @@ func (s *Service) ExecuteTemplateWithOptions(actor access.Identity, domainID, te
 	}, nil
 }
 
+// validateGraphSearchShape rejects a traversal naming a node or relationship type the domain does
+// not define.
+//
+// Without this a misspelled rel_type is answered with zero rows and no error, which is
+// indistinguishable from a correct traversal over a graph that genuinely has no such edge. A caller
+// cannot tell the two apart, so a typo reads as a fact about the data — measured in impl-02 L3.4
+// case G3, where a relationship type that exists in no ontology returned a clean empty result.
+//
+// Only the shape is checked, not whether any edge exists: "no rows" remains the right answer for a
+// well-formed traversal that matched nothing.
+func (s *Service) validateGraphSearchShape(req GraphSearchRequest) error {
+	if _, err := s.ontology.GetNodeType(req.DomainID, req.StartNodeType); err != nil {
+		if errors.Is(err, ontology.ErrNotFound) {
+			return errors.Join(ErrValidation, fmt.Errorf("start_node_type %q is not defined in domain %s", req.StartNodeType, req.DomainID))
+		}
+		return err
+	}
+	fromType := req.StartNodeType
+	for i, hop := range req.Hops {
+		toType := strings.TrimSpace(hop.ToNodeType)
+		if toType != "" {
+			if _, err := s.ontology.GetNodeType(req.DomainID, toType); err != nil {
+				if errors.Is(err, ontology.ErrNotFound) {
+					return errors.Join(ErrValidation, fmt.Errorf("hops[%d].to_node_type %q is not defined in domain %s", i, toType, req.DomainID))
+				}
+				return err
+			}
+		}
+		relType := strings.TrimSpace(hop.RelType)
+		if relType == "" {
+			continue
+		}
+		// A hop that does not name its far end cannot be checked against a specific edge schema, so
+		// the pair is only verified when both ends are known. Checking the relationship name alone
+		// would need a lookup this port does not have, and inventing one that silently passes would
+		// put the hole straight back.
+		if toType == "" {
+			continue
+		}
+		if _, err := s.ontology.GetRelType(req.DomainID, relType, fromType, toType); err != nil {
+			if errors.Is(err, ontology.ErrNotFound) {
+				return errors.Join(ErrValidation, fmt.Errorf("hops[%d]: domain %s defines no relationship %q from %s to %s",
+					i, req.DomainID, relType, fromType, toType))
+			}
+			return err
+		}
+		fromType = toType
+	}
+	return nil
+}
+
 func (s *Service) GraphSearch(actor access.Identity, req GraphSearchRequest) (TemplateExecutionResponse, error) {
 	if strings.TrimSpace(req.DomainID) == "" {
 		return TemplateExecutionResponse{}, errors.Join(ErrValidation, errors.New("domain_id is required"))
@@ -184,6 +237,11 @@ func (s *Service) GraphSearch(actor access.Identity, req GraphSearchRequest) (Te
 	}
 	resolvedProfile, err := s.ontology.Resolve(req.DomainID, actor.TenantID, actor.AppID)
 	if err != nil {
+		return TemplateExecutionResponse{}, err
+	}
+
+	if err := s.validateGraphSearchShape(req); err != nil {
+		s.recordAudit(actor, "read", "graph_search", req.DomainID, "deny", "unknown_type", nil)
 		return TemplateExecutionResponse{}, err
 	}
 

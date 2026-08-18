@@ -972,3 +972,67 @@ func seedVisibleRelationship(t *testing.T, store *write.MemoryStore, rel write.R
 		t.Fatalf("CreateRelationshipWithOutbox(%s) error = %v", rel.ID, err)
 	}
 }
+
+// A traversal naming a relationship the domain does not define must say so.
+//
+// Before this, a misspelled rel_type came back as zero rows and no error — indistinguishable from a
+// correct traversal over a graph that genuinely has no such edge, so a typo read as a fact about the
+// data. Measured in impl-02 L3.4 as case G3.
+func TestGraphSearchRejectsATypeTheDomainDoesNotDefine(t *testing.T) {
+	svc, _, actor, _, _, _, _ := newReadFixture(t)
+
+	for _, tc := range []struct {
+		name string
+		req  GraphSearchRequest
+	}{
+		{
+			name: "unknown relationship",
+			req: GraphSearchRequest{
+				DomainID:      "noi_bo_hop_dong",
+				StartNodeType: "HopDongMau",
+				Hops:          []GraphSearchHopRequest{{RelType: "KHONG_TON_TAI_QUAN_HE_NAY", ToNodeType: "KhoanMau"}},
+			},
+		},
+		{
+			name: "unknown start node type",
+			req: GraphSearchRequest{
+				DomainID:      "noi_bo_hop_dong",
+				StartNodeType: "KhongCoLoaiNayDau",
+			},
+		},
+		{
+			name: "unknown far end",
+			req: GraphSearchRequest{
+				DomainID:      "noi_bo_hop_dong",
+				StartNodeType: "HopDongMau",
+				Hops:          []GraphSearchHopRequest{{RelType: "THAM_CHIEU", ToNodeType: "KhongCoLoaiNayDau"}},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := svc.GraphSearch(actor, tc.req)
+			if !errors.Is(err, ErrValidation) {
+				t.Fatalf("GraphSearch() error = %v, want a validation error naming the undefined type", err)
+			}
+		})
+	}
+}
+
+// The counterpart: a well-formed traversal that simply matches nothing is still an empty answer, not
+// an error. Losing that distinction would just move the confusion to the other side.
+func TestGraphSearchStillAnswersEmptyForAWellFormedTraversal(t *testing.T) {
+	svc, _, actor, _, _, _, _ := newReadFixture(t)
+
+	resp, err := svc.GraphSearch(actor, GraphSearchRequest{
+		DomainID:      "noi_bo_hop_dong",
+		StartNodeType: "HopDongMau",
+		StartMatch:    map[string]any{"ten": "khong-co-hop-dong-nao-ten-nhu-vay"},
+		Hops:          []GraphSearchHopRequest{{RelType: "THAM_CHIEU", ToNodeType: "KhoanMau"}},
+	})
+	if err != nil {
+		t.Fatalf("GraphSearch() error = %v, want an empty result", err)
+	}
+	if len(resp.Results) != 0 {
+		t.Fatalf("GraphSearch() returned %d rows, want none", len(resp.Results))
+	}
+}
