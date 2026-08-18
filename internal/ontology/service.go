@@ -452,26 +452,26 @@ func (s *Service) UpsertSearchProfile(actor access.Identity, tenantID, domainID 
 		return SearchProfile{}, ErrForbidden
 	}
 	if profile.SemanticFields != nil && len(profile.SemanticFields) == 0 {
-		return SearchProfile{}, errors.New("semantic_fields must be nil (use defaults) or a non-empty list")
+		return SearchProfile{}, fmt.Errorf("%w: semantic_fields must be nil (use defaults) or a non-empty list", ErrValidation)
 	}
 	if strings.TrimSpace(profile.FTSLanguage) == "" {
-		return SearchProfile{}, errors.New("fts_language must be a non-empty string")
+		return SearchProfile{}, fmt.Errorf("%w: fts_language must be a non-empty string", ErrValidation)
 	}
 	allowedFields := s.allowedSearchFieldNames(domainID)
 	for _, field := range profile.SemanticFields {
 		if strings.TrimSpace(field.FieldName) == "" {
-			return SearchProfile{}, errors.New("semantic_fields.field_name must not be empty")
+			return SearchProfile{}, fmt.Errorf("%w: semantic_fields.field_name must not be empty", ErrValidation)
 		}
 		if _, ok := allowedFields[field.FieldName]; !ok {
-			return SearchProfile{}, fmt.Errorf("unknown semantic field: %s", field.FieldName)
+			return SearchProfile{}, fmt.Errorf("%w: unknown semantic field %q; selectable fields are the six built-ins plus every property declared by a node type in this domain", ErrValidation, field.FieldName)
 		}
 		if field.Weight < 0.1 || field.Weight > 10.0 {
-			return SearchProfile{}, errors.New("semantic_fields.weight must be between 0.1 and 10.0")
+			return SearchProfile{}, fmt.Errorf("%w: semantic_fields.weight must be between 0.1 and 10.0", ErrValidation)
 		}
 	}
 	if strings.TrimSpace(profile.QueryStrategyRef) != "" {
 		if _, ok := s.store.GetQueryStrategy(profile.QueryStrategyRef); !ok {
-			return SearchProfile{}, fmt.Errorf("unknown query strategy: %s", profile.QueryStrategyRef)
+			return SearchProfile{}, fmt.Errorf("%w: unknown query strategy %q", ErrValidation, profile.QueryStrategyRef)
 		}
 	}
 	return s.store.UpsertSearchProfile(domainID, profile), nil

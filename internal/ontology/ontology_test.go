@@ -1,6 +1,7 @@
 package ontology
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -420,5 +421,52 @@ func TestValidateCrossDomainTargetRejectsMissingBridgeTarget(t *testing.T) {
 	}
 	if err := service.ValidateCrossDomainTarget(rule, "noi_bo_hop_dong", ""); err == nil {
 		t.Fatal("ValidateCrossDomainTarget() error = nil, want missing node-type validation failure")
+	}
+}
+
+// A rejected search profile must say why. Every validation failure here used to be a plain
+// errors.New, which writeError maps to 500 "Internal server error" — so an operator naming a field
+// that is not selectable saw nothing actionable, and the one piece of information that would have
+// resolved it (which fields ARE selectable) was thrown away. CreateNodeType has always returned
+// VALIDATION_FAILED for the same class of mistake; this path had drifted.
+func TestSearchProfileValidationIsAValidationError(t *testing.T) {
+	service := newTestService(t)
+	admin := access.Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}
+
+	_, err := service.UpsertSearchProfile(admin, admin.TenantID, "noi_bo_hop_dong", SearchProfile{
+		SemanticFields: []IndexedField{{FieldName: "no_such_field", Weight: 1}},
+		FTSLanguage:    "simple",
+	})
+	if err == nil {
+		t.Fatal("UpsertSearchProfile() = nil, want a rejection for an undeclared field")
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("error = %v; it must satisfy errors.Is(err, ErrValidation) or the handler answers 500", err)
+	}
+	if !strings.Contains(err.Error(), "no_such_field") {
+		t.Fatalf("error = %v, want it to name the offending field", err)
+	}
+}
+
+func TestSearchProfileWeightBoundsAreValidationErrors(t *testing.T) {
+	service := newTestService(t)
+	admin := access.Identity{
+		TenantID: "11111111-1111-1111-1111-111111111111",
+		AppID:    "11111111-admin-1111-admin-111111111111",
+		AppType:  "admin_tool",
+	}
+
+	for name, weight := range map[string]float64{"too small": 0.01, "too large": 99} {
+		_, err := service.UpsertSearchProfile(admin, admin.TenantID, "noi_bo_hop_dong", SearchProfile{
+			SemanticFields: []IndexedField{{FieldName: "node_type", Weight: weight}},
+			FTSLanguage:    "simple",
+		})
+		if !errors.Is(err, ErrValidation) {
+			t.Errorf("%s: error = %v, want a validation error", name, err)
+		}
 	}
 }
