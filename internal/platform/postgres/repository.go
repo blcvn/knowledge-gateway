@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -185,12 +186,22 @@ func (r *Repository) GetNodesByIDs(ids []string) map[string]write.NodeRecord {
 	if len(ids) == 0 {
 		return map[string]write.NodeRecord{}
 	}
+	// The cast is ::uuid[], not ::text[]. kg_nodes.id is a uuid column, so comparing it to a text
+	// array is not a slow query — it is `operator does not exist: uuid = text`, an error on every
+	// call. This function reports failure as an empty map, so the projection worker read that as
+	// "none of these nodes exist" and marked every one of them already-projected: no vector, no
+	// graph node, no full-text row, and the projection head advanced as though it had all
+	// succeeded. Every vector in the database had come from repair/rebuild; nothing written
+	// normally was ever searchable.
 	rows, err := r.query(context.Background(), `
 		SELECT id, node_type, domain_id, owner_tenant_id, owner_app_id, visibility, properties, domain_version, external_ref, status_value, is_deleted, created_at, updated_at
 		FROM kg_nodes
-		WHERE id = ANY($1::text[])
+		WHERE id = ANY($1::uuid[])
 	`, arrayLiteral(ids))
 	if err != nil {
+		// Losing this error is what let a type mismatch masquerade as an empty table for as long as
+		// it did. The signature has no error to return, so the log line is the only signal there is.
+		log.Printf("kg-service: GetNodesByIDs failed for %d ids: %v", len(ids), err)
 		return map[string]write.NodeRecord{}
 	}
 	defer rows.Close()
@@ -323,12 +334,15 @@ func (r *Repository) GetRelationshipsByIDs(ids []string) map[string]write.Relati
 	if len(ids) == 0 {
 		return map[string]write.RelationshipRecord{}
 	}
+	// Same uuid-vs-text mismatch as GetNodesByIDs above, with the same consequence for every
+	// relationship in a sealed version.
 	rows, err := r.query(context.Background(), `
 		SELECT id, rel_type, from_node_id, to_node_id, domain_id, owner_tenant_id, owner_app_id, domain_version, properties, external_ref, is_deleted, created_at
 		FROM kg_relationships
-		WHERE id = ANY($1::text[])
+		WHERE id = ANY($1::uuid[])
 	`, arrayLiteral(ids))
 	if err != nil {
+		log.Printf("kg-service: GetRelationshipsByIDs failed for %d ids: %v", len(ids), err)
 		return map[string]write.RelationshipRecord{}
 	}
 	defer rows.Close()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -928,6 +929,23 @@ func (r *Runtime) buildNodeProjectionWork(resultIndex int, unit projectionWorkUn
 	}, nil
 }
 
+// alertOnTerminalEmbeddingFailure emits the one embedding log line worth paging on.
+//
+// Every embedding failure used to read the same, so the failure that needs a human — rotate the
+// token — looked exactly like a timeout that needs nobody. EMBEDDING_CREDENTIAL_ALERT is the
+// alerting contract; see docs/operations/kg-search-mcp.md. Transient failures deliberately do not
+// get it: an alert that fires on every blip is one nobody reads.
+func (r *Runtime) alertOnTerminalEmbeddingFailure(err error, nodeID, domainID, model string) {
+	if !vector.IsTerminal(err) {
+		return
+	}
+	reason := "input_rejected"
+	if errors.Is(err, vector.ErrEmbeddingUnauthorized) {
+		reason = "unauthorized"
+	}
+	r.logf("EMBEDDING_CREDENTIAL_ALERT reason=%s node_id=%s domain=%s model=%s err=%v", reason, nodeID, domainID, model, err)
+}
+
 func (r *Runtime) embedNodeProjectionWorkBatch(work []nodeProjectionWork) error {
 	if len(work) == 0 {
 		return nil
@@ -960,6 +978,11 @@ func (r *Runtime) embedNodeProjectionWorkBatch(work []nodeProjectionWork) error 
 			}
 			embeddings, err := provider.EmbedBatch(context.Background(), texts)
 			if err != nil {
+				// The batch is the path an ordinary write takes, so the alert has to fire here as
+				// well as in the single-node path. Reporting the first node in the chunk is enough
+				// to locate the domain and model; a rejected credential fails the whole chunk and
+				// naming all of them would bury the line it exists to make visible.
+				r.alertOnTerminalEmbeddingFailure(err, work[chunkIndexes[0]].source.ID, work[chunkIndexes[0]].source.DomainID, provider.ModelID())
 				return err
 			}
 			if len(embeddings) != len(chunkIndexes) {
@@ -2320,6 +2343,7 @@ func (r *Runtime) projectNode(node write.NodeRecord) (bool, bool, error) {
 	)
 	embedding, err := embeddingProvider.Embed(context.Background(), text)
 	if err != nil {
+		r.alertOnTerminalEmbeddingFailure(err, node.ID, node.DomainID, embeddingProvider.ModelID())
 		return graphSynced, false, fmt.Errorf(
 			"embed node_id=%s node_type=%s domain=%s text_len=%d provider=%T model=%s: %w",
 			node.ID,
@@ -2634,6 +2658,16 @@ func (r *Runtime) handleGraphVersionEvent(event write.OutboxEvent) error {
 		case "node":
 			node, found := nodeSources[entity.EntityID]
 			if !found {
+				// A manifest entry whose row is gone is skipped, not failed: a hard delete between
+				// sealing and projection is legitimate, and failing would wedge the queue on it.
+				//
+				// But it is recorded as synced, which is a claim, not an observation — nothing was
+				// projected. That silence is how a lookup that could never return a row (uuid
+				// compared to text[]) passed for normal operation: every node looked deleted, every
+				// version looked fully projected, and the whole vector index stayed empty without a
+				// single error anywhere. If this line appears in bulk, suspect the lookup before
+				// believing the deletions.
+				r.logf("projection node missing entity_id=%s version_id=%s: marking synced without projecting", entity.EntityID, versionID)
 				results = append(results, projectionUnitResult{Unit: unit, GraphSynced: true, VectorSynced: true})
 				continue
 			}
@@ -2652,6 +2686,7 @@ func (r *Runtime) handleGraphVersionEvent(event write.OutboxEvent) error {
 		case "relationship", "embeddable_relationship":
 			rel, found := relSources[entity.EntityID]
 			if !found {
+				r.logf("projection relationship missing entity_id=%s version_id=%s: marking synced without projecting", entity.EntityID, versionID)
 				results = append(results, projectionUnitResult{Unit: unit, GraphSynced: true, VectorSynced: true})
 				continue
 			}

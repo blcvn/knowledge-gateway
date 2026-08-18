@@ -151,3 +151,110 @@ func TestRouters(t *testing.T) {
 func ioNopCloser(body string) io.ReadCloser {
 	return io.NopCloser(strings.NewReader(body))
 }
+
+// The E3/E4 cases from impl-02: an embedding failure that a human must fix has to be told apart
+// from one that fixes itself, and neither may be retried the wrong number of times.
+
+func TestRetryDoesNotRepeatARejectedCredential(t *testing.T) {
+	inner := &countingProvider{dimensions: 3, modelID: "m", err: statusError(401, "token expired")}
+	slept := 0
+	provider := &RetryProvider{Inner: inner, MaxAttempts: 3, Sleep: func(time.Duration) { slept++ }}
+
+	_, err := provider.Embed(context.Background(), "text")
+	if !errors.Is(err, ErrEmbeddingUnauthorized) {
+		t.Fatalf("want ErrEmbeddingUnauthorized, got %v", err)
+	}
+	// One attempt, not three: a rotated token answers the same however often it is asked, and the
+	// two extra requests would only delay the alert an operator is waiting for.
+	if inner.calls != 1 {
+		t.Fatalf("want a single attempt for a terminal failure, got %d", inner.calls)
+	}
+	if slept != 0 {
+		t.Fatalf("want no backoff before a terminal failure, slept %d times", slept)
+	}
+}
+
+func TestRetryDoesNotRepeatRejectedInput(t *testing.T) {
+	inner := &countingProvider{dimensions: 3, modelID: "m", err: statusError(400, "input exceeds context window")}
+	provider := &RetryProvider{Inner: inner, MaxAttempts: 3, Sleep: func(time.Duration) {}}
+
+	_, err := provider.Embed(context.Background(), "text")
+	if !errors.Is(err, ErrEmbeddingRejectedInput) {
+		t.Fatalf("want ErrEmbeddingRejectedInput, got %v", err)
+	}
+	if inner.calls != 1 {
+		t.Fatalf("want a single attempt, got %d", inner.calls)
+	}
+}
+
+func TestRetryKeepsRetryingRateLimits(t *testing.T) {
+	// 429 is the one 4xx worth repeating: backing off is precisely the right answer to it, so it
+	// must not be swept in with the terminal statuses.
+	inner := &countingProvider{dimensions: 3, modelID: "m", err: statusError(429, "slow down")}
+	provider := &RetryProvider{Inner: inner, MaxAttempts: 3, Sleep: func(time.Duration) {}}
+
+	if _, err := provider.Embed(context.Background(), "text"); err == nil {
+		t.Fatal("want an error after the attempts are exhausted")
+	}
+	if inner.calls != 3 {
+		t.Fatalf("want 3 attempts for a rate limit, got %d", inner.calls)
+	}
+	if IsTerminal(statusError(429, "slow down")) {
+		t.Fatal("a rate limit must not be classified as terminal")
+	}
+}
+
+func TestRetryGivesUpAfterThreeAttemptsOnTimeout(t *testing.T) {
+	// E4: a timeout is transient, so it earns the full three attempts and then stops. Asserting the
+	// count rather than the elapsed time keeps this deterministic — the backoff is real sleeping in
+	// production and a duration assertion here would only measure the test's own fake clock.
+	inner := &countingProvider{dimensions: 3, modelID: "m", err: context.DeadlineExceeded}
+	slept := 0
+	provider := &RetryProvider{Inner: inner, MaxAttempts: 3, Sleep: func(time.Duration) { slept++ }}
+
+	_, err := provider.Embed(context.Background(), "text")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want the timeout returned to the caller, got %v", err)
+	}
+	if inner.calls != 3 {
+		t.Fatalf("want 3 attempts, got %d", inner.calls)
+	}
+	if slept != 2 {
+		t.Fatalf("want backoff between attempts only, slept %d times", slept)
+	}
+}
+
+func TestRetryStopsWhenTheCallerHasGivenUp(t *testing.T) {
+	// Sleeping through two more attempts against a cancelled context delays an error the caller is
+	// already waiting for, and cannot produce a usable vector either way.
+	inner := &countingProvider{dimensions: 3, modelID: "m", err: errors.New("boom")}
+	provider := &RetryProvider{Inner: inner, MaxAttempts: 3, Sleep: func(time.Duration) {}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := provider.Embed(ctx, "text"); err == nil {
+		t.Fatal("want an error")
+	}
+	if inner.calls != 1 {
+		t.Fatalf("want a single attempt once the context is done, got %d", inner.calls)
+	}
+}
+
+func TestClassifyStatusNamesOnlyWhatCannotSucceed(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		want   error
+	}{
+		{401, ErrEmbeddingUnauthorized},
+		{403, ErrEmbeddingUnauthorized},
+		{400, ErrEmbeddingRejectedInput},
+		{413, ErrEmbeddingRejectedInput},
+		{429, nil},
+		{500, nil},
+		{503, nil},
+	} {
+		if got := classifyStatus(tc.status); !errors.Is(got, tc.want) {
+			t.Errorf("status %d: want %v, got %v", tc.status, tc.want, got)
+		}
+	}
+}

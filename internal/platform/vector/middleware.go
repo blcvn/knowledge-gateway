@@ -155,6 +155,18 @@ func (p *RetryProvider) Embed(ctx context.Context, text string) ([]float64, erro
 			return vec, nil
 		}
 		lastErr = err
+		// A rejected credential or a rejected payload gives the same answer however many times it
+		// is asked. Retrying it costs three requests and delays the log line an operator needs by
+		// the whole backoff, while burying the first failure under two identical copies.
+		if IsTerminal(err) {
+			return nil, err
+		}
+		// A cancelled or expired context will not become valid on the next attempt either, and
+		// sleeping through the remaining attempts only delays returning the error the caller is
+		// already waiting for.
+		if ctx.Err() != nil {
+			return nil, err
+		}
 		if attempt < attempts {
 			sleep(delay)
 			delay *= 2

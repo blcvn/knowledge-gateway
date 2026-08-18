@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -110,7 +109,7 @@ func (p HTTPEmbeddingProvider) Embed(ctx context.Context, text string) ([]float6
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("embedding provider status %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		return nil, statusError(resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 	var out struct {
 		Embedding []float64 `json:"embedding"`
