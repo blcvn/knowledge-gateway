@@ -1,5 +1,8 @@
 # SOL-001: Auth API Implementation
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** auth.go created; /v1/auth/login,refresh,logout,me routes added; sm-auth proto updated with Logout/RefreshToken/GetCurrentUser; gRPC stubs implemented  
+
 **Solution for**: [CR-001](../CR-001-auth-api.md)  
 **Priority**: 🔴 Critical  
 **Status**: Ready to Implement  

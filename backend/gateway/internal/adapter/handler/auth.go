@@ -1,30 +1,3 @@
-# TASK-001: Create `auth.go` HTTP Handler
-
-**Solution**: [SOL-001](../solutions/SOL-001-auth-api.md)  
-**CR**: CR-001  
-**Priority**: 🔴 Critical  
-**Estimate**: 2 hours  
-**Status**: ✅ Implemented
-
----
-
-## Context
-
-`gateway.go` (line 40) already calls `gwHandler.NewAuthHandler(registry, logger)` and passes `authH` to `Router()` (line 63), but the file `gateway/internal/adapter/handler/auth.go` does not yet exist, causing a **compile error**.
-
-The `sm-auth` gRPC service is available in the registry as `"sm-auth"`. Its `AuthResponse` proto contains:
-- `token string` — the JWT access token
-- `user UserProfile` — `{ id, name, email, role }`
-
-The proto does NOT have `refresh_token` or `expires_in`. The gateway handler must mint sensible defaults and construct the full `LoginResponse` shape expected by the frontend.
-
----
-
-## Exact Task
-
-Create the file `gateway/internal/adapter/handler/auth.go` with the following implementation:
-
-```go
 // Package handler — Auth API handlers for VNP Memory Console.
 // Routes /v1/auth/* — login, logout, me, refresh.
 // Login and refresh are public (no JWT required).
@@ -35,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/vnp-community/vnp-memory/gateway/internal/domain"
 	"github.com/vnp-community/vnp-memory/gateway/internal/usecase/port"
 )
 
@@ -79,7 +53,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	loginResp := map[string]any{
 		"access_token":  smResp.Token,
-		"refresh_token": smResp.Token, // sm-auth does not yet issue separate refresh tokens; use same token
+		"refresh_token": smResp.Token, // sm-auth does not yet issue separate refresh tokens
 		"expires_in":    3600,
 		"token_type":    "Bearer",
 		"user": map[string]any{
@@ -119,23 +93,12 @@ func forwardAndCapture(registry port.ServiceRegistry, serviceName string, logger
 		logger.Error("resolve service failed", "service", serviceName, "error", err)
 		return nil, err
 	}
-	fwdReq := buildForwardRequest(r, body)
+	fwdReq := &domain.ForwardRequest{
+		Path:        r.URL.Path,
+		HTTPMethod:  r.Method,
+		Body:        body,
+		PathParams:  extractPathParams(r),
+		QueryParams: extractQueryParams(r),
+	}
 	return registry.ForwardWithContext(r.Context(), target, fwdReq)
 }
-```
-
-> **Note**: `buildForwardRequest` wraps the `domain.ForwardRequest` construction. If this helper does not exist in `handler.go`, inline it using the same pattern as `ForwardToService`.
-
----
-
-## Acceptance Criteria
-
-- [ ] File `gateway/internal/adapter/handler/auth.go` exists and compiles
-- [ ] `NewAuthHandler`, `Login`, `Logout`, `Me`, `Refresh` are exported
-- [ ] `Login` transforms the sm-auth `{ token, user }` response into `{ access_token, refresh_token, expires_in, token_type, user }` shape
-- [ ] No import errors — uses same packages as `services.go` and `console.go`
-- [ ] `go build ./gateway/...` passes
-
----
-
-**Audit Note:** gateway/internal/adapter/handler/auth.go created with NewAuthHandler/Login/Logout/Me/Refresh

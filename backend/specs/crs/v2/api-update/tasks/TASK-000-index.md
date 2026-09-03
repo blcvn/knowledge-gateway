@@ -39,16 +39,16 @@ Phase 4 — Response Quality (Day 2–3)
 
 | Task | Priority | Estimate | File | Status |
 |------|----------|----------|------|--------|
-| [TASK-001](./TASK-001-create-auth-handler.md) | 🔴 Critical | 2h | `gateway/.../handler/auth.go` (CREATE) | TODO |
-| [TASK-002](./TASK-002-register-auth-routes.md) | 🔴 Critical | 1h | `gateway/.../handler/router.go` + `middleware/auth.go` (MODIFY) | TODO |
-| [TASK-003](./TASK-003-create-console-org-handler.md) | 🔴 Critical | 1h | `gateway/.../handler/console_org.go` (CREATE) | TODO |
-| [TASK-004](./TASK-004-create-console-sdk-handler.md) | 🔴 Critical | 1h | `gateway/.../handler/console_sdk.go` (CREATE) | TODO |
-| [TASK-005](./TASK-005-pagination-normaliser.md) | 🟡 High | 2h | `gateway/.../handler/handler.go` + `console.go` (MODIFY) | TODO |
-| [TASK-006](./TASK-006-error-response-normaliser.md) | 🟠 Medium | 2h | `gateway/.../handler/handler.go` + `router.go` (MODIFY) | TODO |
-| [TASK-007](./TASK-007-fix-healthstatus-casing.md) | 🟠 Medium | 0.5h | `services/vnp-platform/.../admin/entity.go` (MODIFY) | TODO |
-| [TASK-008](./TASK-008-add-webhook-orgsettings-entities.md) | 🟡 High | 2h | `services/vnp-platform/.../admin/entity.go` (MODIFY) | TODO |
-| [TASK-009](./TASK-009-webhooks-migration.md) | 🟡 High | 0.5h | `deployment/dev/migrations/XXXX_add_webhooks.sql` (CREATE) | TODO |
-| [TASK-010](./TASK-010-smauth-proto-refresh-logout-me.md) | 🔴 Critical | 2h | `services/sm-auth/api/proto/v1/auth.proto` + handler (MODIFY) | TODO |
+| [TASK-001](./TASK-001-create-auth-handler.md) | 🔴 Critical | 2h | `gateway/.../handler/auth.go` (CREATE) | ❌ Not Started |
+| [TASK-002](./TASK-002-register-auth-routes.md) | 🔴 Critical | 1h | `gateway/.../handler/router.go` + `middleware/auth.go` (MODIFY) | ❌ Not Started |
+| [TASK-003](./TASK-003-create-console-org-handler.md) | 🔴 Critical | 1h | `gateway/.../handler/console_org.go` (CREATE) | ❌ Not Started |
+| [TASK-004](./TASK-004-create-console-sdk-handler.md) | 🔴 Critical | 1h | `gateway/.../handler/console_sdk.go` (CREATE) | ❌ Not Started |
+| [TASK-005](./TASK-005-pagination-normaliser.md) | 🟡 High | 2h | `gateway/.../handler/handler.go` + `console.go` (MODIFY) | ❌ Not Started |
+| [TASK-006](./TASK-006-error-response-normaliser.md) | 🟠 Medium | 2h | `gateway/.../handler/handler.go` + `router.go` (MODIFY) | 🔄 Partial |
+| [TASK-007](./TASK-007-fix-healthstatus-casing.md) | 🟠 Medium | 0.5h | `services/vnp-platform/.../admin/entity.go` (MODIFY) | ❌ Not Started |
+| [TASK-008](./TASK-008-add-webhook-orgsettings-entities.md) | 🟡 High | 2h | `services/vnp-platform/.../admin/entity.go` (MODIFY) | ❌ Not Started |
+| [TASK-009](./TASK-009-webhooks-migration.md) | 🟡 High | 0.5h | `deployment/dev/migrations/XXXX_add_webhooks.sql` (CREATE) | ❌ Not Started |
+| [TASK-010](./TASK-010-smauth-proto-refresh-logout-me.md) | 🔴 Critical | 2h | `services/sm-auth/api/proto/v1/auth.proto` + handler (MODIFY) | ❌ Not Started |
 
 **Total Estimate**: ~14 hours
 

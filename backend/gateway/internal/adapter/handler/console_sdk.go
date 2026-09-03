@@ -1,26 +1,3 @@
-# TASK-004: Create `console_sdk.go` Handler
-
-**Solution**: [SOL-002](../solutions/SOL-002-org-sdk-api.md)  
-**CR**: CR-002  
-**Priority**: 🟡 High  
-**Estimate**: 1 hour  
-**Status**: ✅ Implemented
-
----
-
-## Context
-
-`gateway.go` line 60 calls `gwHandler.NewSDKHandler(registry, logger)` but `console_sdk.go` does not exist.
-
-SDK endpoints handle API key and webhook management. The `POST /v1/console/sdk/keys` endpoint is security-critical: `raw_key` must be returned only once and must NOT be stored in plain text by `vnp-admin`.
-
----
-
-## Exact Task
-
-Create `gateway/internal/adapter/handler/console_sdk.go`:
-
-```go
 // Package handler — SDK Management console handlers for VNP Memory.
 // Handles API key lifecycle (list/create/revoke) and webhook management.
 // All routes require admin role and are tenant-scoped.
@@ -63,7 +40,7 @@ func (h *SDKHandler) CreateKey(w http.ResponseWriter, r *http.Request) {
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
 
-// DeleteKey handles DELETE /v1/console/sdk/keys/{id} — revoke API key permanently.
+// DeleteKey handles DELETE /v1/console/sdk/keys/{id} — revoke an API key.
 func (h *SDKHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
@@ -71,7 +48,7 @@ func (h *SDKHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
 
-// GetRateLimits handles GET /v1/console/sdk/rate-limits — rate limit configs per tier.
+// GetRateLimits handles GET /v1/console/sdk/rate-limits — rate limit configuration.
 func (h *SDKHandler) GetRateLimits(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
@@ -79,7 +56,7 @@ func (h *SDKHandler) GetRateLimits(w http.ResponseWriter, r *http.Request) {
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
 
-// ListWebhooks handles GET /v1/console/sdk/webhooks — list configured webhooks.
+// ListWebhooks handles GET /v1/console/sdk/webhooks — list registered webhooks.
 func (h *SDKHandler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
@@ -87,7 +64,7 @@ func (h *SDKHandler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
 
-// CreateWebhook handles POST /v1/console/sdk/webhooks — create new webhook.
+// CreateWebhook handles POST /v1/console/sdk/webhooks — register a new webhook.
 func (h *SDKHandler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
@@ -95,25 +72,10 @@ func (h *SDKHandler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
 
-// DeleteWebhook handles DELETE /v1/console/sdk/webhooks/{id} — delete webhook.
+// DeleteWebhook handles DELETE /v1/console/sdk/webhooks/{id} — remove a webhook.
 func (h *SDKHandler) DeleteWebhook(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
-```
-
----
-
-## Acceptance Criteria
-
-- [ ] File `gateway/internal/adapter/handler/console_sdk.go` exists and compiles
-- [ ] `NewSDKHandler`, `ListKeys`, `CreateKey`, `DeleteKey`, `GetRateLimits`, `ListWebhooks`, `CreateWebhook`, `DeleteWebhook` are exported
-- [ ] Each handler calls `requireAdmin` before forwarding
-- [ ] All forward to `"vnp-admin"` service
-- [ ] `go build ./gateway/...` passes
-
----
-
-**Audit Note:** gateway/internal/adapter/handler/console_sdk.go created with SDKHandler

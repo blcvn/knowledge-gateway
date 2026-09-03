@@ -4,7 +4,7 @@
 **CR**: CR-002  
 **Priority**: 🟡 High  
 **Estimate**: 30 minutes  
-**Status**: TODO  
+**Status**: ✅ Implemented
 **Depends on**: TASK-008
 
 ---
@@ -91,3 +91,7 @@ psql --dry-run "$VNP_MEMORY_POSTGRES_DSN" -f deployment/dev/migrations/<NEXT_NUM
 - [ ] Index on `webhooks.tenant_id` created
 - [ ] `api_keys` table altered to add `prefix`, `status`, `scopes`, `last_used`, `expires_at` columns (with `IF NOT EXISTS`)
 - [ ] SQL is valid PostgreSQL (no syntax errors)
+
+---
+
+**Audit Note:** deployment/dev/migrations/0052_webhooks.up.sql + 0052_webhooks.down.sql created

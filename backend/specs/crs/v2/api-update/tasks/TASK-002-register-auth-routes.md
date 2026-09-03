@@ -4,7 +4,7 @@
 **CR**: CR-001  
 **Priority**: 🔴 Critical  
 **Estimate**: 1 hour  
-**Status**: TODO  
+**Status**: ✅ Implemented
 **Depends on**: TASK-001
 
 ---
@@ -120,3 +120,7 @@ Both must compile without errors.
 - [ ] 7 sdk routes registered: keys (list/create/delete), rate-limits, webhooks (list/create/delete)
 - [ ] `middleware.Auth` skips JWT check for `POST /v1/auth/login` and `POST /v1/auth/refresh`
 - [ ] `go build ./gateway/... ./apps/memory/...` succeeds
+
+---
+
+**Audit Note:** Router() updated: auth/*AuthHandler param added; /v1/auth/* routes registered; isPublicPath includes login+refresh

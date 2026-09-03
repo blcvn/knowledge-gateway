@@ -1,5 +1,8 @@
 # SOL-004: Response Schema Contracts — Error Normalisation & Schema Alignment
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** HTTPHealthStatus constants (Healthy/Warning/Critical) added to entity.go; GRPCToHTTPHealth mapper added; error_normalizer.go middleware not yet created  
+
 **Solution for**: [CR-004](../CR-004-response-schema-contracts.md)  
 **Priority**: 🟠 Medium  
 **Status**: Ready to Implement  

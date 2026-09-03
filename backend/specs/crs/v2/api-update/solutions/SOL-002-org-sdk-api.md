@@ -1,5 +1,8 @@
 # SOL-002: Org Settings & SDK Management API Implementation
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** console_org.go + console_sdk.go created; /v1/console/org/* and /v1/console/sdk/* routes registered; OrgSettings/OrgMember/OrgRole/Webhook entities added to vnp-platform; webhooks migration 0052 created  
+
 **Solution for**: [CR-002](../CR-002-org-sdk-api.md)  
 **Priority**: 🟡 High  
 **Status**: Ready to Implement  

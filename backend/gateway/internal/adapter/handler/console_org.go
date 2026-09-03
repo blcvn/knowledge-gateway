@@ -1,26 +1,3 @@
-# TASK-003: Create `console_org.go` Handler
-
-**Solution**: [SOL-002](../solutions/SOL-002-org-sdk-api.md)  
-**CR**: CR-002  
-**Priority**: 🟡 High  
-**Estimate**: 1 hour  
-**Status**: ✅ Implemented
-
----
-
-## Context
-
-`gateway.go` (line 59–60) calls `gwHandler.NewOrgHandler(registry, logger)` and `gwHandler.NewSDKHandler(registry, logger)`, but neither `console_org.go` nor `console_sdk.go` exist, causing **compile errors**.
-
-All org routes require `admin` role. The `requireAdmin` helper already exists in `console.go`.
-
----
-
-## Exact Task
-
-Create `gateway/internal/adapter/handler/console_org.go`:
-
-```go
 // Package handler — Org Settings console handlers for VNP Memory.
 // All routes require admin role and are scoped to the current tenant (X-Tenant-ID from JWT).
 package handler
@@ -60,7 +37,7 @@ func (h *OrgHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
 
-// ListMembers handles GET /v1/console/org/members — list tenant members.
+// ListMembers handles GET /v1/console/org/members — list org members.
 func (h *OrgHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
@@ -68,25 +45,10 @@ func (h *OrgHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
 
-// ListRoles handles GET /v1/console/org/roles — list available roles.
+// ListRoles handles GET /v1/console/org/roles — list org roles and permissions.
 func (h *OrgHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
 	if !requireAdmin(w, r) {
 		return
 	}
 	ForwardToService(h.registry, "vnp-admin", h.logger)(w, r)
 }
-```
-
----
-
-## Acceptance Criteria
-
-- [ ] File `gateway/internal/adapter/handler/console_org.go` exists and compiles
-- [ ] `NewOrgHandler`, `GetSettings`, `UpdateSettings`, `ListMembers`, `ListRoles` are exported
-- [ ] Each handler calls `requireAdmin` before forwarding
-- [ ] All forward to `"vnp-admin"` service
-- [ ] `go build ./gateway/...` passes
-
----
-
-**Audit Note:** gateway/internal/adapter/handler/console_org.go created with OrgHandler

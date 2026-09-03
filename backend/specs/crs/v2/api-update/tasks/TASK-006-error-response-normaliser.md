@@ -4,7 +4,7 @@
 **CR**: CR-004  
 **Priority**: 🟠 Medium  
 **Estimate**: 2 hours  
-**Status**: TODO
+**Status**: 🔄 Partial
 
 ---
 
@@ -107,3 +107,7 @@ Check that `requireAdmin` and `requireSuperAdmin` in `console.go` call `WriteErr
 - [ ] All existing tests in `console_test.go` still pass after the format change
 - [ ] `go build ./gateway/...` passes
 - [ ] A `401 Unauthenticated` response looks like: `{ "message": "unauthenticated", "code": "UNAUTHENTICATED", "status": 401 }`
+
+---
+
+**Audit Note:** WriteError exists with {error:{code,message}} — flat format. error_normalizer.go middleware not yet created

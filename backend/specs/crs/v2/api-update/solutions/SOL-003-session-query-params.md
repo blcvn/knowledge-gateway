@@ -1,5 +1,8 @@
 # SOL-003: Session API — Query Parameters & Response Schema Fix
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** Pagination normaliser (NormalizePaginatedResponse/ForwardToServiceWithNorm) not yet added to handler.go; TASK-005 not implemented  
+
 **Solution for**: [CR-003](../CR-003-session-query-params.md)  
 **Priority**: 🟡 High  
 **Status**: Ready to Implement  

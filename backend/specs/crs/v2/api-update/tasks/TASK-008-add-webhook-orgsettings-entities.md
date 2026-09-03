@@ -4,7 +4,7 @@
 **CR**: CR-002  
 **Priority**: 🟡 High  
 **Estimate**: 2 hours  
-**Status**: TODO
+**Status**: ✅ Implemented
 
 ---
 
@@ -146,3 +146,7 @@ import (
 - [ ] `CreateAPIKeyResponse` struct added with `raw_key` field
 - [ ] `APIKey` struct has `prefix`, `status`, `last_used`, `scopes` fields
 - [ ] `go build ./services/vnp-platform/...` passes
+
+---
+
+**Audit Note:** OrgSettings, OrgMember, OrgRole, Webhook, CreateWebhookPayload entities added to entity.go

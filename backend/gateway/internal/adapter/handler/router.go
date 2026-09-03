@@ -23,6 +23,7 @@ func Router(
 	zep *ZepHandler,
 	sm *SMHandler,
 	admin *AdminHandler,
+	auth  *AuthHandler,
 	// Console handlers (SOL-002)
 	dashboard *DashboardHandler,
 	explorer *ExplorerHandler,
@@ -38,6 +39,9 @@ func Router(
 	ws *WSHandler,
 	// AgentMemory handlers (TASK-AM-002/005)
 	agentmemH *AgentMemoryHandler,
+	// Org + SDK handlers (SOL-002 / TASK-003/004)
+	org *OrgHandler,
+	sdk *SDKHandler,
 	logger *slog.Logger,
 	spaFS fs.FS,
 ) http.Handler {
@@ -226,6 +230,28 @@ func Router(
 	mux.HandleFunc("GET /v1/admin/plugin/codex", agentmemH.GetPluginConfig)
 	mux.HandleFunc("GET /v1/admin/plugin/opencode", agentmemH.GetPluginConfig)
 	mux.HandleFunc("POST /v1/admin/plugin/install", agentmemH.InstallPlugin)
+
+	// === /v1/auth/* — Authentication (SOL-001 / TASK-001,002) ===
+	// NOTE: login and refresh are PUBLIC — they bypass JWT middleware (see middleware/auth.go)
+	mux.HandleFunc("POST /v1/auth/login",   auth.Login)
+	mux.HandleFunc("POST /v1/auth/refresh", auth.Refresh)
+	mux.HandleFunc("POST /v1/auth/logout",  auth.Logout)
+	mux.HandleFunc("GET /v1/auth/me",       auth.Me)
+
+	// === /v1/console/org/* — Org settings (SOL-002 / TASK-003) ===
+	mux.HandleFunc("GET /v1/console/org/settings",  org.GetSettings)
+	mux.HandleFunc("PUT /v1/console/org/settings",  org.UpdateSettings)
+	mux.HandleFunc("GET /v1/console/org/members",   org.ListMembers)
+	mux.HandleFunc("GET /v1/console/org/roles",     org.ListRoles)
+
+	// === /v1/console/sdk/* — SDK management (SOL-002 / TASK-004) ===
+	mux.HandleFunc("GET /v1/console/sdk/keys",              sdk.ListKeys)
+	mux.HandleFunc("POST /v1/console/sdk/keys",             sdk.CreateKey)
+	mux.HandleFunc("DELETE /v1/console/sdk/keys/{id}",      sdk.DeleteKey)
+	mux.HandleFunc("GET /v1/console/sdk/rate-limits",       sdk.GetRateLimits)
+	mux.HandleFunc("GET /v1/console/sdk/webhooks",          sdk.ListWebhooks)
+	mux.HandleFunc("POST /v1/console/sdk/webhooks",         sdk.CreateWebhook)
+	mux.HandleFunc("DELETE /v1/console/sdk/webhooks/{id}",  sdk.DeleteWebhook)
 
 	// === /v1/console/dashboard/* (FEAT-006 / T01) ===
 	mux.HandleFunc("GET /v1/console/dashboard/health", dashboard.Health)

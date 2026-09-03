@@ -4,7 +4,7 @@
 **CR**: CR-001  
 **Priority**: 🔴 Critical  
 **Estimate**: 2 hours  
-**Status**: TODO
+**Status**: ✅ Implemented
 
 ---
 
@@ -144,3 +144,7 @@ Ensure the server registration in `sm-auth`'s `cmd/main.go` or server setup prop
 - [ ] `auth.pb.go` and `auth_grpc.pb.go` are regenerated from the updated proto
 - [ ] `auth_handler.go` implements all 3 new methods (stubs are acceptable for MVP)
 - [ ] `go build ./services/sm-auth/...` passes
+
+---
+
+**Audit Note:** sm-auth proto: Logout/RefreshToken/GetCurrentUser RPCs + messages added; gRPC stubs implemented

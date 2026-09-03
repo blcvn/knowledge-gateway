@@ -126,7 +126,10 @@ func RateLimit(rateLimitUC *usecase.RateLimitUseCase, logger *slog.Logger) func(
 
 // isPublicPath returns true for paths that skip auth/rate-limiting.
 func isPublicPath(path string) bool {
-	publicPaths := []string{"/healthz", "/readyz", "/metrics", "/healthz/deep"}
+	publicPaths := []string{"/healthz", "/readyz", "/metrics", "/healthz/deep",
+		// Auth endpoints — public, no JWT required (SOL-001 / TASK-002)
+		"/v1/auth/login", "/v1/auth/refresh",
+	}
 	for _, p := range publicPaths {
 		if path == p {
 			return true

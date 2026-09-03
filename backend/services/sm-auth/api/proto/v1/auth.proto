@@ -10,6 +10,11 @@ service SmAuthService {
   rpc Register(RegisterRequest) returns (AuthResponse);
   rpc Login(LoginRequest) returns (AuthResponse);
   rpc LoginWithGoogle(GoogleLoginRequest) returns (AuthResponse);
+
+  // --- NEW RPCs (TASK-010 / SOL-001) ---
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (UserProfile);
 }
 
 message CreateAPIKeyRequest {
@@ -57,4 +62,27 @@ message UserProfile {
 message AuthResponse {
   string token = 1;
   UserProfile user = 2;
+}
+
+// --- NEW Messages (TASK-010 / SOL-001) ---
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {
+  bool success = 1;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+  int64  expires_in   = 2; // seconds
+}
+
+message GetCurrentUserRequest {
+  string access_token = 1; // JWT to decode
 }

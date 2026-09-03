@@ -4,7 +4,7 @@
 **CR**: CR-003  
 **Priority**: 🟡 High  
 **Estimate**: 2 hours  
-**Status**: TODO
+**Status**: ⏳ Pending
 
 ---
 
@@ -185,3 +185,7 @@ func (h *SessionHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 - [ ] Response includes both `page_size` and `pageSize` fields
 - [ ] Response includes both `has_more` and `hasMore` fields
 - [ ] `go build ./gateway/...` passes
+
+---
+
+**Audit Note:** Pagination normaliser not implemented — handler.go needs NormalizePaginatedResponse + ForwardToServiceWithNorm

@@ -4,7 +4,7 @@
 **CR**: CR-004  
 **Priority**: 🟠 Medium  
 **Estimate**: 30 minutes  
-**Status**: TODO
+**Status**: ✅ Implemented
 
 ---
 
@@ -72,3 +72,7 @@ Architecture doc shows: `HealthStatus — Service, Status(SERVING|NOT_SERVING|UN
 - [ ] `HealthStatus` constants are `"Healthy"`, `"Warning"`, `"Critical"` (capital first letter)
 - [ ] No hardcoded `"healthy"`, `"warning"`, `"critical"` strings in HTTP response paths
 - [ ] `go build ./services/vnp-platform/...` passes
+
+---
+
+**Audit Note:** HTTPHealthStatus type + StatusHealthy/Warning/Critical/Unknown constants added; GRPCToHTTPHealth mapper added

@@ -100,3 +100,84 @@ type HealthStatus struct {
 	Latency   time.Duration `json:"latency"`
 	CheckedAt time.Time     `json:"checked_at"`
 }
+
+// HTTP-facing HealthStatus values (capital first letter — TASK-007 / SOL-004)
+type HTTPHealthStatus string
+
+const (
+	StatusHealthy  HTTPHealthStatus = "Healthy"
+	StatusWarning  HTTPHealthStatus = "Warning"
+	StatusCritical HTTPHealthStatus = "Critical"
+	StatusUnknown  HTTPHealthStatus = "Unknown"
+)
+
+// GRPCToHTTPHealth maps gRPC health check status strings to frontend-facing values.
+func GRPCToHTTPHealth(grpcStatus string) HTTPHealthStatus {
+	switch grpcStatus {
+	case "SERVING":
+		return StatusHealthy
+	case "NOT_SERVING":
+		return StatusCritical
+	default:
+		return StatusUnknown
+	}
+}
+
+// ─── OrgSettings + Members (TASK-008 / SOL-002) ───────────────────────────────
+
+// OrgSettings is the tenant configuration view exposed to admin users.
+type OrgSettings struct {
+	Name               string `json:"name"`
+	Slug               string `json:"slug"`
+	Domain             string `json:"domain,omitempty"`
+	Timezone           string `json:"timezone"`
+	MaxAgents          int    `json:"max_agents"`
+	MaxMemoriesPerUser int    `json:"max_memories_per_user"`
+	Plan               string `json:"plan"` // "free" | "pro" | "enterprise"
+}
+
+// OrgMember represents a user within the organization for the members list.
+type OrgMember struct {
+	ID       string    `json:"id"`
+	Name     string    `json:"name"`
+	Email    string    `json:"email"`
+	Role     string    `json:"role"`
+	Status   string    `json:"status"` // "active" | "inactive"
+	JoinedAt time.Time `json:"joined_at"`
+}
+
+// OrgRole defines a role and its permissions.
+type OrgRole struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Permissions []string `json:"permissions"`
+}
+
+// ─── Webhook (TASK-008 / SOL-002) ─────────────────────────────────────────────
+
+// Webhook represents a registered webhook endpoint for SDK events.
+type Webhook struct {
+	ID          uuid.UUID  `json:"id"`
+	TenantID    uuid.UUID  `json:"tenant_id"`
+	URL         string     `json:"url"`
+	Events      []string   `json:"events"`
+	Status      string     `json:"status"`       // "active" | "paused" | "failed"
+	SecretHash  string     `json:"-"`            // SHA-256 of signing secret — never exposed in JSON
+	SuccessRate float64    `json:"success_rate"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// CreateWebhookPayload is the request body for creating a webhook.
+type CreateWebhookPayload struct {
+	URL    string   `json:"url"`
+	Events []string `json:"events"`
+	Secret string   `json:"secret,omitempty"` // Optional signing secret — stored as hash
+}
+
+// WebhookStatus values
+const (
+	WebhookActive = "active"
+	WebhookPaused = "paused"
+	WebhookFailed = "failed"
+)
+
