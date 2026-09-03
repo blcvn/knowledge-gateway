@@ -1,0 +1,44 @@
+name: Docker Build
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: gateway
+            dockerfile: gateway/Dockerfile
+            image: vnp-memory/gateway
+          - service: vnp-platform
+            dockerfile: services/vnp-platform/Dockerfile
+            image: vnp-memory/vnp-platform
+          - service: kg-service
+            dockerfile: services/kg-service/Dockerfile
+            image: vnp-memory/kg-service
+          - service: memory-service
+            dockerfile: services/memory-service/Dockerfile
+            image: vnp-memory/memory-service
+          - service: storage-service
+            dockerfile: services/storage-service/Dockerfile
+            image: vnp-memory/storage-service
+          - service: search-service
+            dockerfile: services/search-service/Dockerfile
+            image: vnp-memory/search-service
+          - service: pipeline-service
+            dockerfile: services/pipeline-service/Dockerfile
+            image: vnp-memory/pipeline-service
+          - service: obs-service
+            dockerfile: services/obs-service/Dockerfile
+            image: vnp-memory/obs-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ghcr.io/${{ matrix.image }}:${{ github.ref_name }}

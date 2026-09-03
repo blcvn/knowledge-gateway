@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package graphiti.admin.v1;
+
+option go_package = "vnp-memory/services/graphiti-admin/api/proto/graphiti/admin/v1;adminv1";
+
+// AdminService manages tenants, indices, and provides observability.
+// SOL-007: Admin Service & Observability Stack (CR-GR-007)
+service AdminService {
+    // Tenant management
+    rpc CreateTenant(CreateTenantRequest) returns (CreateTenantResponse);
+    rpc DeleteTenant(DeleteTenantRequest) returns (DeleteTenantResponse);
+    rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+    rpc GetTenantStats(GetTenantStatsRequest) returns (GetTenantStatsResponse);
+
+    // Community & Index management
+    rpc RebuildCommunities(RebuildCommunitiesRequest) returns (RebuildCommunitiesResponse);
+    rpc BuildIndicesAndConstraints(BuildIndicesRequest) returns (BuildIndicesResponse);
+    rpc DeleteAllIndexes(DeleteAllIndexesRequest) returns (DeleteAllIndexesResponse);
+
+    // Reporting
+    rpc GetTokenUsageReport(GetTokenUsageReportRequest) returns (GetTokenUsageReportResponse);
+
+    // Store-level stats
+    rpc GetGroupStats(GetGroupStatsRequest) returns (GetGroupStatsResponse);
+
+    // Health
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// --- Tenant ---
+
+message CreateTenantRequest {
+    string group_id      = 1;
+    string name          = 2;
+    TenantConfigProto config = 3;
+}
+
+message TenantConfigProto {
+    int32  max_episodes   = 1;
+    string llm_provider   = 2;
+    string embed_provider = 3;
+}
+
+message CreateTenantResponse {
+    string group_id    = 1;
+    string name        = 2;
+    int64  created_at  = 3; // Unix seconds
+}
+
+message DeleteTenantRequest  { string group_id = 1; }
+message DeleteTenantResponse { bool   deleted   = 1; }
+
+message ListTenantsRequest   {}
+message ListTenantsResponse  { repeated TenantProto tenants = 1; }
+
+message TenantProto {
+    string group_id   = 1;
+    string name       = 2;
+    int64  created_at = 3;
+    TenantConfigProto config = 4;
+}
+
+message GetTenantStatsRequest { string group_id = 1; }
+message GetTenantStatsResponse {
+    string group_id          = 1;
+    int64  episode_count     = 2;
+    int64  entity_count      = 3;
+    int64  edge_count        = 4;
+    int64  community_count   = 5;
+    string storage_size_est  = 6; // human-readable
+}
+
+// --- Communities & Indices ---
+
+message RebuildCommunitiesRequest  { string group_id = 1; }
+message RebuildCommunitiesResponse { bool   ok = 1; }
+
+message BuildIndicesRequest  {}
+message BuildIndicesResponse { bool ok = 1; }
+
+message DeleteAllIndexesRequest  {}
+message DeleteAllIndexesResponse { int32 deleted_count = 1; }
+
+// --- Token Usage ---
+
+message GetTokenUsageReportRequest {
+    string group_id = 1; // optional: all tenants if empty
+    string period   = 2; // "all_time" | "24h" | "7d"
+}
+
+message GetTokenUsageReportResponse {
+    map<string, PromptUsageProto> by_prompt  = 1;
+    PromptUsageProto total                   = 2;
+    double estimated_cost_usd                = 3;
+}
+
+message PromptUsageProto {
+    int64 input_tokens  = 1;
+    int64 output_tokens = 2;
+    int64 total_tokens  = 3;
+    int64 call_count    = 4;
+}
+
+// --- Group Stats ---
+
+message GetGroupStatsRequest  { string group_id = 1; }
+message GetGroupStatsResponse {
+    int64 episode_count   = 1;
+    int64 entity_count    = 2;
+    int64 edge_count      = 3;
+    int64 community_count = 4;
+}
+
+// --- Health ---
+
+message HealthCheckRequest  {}
+message HealthCheckResponse { string status = 1; } // "SERVING" | "NOT_SERVING"

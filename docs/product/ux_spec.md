@@ -12,7 +12,7 @@
 Cung cấp giao diện quản trị tập trung cho toàn bộ hệ sinh thái VNP Memory:
 - Quản trị tenant/app/API keys
 - Quan sát memory flow realtime
-- Điều phối 6 memory engines (Cognee, Graphiti, Zep, OpenViking, Memobase, Supermemory)
+- Điều phối 6 memory engines (Cognee, Graphiti, Zep, OpenViking, Memobase, Supermemory) qua 35 in-process services
 - Governance / ontology / policies
 - User profile management & personalization
 - Adaptive memory & external connectors
@@ -690,19 +690,25 @@ DevOps + SRE operational control.
 ## Components
 
 ### Service Map
-Topology graph showing all 6 engine apps + KGS + shared infra.
+Topology graph showing monolith (single binary, 35 in-process services) + shared infra.
 
 ```text
-┌─────────────────────────────────────────────┐
-│              Memory API Gateway             │
-├──────┬──────┬──────┬──────┬──────┬──────────┤
-│Cognee│Graph-│ Zep  │Open- │Memo- │Super-    │
-│:8080 │iti   │:8080 │Viking│base  │memory    │
-│      │:8080 │      │:8080 │:8080 │:8080     │
-├──────┴──────┴──────┴──────┴──────┴──────────┤
-│        Shared Infrastructure                 │
-│  PostgreSQL │ Neo4j │ Qdrant │ Redis │ NATS  │
-└──────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    VNP Memory Monolith                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐                      │
+│  │ REST API │  │ MCP SSE  │  │ Health   │                      │
+│  │ :8080    │  │ :8082    │  │ :8083    │                      │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘                      │
+│       │     Gateway (Router)       │                             │
+│  ┌────▼──────────────────────────-─▼─────────────────────────┐ │
+│  │   Cognee(3) Graphiti(4) Memobase(3)                       │ │
+│  │   OV(6)     Zep(6)      Supermemory(9)  Platform(4)       │ │
+│  └──────────────────────────┬──────────────────────────────-─┘ │
+│                             │ Embedded NATS JetStream            │
+└─────────────────────────────┼───────────────────────────────────┘
+           │         │        │        │         │
+      PostgreSQL   Neo4j   Qdrant   Redis    MinIO
+      (pgvector)
 ```
 
 ### Database Health
@@ -907,91 +913,196 @@ Every context assembly should show:
 
 # 11. API Requirements for UI
 
-## Dashboard APIs
+> **Note**: Tất cả console API endpoints đều được implement trong `gateway/adapter/handler/router.go`.
+
+## Dashboard APIs (FEAT-006)
 
 ```http
-GET /v1/admin/metrics
-GET /v1/admin/health
-GET /v1/admin/throughput
+GET /v1/console/dashboard/health
+GET /v1/console/dashboard/metrics
+GET /v1/console/dashboard/throughput
+GET /v1/console/dashboard/heatmap
 ```
 
-## Memory Explorer APIs
+## Memory Explorer APIs (FEAT-007)
 
 ```http
-GET /v1/memory/search
-GET /v1/memory/{id}
-GET /v1/memory/{id}/neighbors
+POST /v1/console/memory/search
+GET  /v1/console/memory/{id}
+GET  /v1/console/memory/{id}/neighbors
+GET  /v1/console/memory/{id}/versions
 ```
 
-## Graph APIs
+## Graph Studio APIs (FEAT-013)
 
 ```http
-GET /v1/graph/subgraph
-GET /v1/graph/timeline
-POST /v1/graph/query
+POST /v1/console/graph/subgraph
+GET  /v1/console/graph/entity/{id}
+POST /v1/console/graph/timeline
+GET  /v1/console/graph/ontology
+PUT  /v1/console/graph/ontology
+POST /v1/console/graph/query
 ```
 
-## Profile APIs (Memobase)
+## User Profile APIs — Memobase (FEAT-008)
 
 ```http
-POST /api/v1/users
-GET  /api/v1/users/{user_id}
-POST /api/v1/blobs/insert/{user_id}
-GET  /api/v1/users/profile/{user_id}
-POST /api/v1/users/profile/{user_id}
-GET  /api/v1/users/context/{user_id}
-GET  /api/v1/users/event/{user_id}
-GET  /api/v1/users/event/search/{user_id}
-POST /api/v1/users/buffer/{user_id}/{buffer_type}
-GET  /api/v1/users/buffer/capacity/{user_id}/{buffer_type}
-GET  /api/v1/project/profile_config
-POST /api/v1/project/profile_config
-GET  /api/v1/project/billing
-GET  /api/v1/project/usage
+GET  /v1/console/profiles                        -- list all profiles
+GET  /v1/console/profiles/config                 -- get profile schema config
+PUT  /v1/console/profiles/config                 -- update schema config
+GET  /v1/console/profiles/{user_id}              -- get profile detail
+GET  /v1/console/profiles/{user_id}/events       -- event timeline
+GET  /v1/console/profiles/{user_id}/context      -- prompt-ready context
+GET  /v1/console/profiles/{user_id}/buffers      -- buffer zone status
 ```
 
-## Adaptive Memory APIs (Supermemory)
+## Adaptive Memory APIs — Supermemory (FEAT-009)
 
 ```http
-POST /api/v1/documents
-GET  /api/v1/memories
-GET  /api/v1/memories/{id}/versions
-GET  /api/v1/search
-GET  /api/v1/profiles
-GET  /api/v1/connectors
-POST /api/v1/connectors
-GET  /api/v1/analytics
-GET  /api/v1/projects
+GET  /v1/console/adaptive/memories               -- list memories
+GET  /v1/console/adaptive/memories/{id}/versions -- version chain
+GET  /v1/console/adaptive/connectors             -- list connectors
+POST /v1/console/adaptive/connectors             -- create connector
+POST /v1/console/adaptive/connectors/{id}/sync   -- trigger sync
+GET  /v1/console/adaptive/analytics              -- memory analytics
+GET  /v1/console/adaptive/forget-rules           -- get forget rules
+PUT  /v1/console/adaptive/forget-rules           -- update forget rules
 ```
 
-## Cognee APIs
+## Agent Debugger APIs (FEAT-010)
 
 ```http
-POST /api/v1/cognee/add
-GET  /api/v1/cognee/datasets
-POST /api/v1/cognee/cognify
-GET  /api/v1/cognee/cognify/{id}/status
-POST /api/v1/cognee/search
-GET  /api/v1/cognee/search/explore
-POST /api/v1/cognee/search/rag
+POST /v1/console/debugger/trace
+GET  /v1/console/debugger/traces/{id}
+GET  /v1/console/debugger/traces
 ```
 
-## Zep APIs
+## Session APIs (FEAT-014)
 
 ```http
-POST /api/v1/users
-GET  /api/v1/threads
-POST /api/v1/memories
-GET  /api/v1/graph
-GET  /api/v1/search
+GET  /v1/console/sessions
+GET  /v1/console/sessions/live
+GET  /v1/console/sessions/{id}
+GET  /v1/console/sessions/{id}/timeline
+GET  /v1/console/sessions/{id}/diff
+GET  /v1/console/sessions/{id}/working-memory
+GET  /v1/console/sessions/{id}/user-summary
 ```
 
-## Governance APIs
+## Governance APIs (FEAT-011)
 
 ```http
-GET  /v1/admin/tenants
-POST /v1/admin/policies
-GET  /v1/admin/audit
+GET  /v1/console/governance/tenants
+POST /v1/console/governance/tenants
+PUT  /v1/console/governance/tenants/{id}
+GET  /v1/console/governance/policies
+POST /v1/console/governance/policies
+PUT  /v1/console/governance/policies/{id}
+GET  /v1/console/governance/audit
+POST /v1/console/governance/gdpr/forget
+POST /v1/console/governance/gdpr/forget/preview
+```
+
+## Pipeline APIs (FEAT-015)
+
+```http
+GET /v1/console/pipelines/status
+GET /v1/console/pipelines/queues
+GET /v1/console/pipelines/workers
+GET /v1/console/pipelines/templates
+GET /v1/console/pipelines/{engine}
+GET /v1/console/pipelines/{engine}/jobs
+GET /v1/console/pipelines/{engine}/jobs/{id}
+```
+
+## Infrastructure APIs (FEAT-016)
+
+```http
+GET /v1/console/infra/topology
+GET /v1/console/infra/services
+GET /v1/console/infra/services/{name}
+GET /v1/console/infra/databases
+GET /v1/console/infra/resources
+GET /v1/console/infra/deployments
+```
+
+## Observability APIs (FEAT-017)
+
+```http
+GET /v1/console/observability/metrics
+GET /v1/console/observability/traces
+GET /v1/console/observability/traces/{id}
+GET /v1/console/observability/errors
+GET /v1/console/observability/costs
+```
+
+## Engine Direct APIs (for advanced usage)
+
+```http
+-- Memory unified
+POST /v1/memory/store
+POST /v1/memory/recall
+POST /v1/memory/forget
+GET  /v1/memory/timeline
+
+-- Cognee
+POST /v1/cognee/datasets
+POST /v1/cognee/datasets/{id}/data
+POST /v1/cognee/datasets/{id}/cognify
+POST /v1/cognee/search
+
+-- Graphiti
+POST /v1/graphiti/episodes
+POST /v1/graphiti/search
+GET  /v1/graphiti/nodes/{id}
+GET  /v1/graphiti/edges/{id}
+
+-- Memobase
+POST /v1/memobase/users/{uid}/blobs
+POST /v1/memobase/users/{uid}/flush
+GET  /v1/memobase/users/{uid}/context
+GET  /v1/memobase/users/{uid}/profiles
+GET  /v1/memobase/users/{uid}/events
+
+-- OpenViking
+GET    /v1/ov/files/{path...}
+PUT    /v1/ov/files/{path...}
+DELETE /v1/ov/files/{path...}
+GET    /v1/ov/tree/{path...}
+POST   /v1/ov/grep
+POST   /v1/ov/search
+POST   /v1/ov/sessions
+POST   /v1/ov/sessions/{id}/messages
+POST   /v1/ov/sessions/{id}/commit
+POST   /v1/ov/resources/ingest
+
+-- Zep
+POST  /v1/zep/users
+GET   /v1/zep/users/{id}
+PATCH /v1/zep/users/{id}
+PUT   /v1/zep/sessions/{id}/memory
+GET   /v1/zep/sessions/{id}/memory
+POST  /v1/zep/graph/search
+POST  /v1/zep/sessions/{id}/search
+POST  /v1/zep/graph/facts
+POST  /v1/zep/graph/ontology
+
+-- Supermemory
+POST /v1/sm/documents
+GET  /v1/sm/documents/{id}
+POST /v1/sm/memories
+POST /v1/sm/search
+POST /v1/sm/rag
+GET  /v1/sm/profiles/{uid}
+POST /v1/sm/connections
+POST /v1/sm/connections/{id}/sync
+POST /v1/sm/projects/spaces
+
+-- Admin
+POST /v1/admin/tenants
+POST /v1/admin/tenants/{id}/keys
+GET  /v1/admin/health
+GET  /v1/admin/metrics
 ```
 
 ---
@@ -1130,16 +1241,22 @@ Supermemory-powered memory versioning and auto-forget visualization.
 
 # 17. Engine-to-Screen Mapping
 
-| Engine App | Memory Type | Primary Screens | Port |
-|---|---|---|---|
-| `apps/cognee` | Semantic | Memory Explorer, Pipelines, Graph Studio | 8080 |
-| `apps/graphiti` | Episodic | Memory Explorer, Graph Studio, Timeline | 8080 |
-| `apps/zep` | Conversational | Sessions, Memory Explorer | 8080 |
-| `apps/OpenViking` | Procedural | Memory Explorer, Pipelines | 8080 |
-| `apps/memobase` | Profile | User Profiles, Context Preview | 8080 |
-| `apps/supermemory` | Adaptive | Adaptive Memory, Connectors | 8080 |
+> **Architecture note**: Tất cả engines chạy trong một monolith (`apps/memory`) qua InProcessRegistry (bufconn). Không có separate ports per engine.
 
-Each app exposes a unified gateway via embedded monolith (Supervisor pattern), with internal gRPC services on localhost and MCP on port 8082 (where applicable).
+| Engine | Services | Memory Type | Primary Console Screens |
+|---|---|---|---|
+| **Cognee** | cognee-ingestion, cognee-cognify, cognee-search | Semantic | Memory Explorer (Semantic tab), Pipelines (cognee engine), Graph Studio |
+| **Graphiti** | graphiti-ingestion, graphiti-search, graphiti-knowledge, graphiti-store | Episodic | Memory Explorer (Episodic tab), Graph Studio, Timeline |
+| **Memobase** | memobase-ingestion, memobase-engine, memobase-context | Profile | User Profiles, Buffer Monitor, Context Preview |
+| **OpenViking** | ov-fs, ov-search, ov-session, ov-resource, ov-crypto, ov-admin | Procedural | Memory Explorer (Procedural tab), Sessions, Pipelines |
+| **Zep** | zep-user, zep-thread, zep-memory, zep-graph, zep-search, zep-admin | Conversational | Sessions, Memory Explorer (Conversational tab) |
+| **Supermemory** | sm-document, sm-memory, sm-search, sm-profile, sm-connector, sm-mcp, sm-auth, sm-analytics, sm-project | Adaptive | Adaptive Memory, External Connectors, Memory Versions |
+| **Platform** | vnp-admin, vnp-event, vnp-search-hub, vnp-platform | — | Dashboard, Governance, Observability |
+
+**Monolith Ports**:
+- `:8080` — REST API (all routes)
+- `:8082` — MCP Server (16 tools, SSE + HTTP)
+- `:8083` — Health + Prometheus metrics
 
 ---
 
@@ -1152,3 +1269,5 @@ Nó là:
 > "Cognitive Control Plane for Enterprise AI Systems"
 
 Một hệ điều hành quan sát, kiểm soát, và tối ưu hóa trí nhớ của AI agents ở quy mô enterprise — bao gồm 6 loại memory chuyên biệt: Episodic, Semantic, Conversational, Procedural, Profile, và Adaptive.
+
+**Technical foundation**: 35 in-process services trong một Go binary, 50+ REST routes, 16 MCP tools, embedded NATS JetStream — tất cả được expose qua `apps/memory` monolith và `gateway/` standalone.

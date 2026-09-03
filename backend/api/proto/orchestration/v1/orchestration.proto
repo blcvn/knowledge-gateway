@@ -1,0 +1,177 @@
+syntax = "proto3";
+package orchestration.v1;
+option go_package = "github.com/vnp-memory/api/proto/orchestration/v1";
+
+import "google/protobuf/timestamp.proto";
+
+service OrchestrationService {
+  // Actions
+  rpc CreateAction(CreateActionRequest)   returns (CreateActionResponse);
+  rpc GetAction(GetActionRequest)         returns (GetActionResponse);
+  rpc ListActions(ListActionsRequest)     returns (ListActionsResponse);
+  rpc UpdateAction(UpdateActionRequest)   returns (UpdateActionResponse);
+  rpc DeleteAction(DeleteActionRequest)   returns (DeleteActionResponse);
+
+  // Leases
+  rpc AcquireLease(AcquireLeaseRequest) returns (AcquireLeaseResponse);
+  rpc RenewLease(RenewLeaseRequest)     returns (RenewLeaseResponse);
+  rpc ReleaseLease(ReleaseLeaseRequest) returns (ReleaseLeaseResponse);
+  rpc GetLease(GetLeaseRequest)         returns (GetLeaseResponse);
+
+  // Signals
+  rpc SendSignal(SendSignalRequest)       returns (SendSignalResponse);
+  rpc ListSignals(ListSignalsRequest)     returns (ListSignalsResponse);
+  rpc MarkSignalRead(MarkSignalReadRequest) returns (MarkSignalReadResponse);
+  rpc DeleteSignal(DeleteSignalRequest)   returns (DeleteSignalResponse);
+
+  // Routines
+  rpc CreateRoutine(CreateRoutineRequest)     returns (CreateRoutineResponse);
+  rpc ListRoutines(ListRoutinesRequest)       returns (ListRoutinesResponse);
+  rpc ExecuteRoutine(ExecuteRoutineRequest)   returns (ExecuteRoutineResponse);
+
+  // Checkpoints
+  rpc CreateCheckpoint(CreateCheckpointRequest)   returns (CreateCheckpointResponse);
+  rpc ListCheckpoints(ListCheckpointsRequest)     returns (ListCheckpointsResponse);
+  rpc ApproveCheckpoint(ApproveCheckpointRequest) returns (ApproveCheckpointResponse);
+  rpc RejectCheckpoint(RejectCheckpointRequest)   returns (RejectCheckpointResponse);
+
+  // Sentinels
+  rpc CreateSentinel(CreateSentinelRequest) returns (CreateSentinelResponse);
+  rpc ListSentinels(ListSentinelsRequest)   returns (ListSentinelsResponse);
+  rpc DeleteSentinel(DeleteSentinelRequest) returns (DeleteSentinelResponse);
+
+  // Sketches & Crystals
+  rpc CreateSketch(CreateSketchRequest)         returns (CreateSketchResponse);
+  rpc ListSketches(ListSketchesRequest)         returns (ListSketchesResponse);
+  rpc AddActionToSketch(AddActionToSketchRequest) returns (AddActionToSketchResponse);
+  rpc PromoteSketch(PromoteSketchRequest)       returns (PromoteSketchResponse);
+  rpc ListCrystals(ListCrystalsRequest)         returns (ListCrystalsResponse);
+  rpc GetCrystal(GetCrystalRequest)             returns (GetCrystalResponse);
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────
+
+message CreateActionRequest {
+  string   tenant_id    = 1;
+  string   project      = 2;
+  string   agent_id     = 3;
+  string   title        = 4;
+  string   description  = 5;
+  int32    priority     = 6;  // 0-100, default 50
+  repeated string requires     = 7;  // action IDs
+  repeated string conflicts_with = 8;
+  repeated string tags         = 9;
+}
+
+message ActionProto {
+  string   id           = 1;
+  string   tenant_id    = 2;
+  string   status       = 3;  // pending|active|blocked|done|cancelled|failed
+  string   title        = 4;
+  string   description  = 5;
+  int32    priority     = 6;
+  string   result       = 7;
+  repeated string tags  = 8;
+  google.protobuf.Timestamp created_at   = 9;
+  google.protobuf.Timestamp completed_at = 10;
+}
+
+message CreateActionResponse  { string action_id = 1; }
+message GetActionRequest      { string action_id = 1; }
+message GetActionResponse     { ActionProto action = 1; }
+message ListActionsRequest    { string tenant_id = 1; string status = 2; int32 limit = 3; }
+message ListActionsResponse   { repeated ActionProto actions = 1; }
+message UpdateActionRequest   { string action_id = 1; string status = 2; string result = 3; }
+message UpdateActionResponse  { bool ok = 1; }
+message DeleteActionRequest   { string action_id = 1; }
+message DeleteActionResponse  { bool deleted = 1; }
+
+// ── Leases ────────────────────────────────────────────────────────────────
+
+message AcquireLeaseRequest  { string action_id = 1; string agent_id = 2; int32 ttl_secs = 3; }
+message AcquireLeaseResponse { string lease_id = 1; bool conflict = 2; string conflicting_agent = 3; }
+message RenewLeaseRequest    { string lease_id = 1; int32 extend_secs = 2; }
+message RenewLeaseResponse   { bool ok = 1; }
+message ReleaseLeaseRequest  { string lease_id = 1; }
+message ReleaseLeaseResponse { bool ok = 1; }
+message GetLeaseRequest      { string action_id = 1; }
+message GetLeaseResponse     { string lease_id = 1; string status = 2; string agent_id = 3; google.protobuf.Timestamp expires_at = 4; }
+
+// ── Signals ───────────────────────────────────────────────────────────────
+
+message SendSignalRequest {
+  string tenant_id  = 1;
+  string from_agent = 2;
+  string to_agent   = 3;
+  string signal_type = 4;  // handoff|update|cancel|request|response|alert
+  string content    = 5;
+  string thread_id  = 6;
+  string reply_to   = 7;
+  int32  expire_secs = 8;  // default 3600
+}
+
+message SendSignalResponse   { string signal_id = 1; }
+message ListSignalsRequest   { string tenant_id = 1; string agent_id = 2; bool unread_only = 3; }
+message ListSignalsResponse  { repeated SignalProto signals = 1; }
+message SignalProto           { string id = 1; string from_agent = 2; string to_agent = 3; string signal_type = 4; string content = 5; bool is_read = 6; google.protobuf.Timestamp created_at = 7; }
+message MarkSignalReadRequest  { string signal_id = 1; }
+message MarkSignalReadResponse { bool ok = 1; }
+message DeleteSignalRequest    { string signal_id = 1; }
+message DeleteSignalResponse   { bool deleted = 1; }
+
+// ── Checkpoints ───────────────────────────────────────────────────────────
+
+message CreateCheckpointRequest {
+  string tenant_id   = 1;
+  string title       = 2;
+  string description = 3;
+  string action_id   = 4;
+  int32  expire_secs = 5;  // default 86400
+}
+
+message CreateCheckpointResponse  { string checkpoint_id = 1; }
+message ListCheckpointsRequest    { string tenant_id = 1; string status = 2; }
+message ListCheckpointsResponse   { repeated CheckpointProto checkpoints = 1; }
+message CheckpointProto           { string id = 1; string title = 2; string status = 3; google.protobuf.Timestamp expires_at = 4; }
+message ApproveCheckpointRequest  { string checkpoint_id = 1; string approved_by = 2; }
+message ApproveCheckpointResponse { bool ok = 1; }
+message RejectCheckpointRequest   { string checkpoint_id = 1; string rejected_by = 2; string reason = 3; }
+message RejectCheckpointResponse  { bool ok = 1; }
+
+// ── Sketches & Crystals ───────────────────────────────────────────────────
+
+message CreateSketchRequest      { string tenant_id = 1; string project = 2; string title = 3; int32 expire_hours = 4; }
+message CreateSketchResponse     { string sketch_id = 1; }
+message ListSketchesRequest      { string tenant_id = 1; string status = 2; }
+message ListSketchesResponse     { repeated SketchProto sketches = 1; }
+message SketchProto               { string id = 1; string title = 2; string status = 3; repeated string action_ids = 4; }
+message AddActionToSketchRequest { string sketch_id = 1; string action_id = 2; }
+message AddActionToSketchResponse { bool ok = 1; }
+message PromoteSketchRequest     { string sketch_id = 1; }
+message PromoteSketchResponse    { string crystal_id = 1; }
+message ListCrystalsRequest      { string tenant_id = 1; }
+message ListCrystalsResponse     { repeated CrystalProto crystals = 1; }
+message GetCrystalRequest        { string crystal_id = 1; }
+message GetCrystalResponse       { CrystalProto crystal = 1; }
+message CrystalProto             { string id = 1; string narrative = 2; repeated string key_outcomes = 3; repeated string lessons = 4; google.protobuf.Timestamp created_at = 5; }
+
+// ── Routines ─────────────────────────────────────────────────────────────
+
+message CreateRoutineRequest  { string tenant_id = 1; string name = 2; string description = 3; repeated string steps = 4; }
+message CreateRoutineResponse { string routine_id = 1; }
+message ListRoutinesRequest   { string tenant_id = 1; }
+message ListRoutinesResponse  { repeated RoutineProto routines = 1; }
+message RoutineProto          { string id = 1; string name = 2; repeated string steps = 3; }
+message ExecuteRoutineRequest { string routine_id = 1; string agent_id = 2; }
+message ExecuteRoutineResponse { string execution_id = 1; }
+
+// ── Sentinels ─────────────────────────────────────────────────────────────
+
+message SentinelCondition { string type = 1; string target = 2; string value = 3; }
+message CreateSentinelRequest  { string tenant_id = 1; string name = 2; SentinelCondition condition = 3; string action_id = 4; string signal_to = 5; int32 expire_hours = 6; }
+message CreateSentinelResponse { string sentinel_id = 1; }
+message ListSentinelsRequest   { string tenant_id = 1; string status = 2; }
+message ListSentinelsResponse  { repeated SentinelProto sentinels = 1; }
+message SentinelProto           { string id = 1; string name = 2; string status = 3; SentinelCondition condition = 4; }
+message DeleteSentinelRequest   { string sentinel_id = 1; }
+message DeleteSentinelResponse  { bool deleted = 1; }

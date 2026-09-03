@@ -1,57 +1,129 @@
-import { useQuery } from '@tanstack/react-query';
-import { API_CONFIG } from '../config/api.config';
-import { apiClient } from '../lib/api-client';
+/**
+ * Org & SDK Hooks — real API, no mock
+ * TASK-API-013: useCreateApiKey with raw_key show-once pattern, query key factory
+ */
 
-const useMock = API_CONFIG.useMockData;
-const BASE = API_CONFIG.engines.gateway.baseUrl;
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { orgService }          from '../services/org.service';
+import type { OrgSettings, CreateKeyPayload, CreateWebhookPayload } from '../types/org';
 
-const mockSettings = {
-  name: 'VNP Platform',
-  slug: 'vnp-platform',
-  domain: 'vnp-memory.io',
-  timezone: 'Asia/Ho_Chi_Minh',
-  maxAgents: 100,
-  maxMemoriesPerUser: 10000,
+// ─── Query Key Factory ────────────────────────────────────────────────────────
+
+const keys = {
+  settings:   () => ['org', 'settings'] as const,
+  members:    () => ['org', 'members'] as const,
+  roles:      () => ['org', 'roles'] as const,
+  apiKeys:    () => ['sdk', 'keys'] as const,
+  rateLimits: () => ['sdk', 'rate-limits'] as const,
+  webhooks:   () => ['sdk', 'webhooks'] as const,
 };
 
-const mockMembers = [
-  { id: 'm1', name: 'Nguyen Binh', email: 'binh@vnp.io', role: 'owner', status: 'active', joinedAt: '2025-01-01' },
-  { id: 'm2', name: 'Alice Chen', email: 'alice@vnp.io', role: 'admin', status: 'active', joinedAt: '2025-02-15' },
-  { id: 'm3', name: 'Bob Kim', email: 'bob@vnp.io', role: 'developer', status: 'active', joinedAt: '2025-03-20' },
-  { id: 'm4', name: 'Carol Liu', email: 'carol@vnp.io', role: 'developer', status: 'active', joinedAt: '2025-04-10' },
-  { id: 'm5', name: 'Dave Park', email: 'dave@vnp.io', role: 'viewer', status: 'inactive', joinedAt: '2025-05-05' },
-];
+// ─── Org Query Hooks ──────────────────────────────────────────────────────────
 
-const mockRoles = [
-  { id: 'r1', name: 'owner', permissions: ['*'] },
-  { id: 'r2', name: 'admin', permissions: ['memory:*', 'graph:*', 'governance:read'] },
-  { id: 'r3', name: 'developer', permissions: ['memory:read', 'memory:write', 'graph:read', 'debug:*'] },
-  { id: 'r4', name: 'viewer', permissions: ['memory:read', 'graph:read'] },
-];
-
+/** GET /v1/console/org/settings */
 export function useOrgSettings() {
   return useQuery({
-    queryKey: ['org', 'settings'],
-    queryFn: useMock
-      ? () => Promise.resolve(mockSettings)
-      : () => apiClient.get<typeof mockSettings>(`${BASE}/v1/org/settings`),
+    queryKey: keys.settings(),
+    queryFn:  () => orgService.getSettings(),
   });
 }
 
+/** GET /v1/console/org/members */
 export function useMembers() {
   return useQuery({
-    queryKey: ['org', 'members'],
-    queryFn: useMock
-      ? () => Promise.resolve(mockMembers)
-      : () => apiClient.get<typeof mockMembers>(`${BASE}/v1/org/members`),
+    queryKey: keys.members(),
+    queryFn:  () => orgService.getMembers(),
   });
 }
 
+/** GET /v1/console/org/roles */
 export function useRoles() {
   return useQuery({
-    queryKey: ['org', 'roles'],
-    queryFn: useMock
-      ? () => Promise.resolve(mockRoles)
-      : () => apiClient.get<typeof mockRoles>(`${BASE}/v1/org/roles`),
+    queryKey: keys.roles(),
+    queryFn:  () => orgService.getRoles(),
+  });
+}
+
+// ─── SDK Query Hooks ──────────────────────────────────────────────────────────
+
+/** GET /v1/console/sdk/keys — list (no raw_key in response) */
+export function useApiKeys() {
+  return useQuery({
+    queryKey: keys.apiKeys(),
+    queryFn:  () => orgService.getKeys(),
+  });
+}
+
+/** GET /v1/console/sdk/rate-limits */
+export function useRateLimits() {
+  return useQuery({
+    queryKey: keys.rateLimits(),
+    queryFn:  () => orgService.getRateLimits(),
+  });
+}
+
+/** GET /v1/console/sdk/webhooks */
+export function useWebhooks() {
+  return useQuery({
+    queryKey: keys.webhooks(),
+    queryFn:  () => orgService.getWebhooks(),
+  });
+}
+
+// ─── Mutation Hooks ───────────────────────────────────────────────────────────
+
+/** PUT /v1/console/org/settings */
+export function useUpdateOrgSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Partial<OrgSettings>) => orgService.updateSettings(payload),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: keys.settings() }),
+  });
+}
+
+/**
+ * POST /v1/console/sdk/keys
+ *
+ * ⚠️ raw_key pattern — IMPORTANT:
+ * The `raw_key` in onSuccess data is only available ONCE.
+ * Caller MUST save it to local component state immediately:
+ *
+ * const { mutate } = useCreateApiKey();
+ * mutate(payload, {
+ *   onSuccess: ({ raw_key }) => setNewKey(raw_key)  // show in modal
+ * });
+ */
+export function useCreateApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateKeyPayload) => orgService.createKey(payload),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: keys.apiKeys() }),
+  });
+}
+
+/** DELETE /v1/console/sdk/keys/{id} */
+export function useRevokeApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => orgService.revokeKey(id),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: keys.apiKeys() }),
+  });
+}
+
+/** POST /v1/console/sdk/webhooks */
+export function useCreateWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateWebhookPayload) => orgService.createWebhook(payload),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: keys.webhooks() }),
+  });
+}
+
+/** DELETE /v1/console/sdk/webhooks/{id} */
+export function useDeleteWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => orgService.deleteWebhook(id),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: keys.webhooks() }),
   });
 }

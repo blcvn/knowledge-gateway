@@ -1,0 +1,12 @@
+# Ignore test data outputs (có thể chứa sensitive data)
+data/*.json
+data/*.jsonl
+!data/.gitkeep
+
+# Ignore .env (chứa credentials)
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

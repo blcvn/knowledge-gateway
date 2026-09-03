@@ -64,22 +64,20 @@ function GeneralSettings() {
 
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, string>) =>
-      API_CONFIG.useMockData
-        ? new Promise(r => setTimeout(r, 500))
-        : apiClient.put(`${API_CONFIG.engines.gateway.baseUrl}/v1/org/settings`, data),
+      apiClient.put('/v1/console/org/settings', data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['org', 'settings'] }),
   });
 
-  const mockSettings = {
-    name: 'VNP Platform',
-    slug: 'vnp-platform',
-    domain: 'vnp-memory.io',
-    timezone: 'Asia/Ho_Chi_Minh',
-    maxAgents: 100,
-    maxMemoriesPerUser: 10000,
+  const display = settings ?? {
+    name: '', slug: '', domain: '', timezone: 'UTC',
+    max_agents: 0, max_memories_per_user: 0,
   };
+  const maxAgents = (settings as any)?.max_agents ?? (settings as any)?.maxAgents ?? 100;
+  const maxMem = (settings as any)?.max_memories_per_user ?? (settings as any)?.maxMemoriesPerUser ?? 10000;
 
-  const display = settings ?? mockSettings;
+  if (isLoading) {
+    return <div className="animate-pulse text-white/30 text-sm">Loading settings...</div>;
+  }
 
   return (
     <div className="space-y-8 max-w-2xl">
@@ -93,10 +91,10 @@ function GeneralSettings() {
           <FormField label="Organization Name" value={display.name} placeholder="Acme Corp" />
           <FormField label="Slug" value={display.slug} placeholder="acme-corp" mono />
         </div>
-        <FormField label="Primary Domain" value={display.domain} placeholder="example.com" />
+        <FormField label="Primary Domain" value={display.domain ?? ''} placeholder="example.com" />
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Max Agents" value={String(display.maxAgents)} type="number" />
-          <FormField label="Max Memories / User" value={String(display.maxMemoriesPerUser)} type="number" />
+          <FormField label="Max Agents" value={String(maxAgents)} type="number" />
+          <FormField label="Max Memories / User" value={String(maxMem)} type="number" />
         </div>
         <div>
           <label className="block text-sm text-white/50 mb-1.5">Timezone</label>
@@ -130,17 +128,13 @@ function MembersRoles() {
   const { data: members, isLoading } = useMembers();
   const [search, setSearch] = useState('');
 
-  const mockMembers = [
-    { id: 'm1', name: 'Nguyen Binh', email: 'binh@vnp.io', role: 'owner', status: 'active', joinedAt: '2025-01-01' },
-    { id: 'm2', name: 'Alice Chen', email: 'alice@vnp.io', role: 'admin', status: 'active', joinedAt: '2025-02-15' },
-    { id: 'm3', name: 'Bob Kim', email: 'bob@vnp.io', role: 'developer', status: 'active', joinedAt: '2025-03-20' },
-    { id: 'm4', name: 'Carol Liu', email: 'carol@vnp.io', role: 'developer', status: 'active', joinedAt: '2025-04-10' },
-    { id: 'm5', name: 'Dave Park', email: 'dave@vnp.io', role: 'viewer', status: 'inactive', joinedAt: '2025-05-05' },
-  ];
-
-  const displayMembers = (members ?? mockMembers).filter(m =>
+  const displayMembers = (members ?? []).filter(m =>
     !search || m.name.toLowerCase().includes(search.toLowerCase()) || m.email.toLowerCase().includes(search.toLowerCase())
   );
+
+  if (isLoading) {
+    return <div className="animate-pulse text-white/30 text-sm p-4">Loading members...</div>;
+  }
 
   return (
     <div className="space-y-6 max-w-3xl">

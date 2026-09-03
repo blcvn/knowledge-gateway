@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package vnp.memory.smauth.v1;
+option go_package = "vnp-memory/services/sm-auth/api/proto/v1;smauthv1";
+
+service SmAuthService {
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
+  rpc ValidateAPIKey(ValidateAPIKeyRequest) returns (ValidateAPIKeyResponse);
+  
+  rpc Register(RegisterRequest) returns (AuthResponse);
+  rpc Login(LoginRequest) returns (AuthResponse);
+  rpc LoginWithGoogle(GoogleLoginRequest) returns (AuthResponse);
+}
+
+message CreateAPIKeyRequest {
+  string org_id = 1;
+  string name = 2;
+}
+
+message CreateAPIKeyResponse {
+  string raw_key = 1;
+  string key_id = 2;
+}
+
+message ValidateAPIKeyRequest {
+  string api_key = 1;
+}
+
+message ValidateAPIKeyResponse {
+  bool is_valid = 1;
+  string org_id = 2;
+  string role = 3;
+}
+
+message RegisterRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message GoogleLoginRequest {
+  string id_token = 1;
+}
+
+message UserProfile {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  string role = 4;
+}
+
+message AuthResponse {
+  string token = 1;
+  UserProfile user = 2;
+}

@@ -1,53 +1,92 @@
-import { useQuery } from '@tanstack/react-query';
-import { adaptiveService } from '../services/adaptive.service';
-import { adaptiveMock } from '../mock/adaptive.mock';
-import { API_CONFIG } from '../config/api.config';
-import type { AdaptiveAnalytics } from '../types/adaptive';
+/**
+ * Adaptive Memory Hooks — real API, no mock
+ * TASK-API-007: mutations for create/sync connectors, update forget-rules, poll analytics 60s
+ */
 
-const useMock = API_CONFIG.useMockData;
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { adaptiveService }                        from '../services/adaptive.service';
+import type { ExternalConnector, ForgetRule }     from '../types/adaptive';
 
-const defaultAnalyticsMock: AdaptiveAnalytics = {
-  creation_rate: 12,
-  deletion_rate: 3,
-  contradiction_count: 5,
-  connector_sync_count: 48,
-  storage_usage_bytes: 52_428_800, // 50MB
+// ─── Query Key Factory ────────────────────────────────────────────────────────
+
+const keys = {
+  memories:    () => ['adaptive', 'memories'] as const,
+  versions:    (id: string) => ['adaptive', 'memories', id, 'versions'] as const,
+  connectors:  () => ['adaptive', 'connectors'] as const,
+  analytics:   () => ['adaptive', 'analytics'] as const,
+  forgetRules: () => ['adaptive', 'forget-rules'] as const,
 };
 
+// ─── Query Hooks ──────────────────────────────────────────────────────────────
+
+/** GET /v1/console/adaptive/memories */
 export function useAdaptiveMemories() {
   return useQuery({
-    queryKey: ['adaptive', 'memories'],
-    queryFn: useMock
-      ? () => Promise.resolve(adaptiveMock.memories)
-      : () => adaptiveService.getMemories(),
+    queryKey:  keys.memories(),
+    queryFn:   () => adaptiveService.getMemories(),
+    staleTime: 60_000,
   });
 }
 
+/** GET /v1/console/adaptive/memories/{id}/versions */
 export function useMemoryVersions(id: string) {
   return useQuery({
-    queryKey: ['adaptive', 'versions', id],
-    queryFn: useMock
-      ? () => Promise.resolve(adaptiveMock.versions)
-      : () => adaptiveService.getMemoryVersions(id),
-    enabled: !!id,
+    queryKey: keys.versions(id),
+    queryFn:  () => adaptiveService.getMemoryVersions(id),
+    enabled:  !!id,
   });
 }
 
+/** GET /v1/console/adaptive/connectors */
 export function useConnectors() {
   return useQuery({
-    queryKey: ['adaptive', 'connectors'],
-    queryFn: useMock
-      ? () => Promise.resolve(adaptiveMock.connectors)
-      : () => adaptiveService.getConnectors(),
+    queryKey: keys.connectors(),
+    queryFn:  () => adaptiveService.getConnectors(),
   });
 }
 
-/** Fixed M1: now returns properly typed mock instead of empty object */
+/** GET /v1/console/adaptive/analytics — poll 60s */
 export function useAdaptiveAnalytics() {
   return useQuery({
-    queryKey: ['adaptive', 'analytics'],
-    queryFn: useMock
-      ? () => Promise.resolve(defaultAnalyticsMock)
-      : () => adaptiveService.getAnalytics(),
+    queryKey:        keys.analytics(),
+    queryFn:         () => adaptiveService.getAnalytics(),
+    refetchInterval: 60_000,
+  });
+}
+
+/** GET /v1/console/adaptive/forget-rules */
+export function useForgetRules() {
+  return useQuery({
+    queryKey: keys.forgetRules(),
+    queryFn:  () => adaptiveService.getForgetRules(),
+  });
+}
+
+// ─── Mutation Hooks ───────────────────────────────────────────────────────────
+
+/** POST /v1/console/adaptive/connectors — create new external connector */
+export function useCreateConnector() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<ExternalConnector>) => adaptiveService.createConnector(data),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: keys.connectors() }),
+  });
+}
+
+/** POST /v1/console/adaptive/connectors/{id}/sync — trigger sync job */
+export function useSyncConnector() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adaptiveService.syncConnector(id),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: keys.connectors() }),
+  });
+}
+
+/** PUT /v1/console/adaptive/forget-rules — update forget policy */
+export function useUpdateForgetRules() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rules: ForgetRule[]) => adaptiveService.updateForgetRules(rules),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: keys.forgetRules() }),
   });
 }

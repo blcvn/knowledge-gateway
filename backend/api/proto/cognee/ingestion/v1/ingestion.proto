@@ -1,0 +1,112 @@
+syntax = "proto3";
+package cognee.ingestion.v1;
+option go_package = "github.com/vnp-memory/api/proto/cognee/ingestion/v1";
+
+import "google/protobuf/struct.proto";
+
+service IngestionService {
+  rpc AddData(AddDataRequest) returns (AddDataResponse);
+  rpc AddDataPoints(AddDataPointsRequest) returns (AddDataPointsResponse);  // [NEW] CR-003
+  rpc ListDatasets(ListDatasetsRequest) returns (ListDatasetsResponse);
+  rpc ListDataEntries(ListDataEntriesRequest) returns (ListDataEntriesResponse);  // [NEW] for MCP list_data
+  rpc DeleteDataset(DeleteDatasetRequest) returns (DeleteDatasetResponse);
+}
+
+// ── AddData (updated) ──────────────────────────────────────────────────────
+
+message AddDataRequest {
+  string            dataset_id   = 1;
+  string            dataset_name = 2;
+  string            tenant_id    = 3;
+  repeated DataItem items        = 4;
+  repeated string   node_sets    = 5;  // [NEW] CR-002
+}
+
+message DataItem {
+  string content      = 1;
+  string url          = 2;
+  string content_type = 3;  // TEXT | PDF | PDF_LAYOUT | HTML | URL | DOCX | CSV | TABULAR_FK
+  map<string, string> metadata = 4;
+  DataItemConfig config = 5;  // [NEW] CR-004
+}
+
+message DataItemConfig {
+  string pdf_mode = 1;  // "LAYOUT_AWARE" | "PLAIN_TEXT"
+}
+
+message AddDataResponse {
+  string          dataset_id = 1;
+  repeated string entry_ids  = 2;
+  int32           count      = 3;
+}
+
+// ── AddDataPoints (CR-003) ─────────────────────────────────────────────────
+
+message AddDataPointsRequest {
+  string             dataset_id  = 1;
+  string             tenant_id   = 2;
+  repeated DataPoint data_points = 3;
+  repeated string    node_sets   = 4;
+}
+
+message DataPoint {
+  string                 id           = 1;  // stable deterministic UUID
+  string                 type         = 2;  // e.g. "Paper", "Employee", "Product"
+  google.protobuf.Struct fields       = 3;  // all field values
+  repeated string        index_fields = 4;  // fields to embed into Qdrant
+  repeated Relation      relations    = 5;  // explicit FK edges
+}
+
+message Relation {
+  string target_id = 1;
+  string label     = 2;   // edge label: "authored_by", "works_in", ...
+  double weight    = 3;   // default: 1.0
+}
+
+message AddDataPointsResponse {
+  int32 upserted = 1;
+  int32 created  = 2;
+  int32 updated  = 3;
+}
+
+// ── List/Delete ────────────────────────────────────────────────────────────
+
+message ListDatasetsRequest {
+  string tenant_id = 1;
+  int32  limit     = 2;
+  int32  offset    = 3;
+}
+
+message DatasetInfo {
+  string dataset_id   = 1;
+  string dataset_name = 2;
+  int32  entry_count  = 3;
+  string created_at   = 4;
+}
+
+message ListDatasetsResponse { repeated DatasetInfo datasets = 1; }
+
+message ListDataEntriesRequest {
+  string tenant_id    = 1;
+  string dataset_id   = 2;
+  string dataset_name = 3;
+  int32  limit        = 4;
+  int32  offset       = 5;
+}
+
+message DataEntryInfo {
+  string entry_id     = 1;
+  string content_type = 2;
+  string created_at   = 3;
+  int32  chunk_count  = 4;
+}
+
+message ListDataEntriesResponse { repeated DataEntryInfo entries = 1; }
+
+message DeleteDatasetRequest {
+  string tenant_id    = 1;
+  string dataset_id   = 2;
+  string dataset_name = 3;
+}
+
+message DeleteDatasetResponse { string dataset_id = 1; bool deleted = 2; }

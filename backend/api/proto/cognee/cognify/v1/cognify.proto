@@ -1,0 +1,89 @@
+syntax = "proto3";
+package cognee.cognify.v1;
+option go_package = "github.com/vnp-memory/api/proto/cognee/cognify/v1";
+
+import "google/protobuf/timestamp.proto";
+
+service CognifyService {
+  // Existing
+  rpc StartCognify(StartCognifyRequest) returns (StartCognifyResponse);
+
+  // [NEW] CR-001 — Memify
+  rpc Memify(MemifyRequest) returns (MemifyResponse);
+  rpc GetPipelineStatus(GetPipelineStatusRequest) returns (GetPipelineStatusResponse);
+
+  // [NEW] CR-006 — Pipeline Templates
+  rpc GetPipelineTemplates(GetPipelineTemplatesRequest) returns (GetPipelineTemplatesResponse);
+}
+
+// ── StartCognify (updated) ─────────────────────────────────────────────────
+
+message StartCognifyRequest {
+  string           dataset_id  = 1;
+  string           tenant_id   = 2;
+  repeated string  entry_ids   = 3;
+  repeated string  node_sets   = 4;  // [NEW] CR-002
+  // [NEW] CR-006 Pipeline config
+  string           template    = 5;  // "STANDARD" | "EMBED_ONLY" | "FAST_INDEX" | "TEMPORAL" | "GRAPH_ONLY"
+  repeated string  steps       = 6;  // custom step list (overrides template)
+  PipelineOptions  options     = 7;
+}
+
+message StartCognifyResponse {
+  string           pipeline_run_id = 1;
+  string           status          = 2;
+  repeated string  steps_executed  = 3;  // [NEW] list of steps that ran
+}
+
+// ── Pipeline Options (CR-006) ──────────────────────────────────────────────
+
+message PipelineOptions {
+  int32  chunk_size     = 1;  // default: 512
+  string custom_prompt  = 2;  // override LLM extraction prompt
+  bool   temporal_mode  = 3;  // use temporal extraction variant
+  bool   skip_cache     = 4;  // force re-run
+}
+
+message GetPipelineTemplatesRequest {}
+message GetPipelineTemplatesResponse {
+  repeated PipelineTemplateInfo templates = 1;
+}
+message PipelineTemplateInfo {
+  string          name  = 1;
+  repeated string steps = 2;
+}
+
+// ── Memify (CR-001) ────────────────────────────────────────────────────────
+
+message MemifyRequest {
+  string         dataset_id = 1;
+  string         tenant_id  = 2;
+  optional MemifyConfig config = 3;
+}
+
+message MemifyConfig {
+  bool  derive_facts    = 1;  // default: true
+  bool  embed_triplets  = 2;  // default: true
+  int32 batch_size      = 3;  // default: 50
+}
+
+message MemifyResponse {
+  string pipeline_run_id = 1;
+  string status          = 2;  // QUEUED | RUNNING | COMPLETED | FAILED
+}
+
+// ── Pipeline Status (CR-001) ───────────────────────────────────────────────
+
+message GetPipelineStatusRequest {
+  string pipeline_run_id = 1;
+  string dataset_id      = 2;  // alternative lookup
+}
+
+message GetPipelineStatusResponse {
+  string pipeline_run_id = 1;
+  string status          = 2;  // QUEUED | RUNNING | COMPLETED | FAILED
+  int32  new_nodes       = 3;
+  int32  new_edges       = 4;
+  string error           = 5;
+  google.protobuf.Timestamp completed_at = 6;
+}

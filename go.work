@@ -1,40 +1,52 @@
 go 1.25.0
 
 use (
-    ./gateway
-    ./services/cognee-ingestion
-    ./services/cognee-cognify
-    ./services/cognee-search
-    ./services/graphiti-ingestion
-    ./services/graphiti-search
-    ./services/graphiti-knowledge
-    ./services/graphiti-store
-    ./services/memobase-ingestion
-    ./services/memobase-engine
-    ./services/memobase-context
-    ./services/ov-fs
-    ./services/ov-search
-    ./services/ov-session
-    ./services/ov-resource
-    ./services/ov-crypto
-    ./services/ov-admin
-    ./services/zep-user
-    ./services/zep-thread
-    ./services/zep-memory
-    ./services/zep-graph
-    ./services/zep-search
-    ./services/zep-admin
-    ./services/sm-document
-    ./services/sm-memory
-    ./services/sm-search
-    ./services/sm-profile
-    ./services/sm-connector
-    ./services/sm-mcp
-    ./services/sm-auth
-    ./services/sm-analytics
-    ./services/sm-project
-    ./services/vnp-event
-    ./services/vnp-search-hub
-    ./services/vnp-admin
-    ./apps/memory
+	./backend/api/proto
+	// Gateway (fully implemented)
+	./backend/gateway
+	./backend/services/cognee-cognify // Knowledge graph pipeline + Neo4j multi-labels
+
+	// Cognee Memory Services (TASK-CE-001..005)
+	./backend/services/cognee-ingestion // Structured data ingestion with NodeSets
+	./backend/services/cognee-search // NodeSet-aware retrieval (Vector + Graph + Keyword)
+	./backend/services/graphiti-knowledge // LLM extraction + ingestion pipeline
+
+	// Graphiti Knowledge Graph Services (TASK-GR-001..010)
+	./backend/services/graphiti-store // Graph storage + Neo4j driver
+	./backend/services/kg-service // Knowledge Graph
+
+	// Memobase Services (TASK-MB-002..004)
+	./backend/services/memobase-admin
+	./backend/services/memobase-ingestion
+	./backend/services/memory-service // Memory (Memobase + Zep + SM)
+	./backend/services/obs-service // Observability + Infra
+	./backend/services/observe-search
+
+	// AgentMemory (TASK-AM-001..007)
+	./backend/services/observe-service // Observe/Session pipeline (TASK-AM-002/003)
+	./backend/services/orchestration-service
+	./backend/services/pipeline-service // Async Processing
+	./backend/services/search-service // Cross-engine Search
+	./backend/services/storage-service // Files + Crypto + Resources
+
+	// 8 Backend Services (SOL-003)
+	./backend/services/vnp-platform // Auth + Admin + Platform
+
+	// External SDK (dependency, not deployed service)
+	./backend/services/zep-go
+	./backend/shared/pkg/adapters // Memobase shared adapters (TASK-MB-005)
+	./backend/shared/pkg/config // Memobase foundation (TASK-MB-001)
+
+	// Shared packages (all shared code lives in /shared/)
+	./backend/shared/pkg/forward
+	./backend/shared/pkg/graph // Shared graph types (TASK-GR-001)
+	./backend/shared/pkg/privacy // PII redaction (TASK-AM-004)
+	./backend/shared/pkg/resilience // Memobase shared adapters (TASK-MB-005)
+	./backend/shared/pkg/search // BM25 + vector + RRF search (TASK-AM-007)
+	./backend/shared/pkg/telemetry
+	./backend/shared/pkg/tenant
+	./backend/shared/pkg/tokenizer // Memobase foundation (TASK-MB-001)
+	./backend/shared/pkg/vectorstore
+
+	./tests/integration/sol003
 )

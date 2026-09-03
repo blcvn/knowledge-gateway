@@ -1,8 +1,14 @@
 import { useState, lazy, Suspense } from 'react';
+import { Routes, Route } from 'react-router';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Loader2 } from 'lucide-react';
+
+/* ─── Auth Modules ─── */
+import { Login } from '../components/auth/Login';
+import { Register } from '../components/auth/Register';
+import { ProtectedRoute } from '../components/auth/ProtectedRoute';
 
 /* ─── Lazy-loaded modules for code splitting ─── */
 const Dashboard           = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -29,7 +35,7 @@ function ModuleLoadingFallback() {
   );
 }
 
-export default function App() {
+function DashboardLayout() {
   const [activeSection, setActiveSection] = useState('overview');
   const [currentTenant] = useState('Acme Corporation');
   const [currentEnvironment] = useState('Production');
@@ -65,5 +71,22 @@ export default function App() {
         </ErrorBoundary>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route 
+        path="/*" 
+        element={
+          <ProtectedRoute>
+            <DashboardLayout />
+          </ProtectedRoute>
+        } 
+      />
+    </Routes>
   );
 }

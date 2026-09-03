@@ -1,0 +1,168 @@
+syntax = "proto3";
+package memory.v1;
+option go_package = "github.com/vnp-memory/api/proto/memory/v1";
+
+import "google/protobuf/timestamp.proto";
+
+service AgentMemoryService {
+  rpc RememberAgent(RememberAgentRequest) returns (RememberAgentResponse);
+  rpc ListAgentMemories(ListAgentMemoriesRequest) returns (ListAgentMemoriesResponse);
+  rpc GetAgentMemory(GetAgentMemoryRequest) returns (GetAgentMemoryResponse);
+  rpc DeleteAgentMemory(DeleteAgentMemoryRequest) returns (DeleteAgentMemoryResponse);
+  rpc GetRetentionScore(GetRetentionScoreRequest) returns (GetRetentionScoreResponse);
+  rpc EvictMemories(EvictMemoriesRequest) returns (EvictMemoriesResponse);
+  rpc AutoForgetSweep(AutoForgetSweepRequest) returns (AutoForgetSweepResponse);
+  rpc GetSlot(GetSlotRequest) returns (GetSlotResponse);
+  rpc WriteSlot(WriteSlotRequest) returns (WriteSlotResponse);
+  rpc DeleteSlot(DeleteSlotRequest) returns (DeleteSlotResponse);
+  rpc ListSlots(ListSlotsRequest) returns (ListSlotsResponse);
+}
+
+message RememberAgentRequest {
+  string   type      = 1;  // pattern|preference|architecture|bug|workflow|fact
+  string   title     = 2;
+  string   content   = 3;
+  repeated string concepts = 4;
+  repeated string files    = 5;
+  string   session_id = 6;
+  double   strength   = 7;  // default 0.7
+  string   tenant_id  = 8;
+  string   project    = 9;
+  string   agent_id   = 10;
+  optional google.protobuf.Timestamp forget_after = 11;
+}
+
+message RememberAgentResponse {
+  string   memory_id  = 1;
+  int32    version    = 2;
+  repeated string superseded = 3;
+}
+
+message AgentMemoryProto {
+  string   id       = 1;
+  string   type     = 2;
+  string   title    = 3;
+  string   content  = 4;
+  repeated string concepts = 5;
+  repeated string files    = 6;
+  double   strength = 7;
+  int32    version  = 8;
+  bool     is_latest = 9;
+  string   agent_id = 10;
+  string   project  = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+message ListAgentMemoriesRequest {
+  string tenant_id = 1;
+  string project   = 2;
+  string type      = 3;
+  bool   latest_only = 4;
+  int32  limit     = 5;
+  int32  offset    = 6;
+}
+
+message ListAgentMemoriesResponse { repeated AgentMemoryProto memories = 1; }
+message GetAgentMemoryRequest  { string memory_id = 1; }
+message GetAgentMemoryResponse { AgentMemoryProto memory = 1; }
+message DeleteAgentMemoryRequest { string memory_id = 1; string tenant_id = 2; }
+message DeleteAgentMemoryResponse { bool deleted = 1; }
+
+message GetRetentionScoreRequest { string memory_id = 1; }
+message GetRetentionScoreResponse {
+  double score             = 1;
+  double recency_factor    = 2;
+  double frequency_factor  = 3;
+  double importance_factor = 4;
+  double days_since_access = 5;
+  string recommend_action  = 6;  // keep|review|evict
+}
+
+message EvictMemoriesRequest {
+  string tenant_id    = 1;
+  string project      = 2;
+  int32  max_memories = 3;
+  bool   dry_run      = 4;
+}
+
+message EvictMemoriesResponse {
+  repeated string evicted_ids = 1;
+  bool dry_run = 2;
+}
+
+message AutoForgetSweepRequest { string tenant_id = 1; }
+message AutoForgetSweepResponse { int32 deleted_count = 1; }
+
+// ── Slots ─────────────────────────────────────────────────────────────────
+
+message GetSlotRequest   { string tenant_id = 1; string scope = 2; string label = 3; }
+message GetSlotResponse  { string content = 1; bool exists = 2; }
+
+message WriteSlotRequest {
+  string tenant_id = 1;
+  string scope     = 2;
+  string label     = 3;
+  string content   = 4;
+  string mode      = 5;  // replace|append
+  string project   = 6;
+}
+
+message WriteSlotResponse { bool ok = 1; }
+
+message DeleteSlotRequest    { string tenant_id = 1; string scope = 2; string label = 3; }
+message DeleteSlotResponse   { bool deleted = 1; }
+
+message SlotInfo {
+  string scope      = 1;
+  string label      = 2;
+  string description = 3;
+  bool   pinned     = 4;
+  bool   read_only  = 5;
+  int32  size_limit = 6;
+}
+
+message ListSlotsRequest  { string tenant_id = 1; string scope = 2; }
+message ListSlotsResponse { repeated SlotInfo slots = 1; }
+
+service ConsolidationService {
+    rpc SummarizeSession(SummarizeSessionRequest) returns (SummarizeSessionResponse);
+    rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
+    rpc ListProcedural(ListProceduralRequest) returns (ListProceduralResponse);
+    rpc ListLessons(ListLessonsRequest) returns (ListLessonsResponse);
+    rpc ListInsights(ListInsightsRequest) returns (ListInsightsResponse);
+}
+
+message SummarizeSessionRequest { string session_id = 1; }
+message SummarizeSessionResponse { bool ok = 1; }
+
+message RunPipelineRequest { string session_id = 1; }
+message RunPipelineResponse { bool ok = 1; }
+
+message ListProceduralRequest { string tenant_id = 1; }
+message ListProceduralResponse { repeated ProceduralProto items = 1; }
+message ProceduralProto {
+    string id = 1;
+    string name = 2;
+    repeated string steps = 3;
+    string trigger_condition = 4;
+    string expected_outcome = 5;
+    int32 frequency = 6;
+}
+
+message ListLessonsRequest { string tenant_id = 1; }
+message ListLessonsResponse { repeated LessonProto items = 1; }
+message LessonProto {
+    string id = 1;
+    string content = 2;
+    repeated string categories = 3;
+    string source = 4;
+}
+
+message ListInsightsRequest { string tenant_id = 1; }
+message ListInsightsResponse { repeated InsightProto items = 1; }
+message InsightProto {
+    string id = 1;
+    string content = 2;
+    repeated string lesson_ids = 3;
+}

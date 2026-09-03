@@ -13,9 +13,9 @@ The following service directories belong to **external projects** and MUST NOT b
 ## Rules
 
 1. **No source code changes**: Do NOT create, edit, or delete any files under the protected paths listed above.
-2. **Deploy configs are OK**: Files under `deploy/dev/configs/` (e.g., `kgs-platform.yaml`, `ui-knowledge-service.yaml`) are deployment configurations and CAN be modified — they are NOT part of the external project source code.
-3. **Docker compose is OK**: Service definitions in `deploy/dev/docker-compose.server.yaml` CAN be modified.
-4. **Binary builds are OK**: The `deploy/dev/deploy.sh` script cross-compiles binaries from these services — this is a read-only operation and is allowed.
+2. **Deploy configs are OK**: Files under `deployment/dev/configs/` (e.g., `kgs-platform.yaml`, `ui-knowledge-service.yaml`) are deployment configurations and CAN be modified — they are NOT part of the external project source code.
+3. **Docker compose is OK**: Service definitions in `deployment/dev/docker-compose.server.yaml` CAN be modified.
+4. **Binary builds are OK**: The `deployment/dev/deploy.sh` script cross-compiles binaries from these services — this is a read-only operation and is allowed.
 
 ## When Debugging
 

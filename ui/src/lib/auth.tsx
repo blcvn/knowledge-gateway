@@ -1,72 +1,93 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, {
+  createContext, useContext, useState, useEffect,
+  useCallback, ReactNode,
+} from 'react';
+import { authApiClient } from '../services/auth-api.service';
+import type { AuthUser } from '../types/auth';
 
-// --- Types ---
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type UserRole = 'admin' | 'developer' | 'viewer' | 'devops' | 'ml_engineer' | 'architect';
 
+/** Backward-compat User shape (maps from AuthUser) */
 export interface User {
-  id: string;
-  email: string;
-  name: string;
-  roles: UserRole[];
+  id:       string;
+  email:    string;
+  name:     string;
+  roles:    UserRole[];
   tenantId: string;
 }
 
 interface AuthState {
-  user: User | null;
+  user:            User | null;
   isAuthenticated: boolean;
-  isLoading: boolean;
+  isLoading:       boolean;
 }
 
 interface AuthContextType extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  hasRole: (role: UserRole) => boolean;
+  login:      (email: string, password: string) => Promise<void>;
+  logout:     () => void;
+  hasRole:    (role: UserRole) => boolean;
   hasAnyRole: (roles: UserRole[]) => boolean;
 }
 
-// --- Context ---
+// ─── Context ──────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// --- Provider ---
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+function mapApiUserToUser(apiUser: AuthUser): User {
+  return {
+    id:       apiUser.id,
+    email:    apiUser.email,
+    name:     apiUser.name,
+    roles:    [(apiUser.role as UserRole) ?? 'viewer'],
+    tenantId: apiUser.tenant_id,
+  };
+}
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AuthState>({
-    user: null,
+    user:            null,
     isAuthenticated: false,
-    isLoading: true,
+    isLoading:       true,
   });
 
-  // Check for existing session on mount
+  // Restore session from token on mount — calls real /v1/auth/me
   useEffect(() => {
-    const storedUser = sessionStorage.getItem('vnp_user');
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser) as User;
-        setState({ user, isAuthenticated: true, isLoading: false });
-      } catch {
-        sessionStorage.removeItem('vnp_user');
-        setState({ user: null, isAuthenticated: false, isLoading: false });
-      }
-    } else {
-      setState((prev) => ({ ...prev, isLoading: false }));
+    if (!authApiClient.isAuthenticated()) {
+      setState({ user: null, isAuthenticated: false, isLoading: false });
+      return;
     }
+
+    authApiClient
+      .getMe()
+      .then((apiUser) => {
+        setState({
+          user:            mapApiUserToUser(apiUser),
+          isAuthenticated: true,
+          isLoading:       false,
+        });
+      })
+      .catch(() => {
+        // Token invalid — clear and show login
+        setState({ user: null, isAuthenticated: false, isLoading: false });
+      });
   }, []);
 
-  // Idle timeout — auto logout
+  // Idle timeout — auto logout after 30min inactivity
   useEffect(() => {
     if (!state.isAuthenticated) return;
 
     let timeoutId: ReturnType<typeof setTimeout>;
-
     const resetTimer = () => {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        logout();
-      }, IDLE_TIMEOUT_MS);
+      timeoutId = setTimeout(() => logout(), IDLE_TIMEOUT_MS);
     };
 
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
@@ -79,37 +100,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, [state.isAuthenticated]);
 
-  const login = useCallback(async (email: string, _password: string) => {
-    // In production, this would call the auth API
-    // For now, simulate a successful login
-    const mockUser: User = {
-      id: 'usr_001',
-      email,
-      name: email.split('@')[0],
-      roles: ['admin', 'developer'],
-      tenantId: 'tenant_acme',
-    };
-    sessionStorage.setItem('vnp_user', JSON.stringify(mockUser));
-    setState({ user: mockUser, isAuthenticated: true, isLoading: false });
+  const login = useCallback(async (email: string, password: string) => {
+    const resp = await authApiClient.login({ email, password });
+    setState({
+      user:            mapApiUserToUser(resp.user),
+      isAuthenticated: true,
+      isLoading:       false,
+    });
   }, []);
 
-  const logout = useCallback(() => {
-    sessionStorage.removeItem('vnp_user');
-    sessionStorage.removeItem('vnp_token');
-    localStorage.removeItem('tenant_id');
-    // Clear React Query cache would happen at the app level
-    setState({ user: null, isAuthenticated: false, isLoading: false });
+  const logout = useCallback(async () => {
+    try {
+      await authApiClient.logout();
+    } finally {
+      setState({ user: null, isAuthenticated: false, isLoading: false });
+      window.location.replace('/login');
+    }
   }, []);
 
-  const hasRole = useCallback(
-    (role: UserRole) => state.user?.roles.includes(role) ?? false,
-    [state.user]
-  );
-
-  const hasAnyRole = useCallback(
-    (roles: UserRole[]) => roles.some((r) => state.user?.roles.includes(r)),
-    [state.user]
-  );
+  const hasRole    = useCallback((role: UserRole) => state.user?.roles.includes(role) ?? false, [state.user]);
+  const hasAnyRole = useCallback((roles: UserRole[]) => roles.some((r) => state.user?.roles.includes(r)), [state.user]);
 
   return (
     <AuthContext.Provider value={{ ...state, login, logout, hasRole, hasAnyRole }}>
@@ -118,7 +128,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
-// --- Hook ---
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
@@ -126,19 +136,15 @@ export function useAuth(): AuthContextType {
   return ctx;
 }
 
-// --- Route Guard ---
+// ─── Route Guard ──────────────────────────────────────────────────────────────
 
 interface RouteGuardProps {
-  children: ReactNode;
+  children:      ReactNode;
   requiredRoles?: UserRole[];
-  fallback?: ReactNode;
+  fallback?:     ReactNode;
 }
 
-export const RouteGuard: React.FC<RouteGuardProps> = ({
-  children,
-  requiredRoles,
-  fallback,
-}) => {
+export const RouteGuard: React.FC<RouteGuardProps> = ({ children, requiredRoles, fallback }) => {
   const { isAuthenticated, isLoading, hasAnyRole } = useAuth();
 
   if (isLoading) {
@@ -171,10 +177,10 @@ export const RouteGuard: React.FC<RouteGuardProps> = ({
   return <>{children}</>;
 };
 
-// --- RBAC Component Visibility ---
+// ─── RBAC Component Visibility ────────────────────────────────────────────────
 
 interface RBACProps {
-  roles: UserRole[];
+  roles:    UserRole[];
   children: ReactNode;
   fallback?: ReactNode;
 }

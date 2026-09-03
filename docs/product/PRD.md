@@ -5,16 +5,16 @@
 | Field | Value |
 |---|---|
 | **Product** | VNP Memory |
-| **Version** | 1.0.0 |
-| **Status** | Development |
-| **Last Updated** | 2026-05-09 |
+| **Version** | 2.0.0 |
+| **Status** | Active Development |
+| **Last Updated** | 2026-06-16 |
 | **Category** | Enterprise AI Infrastructure |
 
 ---
 
 ## 1. Executive Summary
 
-VNP Memory là một **Unified Cognitive Infrastructure Layer** cho Enterprise AI — nền tảng tích hợp toàn diện giải quyết bài toán "AI Memory" bằng cách thống nhất bốn engine chuyên biệt (Cognee, Graphiti, Zep, OpenViking) dưới một kiến trúc phân tầng thống nhất, được quản trị bởi KGS Platform (Knowledge Graph Service).
+VNP Memory là một **Unified Cognitive Infrastructure Layer** cho Enterprise AI — nền tảng tích hợp toàn diện giải quyết bài toán "AI Memory" bằng cách hợp nhất 6 memory engines chuyên biệt (Cognee, Graphiti, Memobase, OpenViking, Zep, Supermemory) dưới một kiến trúc thống nhất.
 
 ### Tầm nhìn sản phẩm
 
@@ -23,6 +23,7 @@ VNP Memory là một **Unified Cognitive Infrastructure Layer** cho Enterprise A
 Thay vì xây dựng thêm "một vector DB nữa", VNP Memory tạo ra một **Persistent Context Platform** cho phép AI Agent:
 - Nhớ đúng thứ, đúng lúc (Context Quality > Memory Quantity)
 - Duy trì bộ nhớ dài hạn có cấu trúc, có quan hệ, có thời gian
+- Tự động quên thông tin hết hạn và giải quyết mâu thuẫn
 - Tuân thủ governance, audit trail, và multi-tenant isolation cấp enterprise
 
 ### Giá trị cốt lõi
@@ -32,8 +33,9 @@ Thay vì xây dựng thêm "một vector DB nữa", VNP Memory tạo ra một **
 | **Episodic Memory** | Theo dõi sự kiện theo thời gian, temporal reasoning | Graphiti |
 | **Semantic Memory** | Trích xuất tri thức, xây dựng knowledge graph | Cognee |
 | **Conversational Memory** | Bộ nhớ hội thoại, context assembly < 200ms | Zep |
-| **Procedural Memory** | Tổ chức context phân tầng, skills, workflows | OpenViking |
-| **Knowledge Governance** | Multi-tenant graph, ontology, ABAC policies | KGS Platform |
+| **Profile Memory** | Structured user profiles từ conversations, event timeline | Memobase |
+| **Adaptive Memory** | Living KG với auto-forgetting, external connectors | Supermemory |
+| **Procedural Memory** | Context phân tầng L0/L1/L2, VikingFS | OpenViking |
 
 ---
 
@@ -49,23 +51,22 @@ Enterprise AI đang chuyển từ `RAG → Agentic RAG → Persistent Memory Sys
 | 2 | **Agent không nhớ dài hạn** | Mất ngữ cảnh giữa các phiên, không tự cải thiện |
 | 3 | **Memory fragmented** | Thông tin rải rác ở nhiều hệ thống, không thống nhất |
 | 4 | **Thiếu temporal reasoning** | Không theo dõi được sự thay đổi thông tin theo thời gian |
-| 5 | **Thiếu organizational memory** | Không có bộ nhớ cấp tổ chức, multi-agent |
+| 5 | **Thiếu user profiling** | Không có structured profiles từ conversations |
 | 6 | **Governance / Audit gap** | Không kiểm soát được AI nhớ gì, từ đâu, ai tạo |
-| 7 | **Schema enforcement thiếu** | Knowledge graph không có validation, ontology |
+| 7 | **Memory không tự evolve** | Knowledge cũ không bị replace khi có thông tin mới |
 
 ### 2.2 Hạn chế giải pháp hiện tại
 
 | Hệ thống | Mạnh về | Thiếu |
 |---|---|---|
-| Zep | Conversational memory | Graph governance, procedural memory |
+| Zep | Conversational memory | User profiling, adaptive memory |
 | Mem0 | Lightweight memory | Temporal reasoning, enterprise features |
-| Graphiti | Temporal graph memory | Context assembly, multi-tenant governance |
-| Cognee | Extraction pipeline | Session management, filesystem paradigm |
-| Neo4j stack | Graph reasoning | Memory orchestration, agent integration |
-| Weaviate/Pinecone | Retrieval | Relationship awareness, governance |
-| LangGraph | Orchestration | Persistent memory, knowledge graph |
+| Graphiti | Temporal graph memory | Context assembly, user profiles |
+| Cognee | Extraction pipeline | Session management, filesystem |
+| Memobase | User profiling (YOLO engine) | Graph memory, temporal reasoning |
+| Supermemory | Adaptive KG + connectors | Session management |
 
-> **Không ai unify toàn bộ stack.** VNP Memory giải quyết bằng cách tích hợp các engine chuyên biệt dưới một governance layer thống nhất.
+> **Không ai unify toàn bộ stack.** VNP Memory giải quyết bằng cách tích hợp 6 engines chuyên biệt dưới một API thống nhất.
 
 ---
 
@@ -85,73 +86,78 @@ Enterprise AI đang chuyển từ `RAG → Agentic RAG → Persistent Memory Sys
 | Persona | Nhu cầu |
 |---|---|
 | **AI Framework Author** | Integration SDK (LangChain, CrewAI, AutoGen) |
-| **Data Scientist** | Knowledge graph analysis, pattern discovery |
+| **Product Manager** | User profile analytics, usage metrics |
 | **DevOps Team** | Container orchestration, health monitoring |
+| **IDE Plugin User** | AI coding assistant với persistent memory |
 
 ---
 
 ## 4. Product Architecture
 
-### 4.1 Kiến trúc tổng thể — 4-Layer
+### 4.1 Deployment Models
 
+VNP Memory hỗ trợ hai chế độ triển khai:
+
+**Monolith Mode** (Development & Single-server)
 ```
-                    Applications / AI Agents
-                            │
-                     Memory API Gateway
-                            │
-    ┌──────────┬──────────┬──────────┬──────────┬──────────┐
-    │          │          │          │          │          │
- Episodic  Semantic  Conversa-  Procedural  Profile  Adaptive
- (time)    (facts)   tional     (workflows) (user)   (KG+forget)
-    │          │     (sessions)     │          │          │
- Graphiti   Cognee    Zep      OpenViking  Memobase  Supermemory
-    │          │          │          │          │          │
-    └──────────┴──────────┴──────────┴──────────┴──────────┘
-                            │
-  ╔═════════════════════════╧═══════════════════════════╗
-  ║        KGS Platform (5-Layer Architecture)          ║
-  ╠═════════════════════════════════════════════════════╣
-  ║  L5 — Transport    gRPC/HTTP · Middleware · Workers ║
-  ║  L4 — Governance   Registry · Ontology · Rules      ║
-  ║  L3 — Query & Intelligence   Planner · Search       ║
-  ║  L2 — Sync & Processing     Outbox · Batch · Overlay║
-  ║  L1 — Storage       PG · Neo4j · Qdrant · Redis     ║
-  ╚═════════════════════════════════════════════════════╝
+apps/memory — Single Go binary
+    Gateway (REST :8080, MCP :8082, Health :8083)
+        └── InProcessRegistry (bufconn)
+            └── 35 Engine Services (in-memory gRPC)
+                └── Embedded NATS JetStream
+```
+
+**Distributed Mode** (Production)
+```
+gateway/ — API Gateway
+    └── gRPC → Distributed Engine Services
+               → Shared Infrastructure (PostgreSQL, Neo4j, Redis, NATS)
 ```
 
 ### 4.2 Memory Engine Roles
 
-| Engine | Layer | Vai trò | Technology |
+| Engine | Memory Type | Vai trò | Services |
 |---|---|---|---|
-| **Graphiti** | Episodic | Temporal context graph, fact validity tracking, provenance | Python, Neo4j/FalkorDB/Kuzu |
-| **Cognee** | Semantic | Knowledge extraction pipeline, multi-modal ingestion, Graph RAG | Python, Neo4j/Kuzu, LanceDB |
-| **Zep** | Conversational | Session memory, context assembly < 200ms, user/session CRUD | Go, PostgreSQL, Neo4j |
-| **OpenViking** | Procedural | Virtual filesystem (viking://), tiered context (L0/L1/L2), session management | Python/Rust, RAGFS |
-| **KGS Platform** | Governance | Multi-tenant graph service, ontology, ABAC, rule engine | Go, PostgreSQL, Neo4j, Qdrant |
+| **Graphiti** | Episodic | Temporal context graph, fact validity, provenance | graphiti-ingestion, graphiti-search, graphiti-knowledge, graphiti-store |
+| **Cognee** | Semantic | Knowledge extraction pipeline, multi-modal ingestion | cognee-ingestion, cognee-cognify, cognee-search |
+| **Zep** | Conversational | Session memory, context assembly, Graph RAG | zep-user, zep-thread, zep-memory, zep-graph, zep-search, zep-admin |
+| **Memobase** | Profile | Structured user profiles (YOLO engine), event timeline | memobase-ingestion, memobase-engine, memobase-context |
+| **OpenViking** | Procedural | Virtual filesystem (VikingFS), tiered context L0/L1/L2 | ov-fs, ov-search, ov-session, ov-resource, ov-crypto, ov-admin |
+| **Supermemory** | Adaptive | Living KG, auto-forgetting, external connectors, RAG | sm-document, sm-memory, sm-search, sm-profile, sm-connector, sm-mcp, sm-auth, sm-analytics, sm-project |
+
+### 4.3 Platform Services
+
+| Service | Vai trò |
+|---|---|
+| **vnp-admin** | Tenant lifecycle, API key management, quotas |
+| **vnp-event** | Cross-engine event timeline, UserEvent log |
+| **vnp-search-hub** | Cross-engine recall (parallel gRPC fan-out + merge) |
+| **vnp-platform** | Admin APIs, auth, analytics |
 
 ---
 
 ## 5. Core Features
 
-### 5.1 Unified Memory API
+### 5.1 Unified Memory API (Implemented)
 
-API thống nhất cho tất cả memory operations:
+Gateway routes tự động tới engine phù hợp:
 
-```python
-# Store — route tới engine phù hợp
-memory.store(data, type="episodic|semantic|conversational|procedural")
+```
+POST /v1/memory/store    → Auto-route by type
+POST /v1/memory/recall   → Cross-engine (vnp-search-hub)
+POST /v1/memory/forget   → Cascading delete
+GET  /v1/memory/timeline → Temporal events (vnp-event)
+```
 
-# Recall — hybrid retrieval across engines
-memory.recall(query, scope="user|org|global")
-
-# Evolve — tự động enrichment qua KGS Rule Engine
-memory.evolve(dataset)
-
-# Invalidate — temporal fact management
-memory.invalidate(fact_id, reason="superseded")
-
-# Timeline — Graphiti temporal query
-memory.timeline(entity, time_range)
+Memory types và routing:
+```
+type=semantic       → cognee-ingestion
+type=episodic       → graphiti-ingestion
+type=conversational → zep-memory
+type=profile        → memobase-ingestion (Blob → Buffer)
+type=procedural     → ov-fs
+type=adaptive       → sm-memory
+type=auto           → LLM content classification
 ```
 
 ### 5.2 Episodic Memory (Graphiti)
@@ -159,272 +165,330 @@ memory.timeline(entity, time_range)
 | Feature | Mô tả | Priority |
 |---|---|---|
 | **Temporal Fact Management** | Mỗi fact có validity window (valid_at/invalid_at) | P0 |
-| **Episode Ingestion** | Ingest từ text, JSON, message, fact_triple | P0 |
+| **Episode Ingestion** | `POST /v1/graphiti/episodes` | P0 |
 | **Entity/Edge Extraction** | LLM-powered extraction với deduplication | P0 |
-| **Hybrid Search** | Semantic + BM25 + Graph traversal + Multi-layer reranking | P0 |
-| **Prescribed Ontology** | Định nghĩa entity/edge types qua Pydantic models | P1 |
-| **Community Detection** | Clustering algorithm cho entity communities | P1 |
-| **Saga Management** | Nhóm episodes liên quan thành sequences | P1 |
+| **Hybrid Search** | Semantic + BM25 + Graph traversal + reranking | P0 |
+| **Graph Nodes/Edges** | `GET /v1/graphiti/nodes/{id}`, `GET /v1/graphiti/edges/{id}` | P0 |
+| **Knowledge Graph** | graphiti-knowledge service | P1 |
 
 ### 5.3 Semantic Memory (Cognee)
 
 | Feature | Mô tả | Priority |
 |---|---|---|
 | **Multi-modal Ingestion** | PDF, text, audio, image, CSV, URL | P0 |
-| **Knowledge Graph Construction** | Document → Entity extraction → Graph | P0 |
-| **15+ Search Types** | GRAPH_COMPLETION, RAG, TEMPORAL, CYPHER, etc. | P0 |
-| **V2 Memory API** | remember(), recall(), forget(), improve() | P0 |
-| **NodeSets** | Memory scoping per customer/workflow/topic | P1 |
+| **Dataset Management** | `POST /v1/cognee/datasets` | P0 |
+| **Cognify Pipeline** | `POST /v1/cognee/datasets/{id}/cognify` | P0 |
+| **Multi-strategy Search** | `POST /v1/cognee/search` (15+ strategies) | P0 |
 | **Custom Pipelines** | Extensible task pipeline architecture | P1 |
-| **Feedback Loop** | Self-improvement qua interaction feedback | P1 |
-| **Ontology Grounding** | RDF/XML ontology support | P2 |
 
 ### 5.4 Conversational Memory (Zep)
 
 | Feature | Mô tả | Priority |
 |---|---|---|
-| **User/Session Management** | CRUD với metadata, soft-delete, multi-tenant | P0 |
-| **Message Ingestion** | Role-typed messages (user/assistant/system/tool) | P0 |
-| **Graph RAG** | Automatic relationship extraction, temporal KG | P0 |
-| **Context Assembly** | Pre-formatted blocks < 200ms latency | P0 |
-| **Multi-SDK** | Python, TypeScript, Go SDKs | P1 |
-| **Framework Integrations** | AutoGen, CrewAI, ADK, LiveKit | P1 |
-| **Eval Harness** | Reproducible evaluation pipeline | P2 |
+| **User Management** | `POST/GET/PATCH /v1/zep/users` | P0 |
+| **Session Memory** | `PUT/GET /v1/zep/sessions/{id}/memory` | P0 |
+| **Graph Search** | `POST /v1/zep/graph/search` | P0 |
+| **Facts Management** | `POST /v1/zep/graph/facts` | P0 |
+| **Ontology** | `POST /v1/zep/graph/ontology` | P1 |
+| **Session Search** | `POST /v1/zep/sessions/{id}/search` | P1 |
 
-### 5.5 Procedural Memory (OpenViking)
-
-| Feature | Mô tả | Priority |
-|---|---|---|
-| **Virtual Filesystem** | viking:// URI, unified namespace | P0 |
-| **Three-Tier Context** | L0 Abstract (~100 tok) → L1 Overview (~2K) → L2 Detail (full) | P0 |
-| **Hierarchical Retrieval** | 5-step pipeline: Intent → Global → Recursive → Rerank → Aggregate | P0 |
-| **Session Management** | 2-phase commit, Working Memory v2 | P0 |
-| **Resource Ingestion** | Git repos, HTTP/HTTPS, local files, documents | P1 |
-| **Multi-channel Bot** | Telegram, Slack, Discord, Feishu | P2 |
-
-### 5.6 Knowledge Governance (KGS Platform)
+### 5.5 Profile Memory (Memobase)
 
 | Feature | Mô tả | Priority |
 |---|---|---|
-| **Multi-tenant Isolation** | Namespace labels `{APP_ID}__{Type}` trên Neo4j | P0 |
-| **Ontology Service** | Schema validation, JSON Schema, constraint sync | P0 |
-| **Policy Engine (OPA)** | ABAC policies per entity type, per tenant | P0 |
-| **App Registry** | Tenant lifecycle, API keys, quotas | P0 |
-| **Rule Engine** | Cron + event-driven rules, auto-enrichment | P1 |
-| **Query Planner** | Cypher generation, namespace injection, guardrails | P1 |
-| **Hybrid Search** | Vector + text + centrality reranking | P1 |
-| **Overlay Graphs** | Commit/discard/conflict resolution | P2 |
+| **Blob Ingestion** | `POST /v1/memobase/users/{uid}/blobs` | P0 |
+| **Buffer Auto-flush** | Flush khi ≥ 20 blobs (configurable) | P0 |
+| **Manual Flush** | `POST /v1/memobase/users/{uid}/flush` | P0 |
+| **Context Assembly** | `GET /v1/memobase/users/{uid}/context` | P0 |
+| **Structured Profiles** | `GET /v1/memobase/users/{uid}/profiles` — key/value/category/score | P0 |
+| **Event Timeline** | `GET /v1/memobase/users/{uid}/events` | P1 |
+
+**Memobase YOLO Engine**: Fixed 3 LLM calls per flush (extract → merge → events), profile categories: preference/fact/goal/habit.
+
+### 5.6 Procedural Memory (OpenViking)
+
+| Feature | Mô tả | Priority |
+|---|---|---|
+| **VikingFS** | `GET/PUT/DELETE /v1/ov/files/{path}` | P0 |
+| **Directory Tree** | `GET /v1/ov/tree/{path}` | P0 |
+| **Grep Search** | `POST /v1/ov/grep` | P0 |
+| **Semantic Search** | `POST /v1/ov/search` | P0 |
+| **Session Management** | `POST /v1/ov/sessions`, add messages, commit | P0 |
+| **Resource Ingest** | `POST /v1/ov/resources/ingest` (Git, HTTP, local) | P1 |
+
+**Tiered Context**: L0 (~100 tok) → L1 (~2K tok) → L2 (full detail), load on demand.
+
+### 5.7 Adaptive Memory (Supermemory)
+
+| Feature | Mô tả | Priority |
+|---|---|---|
+| **Document Management** | `POST/GET /v1/sm/documents` | P0 |
+| **Memory Store** | `POST /v1/sm/memories` (adaptive KG) | P0 |
+| **Hybrid Search** | `POST /v1/sm/search` | P0 |
+| **RAG** | `POST /v1/sm/rag` | P0 |
+| **User Profile** | `GET /v1/sm/profiles/{uid}` | P0 |
+| **External Connectors** | `POST /v1/sm/connections` + sync | P1 |
+| **Project Spaces** | `POST /v1/sm/projects/spaces` | P1 |
+
+**Auto-forgetting**: Memory versioning (parent → root chain), `isLatest` flag, relation types: updates/extends/derives, `forgetAfter` duration.
 
 ---
 
 ## 6. Memory API Gateway
 
-### 6.1 API Design
+### 6.1 Gateway Ports
 
-Gateway thống nhất routing requests tới engine phù hợp:
-
-| Method | Endpoint | Engine Target | Mô tả |
-|---|---|---|---|
-| POST | `/v1/memory/store` | Router → Engine | Store memory (auto-route by type) |
-| GET | `/v1/memory/recall` | All engines | Hybrid recall across engines |
-| POST | `/v1/memory/episodes` | Graphiti | Ingest temporal episodes |
-| GET | `/v1/memory/timeline` | Graphiti | Temporal query |
-| POST | `/v1/memory/cognify` | Cognee | Build knowledge graph |
-| GET | `/v1/memory/search` | Cognee/Zep | Multi-mode search |
-| POST | `/v1/memory/sessions` | Zep/OpenViking | Session management |
-| GET | `/v1/memory/context` | OpenViking | Tiered context retrieval |
-| POST | `/v1/graph/nodes` | KGS | Create graph node |
-| GET | `/v1/graph/nodes/{id}/context` | KGS | Context subgraph |
+| Port | Protocol | Description |
+|---|---|---|
+| `:8080` | REST HTTP | Primary API (50+ routes) |
+| `:8081` | gRPC | Internal gRPC (optional) |
+| `:8082` | MCP SSE + HTTP | Model Context Protocol (16 tools) |
+| `:8083` | HTTP | Health check + Prometheus metrics |
 
 ### 6.2 Authentication & Multi-tenancy
 
 | Mechanism | Mô tả |
 |---|---|
-| **API Key** | Per-tenant keys, hash → app_id lookup |
-| **JWT** | Session-based authentication |
-| **Namespace Injection** | Auto-inject tenant prefix vào mọi query |
-| **ABAC (OPA)** | Attribute-based access control per entity type |
+| **API Key** | Per-tenant keys, SHA-256 hash, `KeyPrefix` cho identification |
+| **JWT RS256** | Bearer token, RSA-256 signed |
+| **Dev Mode** | `AUTH_DEV_MODE=true` — skip auth, localhost only |
+| **Rate Tiers** | free / pro / enterprise, per-tenant quotas |
+| **Namespace** | TenantID injected vào mọi query, isolation guaranteed |
 
-### 6.3 MCP Server (Model Context Protocol)
+### 6.3 Circuit Breaker
 
-Expose memory operations cho AI assistants:
+Gateway có circuit breaker tích hợp trên mọi downstream gRPC calls. Events published qua NATS `gateway.circuit.opened` khi downstream failure.
 
-| Tool | Engine | Mô tả |
-|---|---|---|
-| `memory_store` | Router | Store memory with auto-routing |
-| `memory_recall` | All | Hybrid recall |
-| `search` | Cognee/OpenViking | Semantic search |
-| `timeline` | Graphiti | Temporal query |
-| `context` | OpenViking | Tiered context |
-| `graph_query` | KGS | Graph operations |
+### 6.4 MCP Server (Model Context Protocol)
 
-**Transport**: stdio, SSE, HTTP Streamable
+```
+AI Assistant → MCP Protocol (SSE/HTTP) → vnp-gateway :8082
+                                            ├── GET  /sse         — SSE transport
+                                            ├── GET  /mcp/sse
+                                            ├── POST /message     — JSON-RPC 2.0
+                                            └── POST /mcp/message
+```
+
+Protocol version: `2024-11-05`. Supports: initialize, tools/list, tools/call, ping.
 
 ---
 
-## 7. Technical Architecture
+## 7. Console (Admin UI)
 
-### 7.1 Technology Stack
+### 7.1 Embedded UI
+
+UI console được embed vào binary. Khi `spaFS` được inject, gateway serve SPA tại `/`. Khi không có SPA, gateway chạy standalone API mode.
+
+### 7.2 Console Features
+
+| Feature | Routes | Description |
+|---|---|---|
+| **Dashboard** | `/v1/console/dashboard/*` | Health, metrics, throughput, memory heatmap |
+| **Memory Explorer** | `/v1/console/memory/*` | Search, inspect, neighbors, versions |
+| **Graph Studio** | `/v1/console/graph/*` | Subgraph, entity, timeline, ontology, query |
+| **User Profiles** | `/v1/console/profiles/*` | Profile explorer, config, events, context, buffers |
+| **Adaptive Memory** | `/v1/console/adaptive/*` | Memory versions, connectors, analytics, forget-rules |
+| **Agent Debugger** | `/v1/console/debugger/*` | Context assembly traces |
+| **Sessions** | `/v1/console/sessions/*` | Live sessions, timeline, diff, working-memory |
+| **Governance** | `/v1/console/governance/*` | Tenants, policies, audit, GDPR forget |
+| **Pipelines** | `/v1/console/pipelines/*` | Job status, queues, workers, templates |
+| **Infrastructure** | `/v1/console/infra/*` | Service topology, databases, resources |
+| **Observability** | `/v1/console/observability/*` | Metrics, traces, errors, costs |
+| **WebSocket** | `/v1/console/ws` | Real-time event streaming |
+
+---
+
+## 8. Technical Architecture
+
+### 8.1 Technology Stack
 
 | Layer | Technology |
 |---|---|
-| **Memory API Gateway** | Go / Python (FastAPI) |
-| **Graphiti Engine** | Python 3.10+, graphiti-core |
-| **Cognee Engine** | Python 3.10+, cognee SDK |
-| **Zep Engine** | Go 1.21+, go-chi |
-| **OpenViking Engine** | Python 3.10+, Rust (CLI/RAGFS) |
-| **KGS Platform** | Go, Kratos framework |
-| **Graph Database** | Neo4j 5.22+ (primary), FalkorDB, Kuzu |
-| **Relational Database** | PostgreSQL (source-of-truth) |
-| **Vector Database** | Qdrant, LanceDB, pgvector |
-| **Cache/Streaming** | Redis, NATS |
-| **Policy Engine** | OPA (Open Policy Agent) |
-| **Observability** | OpenTelemetry, Prometheus |
-| **Container** | Docker, Kubernetes (Helm) |
+| **Language** | Go 1.23+ |
+| **HTTP Framework** | stdlib net/http (Go 1.22+ pattern matching) |
+| **In-process gRPC** | bufconn (google.golang.org/grpc) |
+| **Message Broker** | NATS JetStream (embedded or external) |
+| **Graph Database** | Neo4j 5+ |
+| **Relational Database** | PostgreSQL 17 + pgvector |
+| **Vector Database** | Qdrant (external, optional) |
+| **Cache** | Redis 7+ |
+| **Object Storage** | MinIO (S3 compatible) |
+| **Custom Storage** | VikingFS (Go-native) |
 | **AI Gateway** | Bifrost (multi-provider LLM routing) |
+| **Observability** | OpenTelemetry + Prometheus |
+| **Logging** | slog (structured JSON, stdlib) |
 
-### 7.2 Storage Strategy — Dual Backend
-
-| Stack | Components | Use Case |
-|---|---|---|
-| **Specialized** (Production) | Neo4j + PostgreSQL + Qdrant + Redis | Battle-tested, scale independently |
-| **Unified** (Planned) | SurrealDB | Simplified infra, multi-model |
-
-> Query Planner (KGS L2) abstract hóa storage backend. Cả hai stack có thể chạy song song.
-
-### 7.3 Data Flow — Event-Driven CQRS
+### 8.2 Data Flow — Event-Driven
 
 ```
 Agent Request → Memory API Gateway → Engine Selection
     │
-    ├─→ Graphiti: Episode → Extract → Deduplicate → Graph
-    ├─→ Cognee: Add → Cognify → Knowledge Graph
-    ├─→ Zep: Message → Graphiti ingestion → Context assembly
-    └─→ OpenViking: Data → Parse → Chunk → Embed → VikingFS
+    ├─→ Memobase: Blob → Buffer (auto-flush at 20) → YOLO Engine (3 LLM calls)
+    │                → Profile extracted → Event logged
+    ├─→ Cognee: Add → Cognify (7 stages) → Knowledge Graph
+    ├─→ Graphiti: Episode → Extract → Deduplicate → Temporal Graph
+    ├─→ Zep: Message → Graph ingestion → Context assembly
+    ├─→ Supermemory: Content → Memory (adaptive KG) → Version chain
+    └─→ OpenViking: Data → VikingFS → L0/L1/L2 tiered context
          │
          ▼
-    KGS Platform
-    ├─ L4: Ontology validation + Policy check
-    ├─ L3: Namespace injection + Query planning
-    ├─ L2: Outbox → Fan-out to Neo4j + Qdrant
-    └─ L1: PostgreSQL (write) → Neo4j/Qdrant (read replicas)
+    NATS JetStream → Event fan-out → Subscribed services
+```
+
+### 8.3 Middleware Stack
+
+```
+Recovery → RequestID → Logger → CORS → Auth → RateLimit → Metrics → Timeout
 ```
 
 ---
 
-## 8. Deployment
+## 9. Deployment
 
-### 8.1 Deployment Models
+### 9.1 Deployment Models
 
 | Model | Mô tả |
 |---|---|
-| **Development** | Docker Compose, all services local |
-| **Staging** | Kubernetes, separate namespaces |
-| **Production** | Kubernetes + Helm, HA configuration |
+| **Development** | Single binary (monolith) + Docker Compose infra |
+| **Production** | Gateway + distributed engine services, Kubernetes + Helm |
 
-### 8.2 Service Topology
+### 9.2 Service Ports (Monolith)
 
 | Service | Port | Health Check |
 |---|---|---|
-| Memory API Gateway | 8080 | `/healthz` |
-| Cognee | 8000 | `/health` |
-| Graphiti | 8001 | `/healthz` |
-| Zep | 8002 | `/healthz` |
-| OpenViking | 1933 | `/health` |
-| KGS Platform | 9000 | `/healthz` |
-| Bifrost (AI Gateway) | 8443 | `/health` |
-| Neo4j | 7687 | bolt |
+| Memory REST API | 8080 | `/v1/admin/health` |
+| MCP Server | 8082 | `/sse` (SSE test) |
+| Health + Metrics | 8083 | `/healthz` |
 | PostgreSQL | 5432 | pg_isready |
+| Neo4j | 7687 | bolt |
 | Qdrant | 6333 | `/healthz` |
 | Redis | 6379 | PING |
+| MinIO | 9000 | — |
+
+### 9.3 Quick Start
+
+```bash
+# Start infrastructure
+make infra-up
+
+# Run monolith (all 35 services in one process)
+make dev
+
+# Verify (lists all 35 services)
+curl http://localhost:8083/healthz | jq
+
+# REST API test
+curl -X POST http://localhost:8080/v1/memory/store \
+  -H "Content-Type: application/json" \
+  -d '{"content":"hello world","type":"fact"}'
+
+# MCP tools
+curl -X POST http://localhost:8082/message \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
 
 ---
 
-## 9. Security & Compliance
+## 10. Security & Compliance
 
-### 9.1 Security Requirements
+### 10.1 Security Requirements
 
 | Requirement | Implementation |
 |---|---|
-| **Authentication** | API Key + JWT + Cookie-based |
-| **Authorization** | OPA ABAC policies per tenant/entity |
-| **Tenant Isolation** | Namespace labels, query injection |
-| **Encryption** | TLS in transit, AES-256-GCM at rest (OpenViking) |
+| **Authentication** | API Key (SHA-256 hash) + JWT RS256 |
+| **Authorization** | Rate tier per tenant (free/pro/enterprise) |
+| **Tenant Isolation** | TenantID injected vào mọi domain query |
+| **Encryption** | TLS in transit; VikingFS ov-crypto cho at-rest |
 | **Secret Redaction** | Auto-redact API keys, tokens in logs/traces |
-| **Raw Cypher Prevention** | Whitelist operations only, no raw queries |
+| **Dev Mode Guard** | AUTH_DEV_MODE chỉ accept localhost traffic |
 
-### 9.2 Governance Features
+### 10.2 Governance Features
 
 | Feature | Mô tả |
 |---|---|
-| **Memory TTL** | Configurable expiration per memory type |
-| **Retention Policy** | Auto-archive/delete based on rules |
-| **GDPR Forget** | Cascading deletion across all engines |
-| **Role-scoped Memory** | ABAC per entity type per tenant |
-| **Audit Trail** | Rule execution history + event outbox |
-| **Provenance Tracking** | Namespace metadata per node/edge |
-| **Memory Lifecycle** | ACTIVE → SUSPENDED → DELETED |
+| **GDPR Forget** | `POST /v1/console/governance/gdpr/forget` — cascading across engines |
+| **GDPR Preview** | Dry-run mode trước khi xóa |
+| **Audit Trail** | `GET /v1/console/governance/audit` — searchable audit logs |
+| **Retention Policies** | `forgetAfter` per memory type (Supermemory), TTL config |
+| **OPA Policies** | `POST/PUT /v1/console/governance/policies` |
+| **Tenant Management** | `GET/POST/PUT /v1/console/governance/tenants` |
+| **API Key Lifecycle** | Create → Active → Revoked/Expired |
 
 ---
 
-## 10. Observability
+## 11. Observability
 
 | Signal | Implementation |
 |---|---|
 | **Tracing** | OpenTelemetry distributed tracing across all engines |
-| **Metrics** | Prometheus (latency, throughput, error rates) |
-| **Logging** | Structured logging (structlog/slog), JSON format |
-| **Health** | Per-service health endpoints |
-| **Dashboard** | Grafana dashboards for memory operations |
+| **Metrics** | Prometheus — latency, throughput, error rates, LLM costs |
+| **Logging** | slog structured JSON, secret redaction |
+| **Health** | Per-service health endpoints + aggregated `/healthz` |
+| **Console** | `/v1/console/observability/*` — metrics, traces, errors, costs |
 
 ---
 
-## 11. Non-Functional Requirements
+## 12. Non-Functional Requirements
 
-### 11.1 Performance
+### 12.1 Performance
 
 | Metric | Target |
 |---|---|
-| Context retrieval latency (p95) | < 200ms (Zep), < 500ms (OpenViking), < 1000ms (Graphiti) |
-| Knowledge graph construction | Background async, < 30s per document |
+| Memobase context retrieval (p95) | < 100ms |
+| Conversational context assembly (p95) | < 200ms (Zep) |
+| Hierarchical search (p95) | < 500ms |
+| Graph search (p95) | < 1000ms |
+| Knowledge graph construction | Background async, non-blocking |
 | Concurrent sessions | ≥ 1,000 per instance |
-| Token cost reduction | ≥ 80% vs naive context stuffing |
+| Token cost reduction vs naive RAG | ≥ 80% |
+| LLM calls per Memobase flush | Fixed 3 calls |
 
-### 11.2 Scalability
+### 12.2 Scalability
 
 | Dimension | Approach |
 |---|---|
-| **Horizontal** | Stateless API gateway, engine replicas |
-| **Storage** | Each engine scales independently |
-| **Multi-tenant** | KGS namespace isolation, quota per app |
-| **Distributed** | Queue-based processing (Cognee Modal workers) |
+| **Horizontal** | Stateless gateway, engine replicas |
+| **In-process** | Monolith — 35 services share process, bufconn zero-copy |
+| **NATS** | Embedded in monolith, external for distributed |
+| **Multi-tenant** | TenantID isolation, per-tenant quotas |
 
-### 11.3 Reliability
+### 12.3 Reliability
 
 | Requirement | Implementation |
 |---|---|
 | **Availability** | ≥ 99.9% API uptime |
+| **Circuit Breaker** | Downstream protection, NATS event on open |
 | **Fallback LLM** | Bifrost multi-provider routing |
-| **Retry Logic** | Tenacity-based retry with backoff |
-| **Data Durability** | PostgreSQL ACID + async replication |
+| **Data Durability** | PostgreSQL ACID + WAL |
+| **Graceful Shutdown** | HTTP drain → NATS drain → gRPC stop → DB close |
 
 ---
 
-## 12. Integration & Interoperability
+## 13. Integration & Interoperability
 
-### 12.1 Agent Framework Support
+### 13.1 Agent Framework Support
 
 | Framework | Integration Method |
 |---|---|
 | LangChain | Python SDK |
 | LangGraph | Python SDK |
-| CrewAI | ZepUserStorage + ZepGraphStorage |
-| AutoGen | autogen_core.memory.Memory interface |
+| CrewAI | REST API |
+| AutoGen | REST API / MCP |
 | OpenAI Agents SDK | REST API / MCP |
-| Claude Tools | MCP Server |
-| Google ADK | zep-adk integration |
+| Claude Code | MCP Server (SSE) |
+| Vercel AI SDK | REST API (Supermemory) |
+| Mastra | REST API |
+| n8n | REST API |
 
-### 12.2 LLM Provider Support
+### 13.2 MCP Protocol
+
+MCP Server expose 16 tools qua SSE và HTTP Streamable transport. Hỗ trợ:
+- Claude Desktop (stdio)
+- Claude Code (MCP)
+- Any MCP-compatible client
+
+### 13.3 LLM Provider Support
 
 Qua **Bifrost AI Gateway**:
 - OpenAI, Azure OpenAI, Anthropic, Google Gemini
@@ -432,70 +496,40 @@ Qua **Bifrost AI Gateway**:
 - HuggingFace, llama.cpp
 - OpenRouter (multi-model)
 
-### 12.3 IDE Plugins
-
-| Plugin | Protocol |
-|---|---|
-| Claude Code Memory | MCP / CLI |
-| OpenCode Memory | MCP / CLI |
-| Codex Memory | MCP |
-
----
-
-## 13. Competitive Moat
-
-### 13.1 Memory Orchestration Engine
-- Merge memories across engines
-- Resolve conflicts (temporal, semantic)
-- Salience ranking & adaptive retrieval
-
-### 13.2 Context Compiler
-```
-Input:  task + user + org + time + policies
-Output: optimized context package (minimal tokens, max relevance)
-```
-
-### 13.3 Cognitive Policies
-- Memory TTL, retention, GDPR forget
-- Role-scoped memory, confidential classes
-- OPA policies + Rule Engine = production-ready
-
-### 13.4 Knowledge Graph Governance (Unique)
-- **Ontology-as-config** — schema changes without redeploy
-- **Namespace isolation** — multi-tenant on shared infra
-- **Rule-driven enrichment** — auto-create edges, validate consistency
-- **Policy-driven access** — ABAC per entity type, per tenant
-
 ---
 
 ## 14. Roadmap
 
-### Phase 1 — Conversational Memory (Current)
-- ✅ Zep deployment với session/user management
-- ✅ Cognee deployment với knowledge graph pipeline
-- ✅ Graphiti deployment với temporal context graph
-- ✅ OpenViking deployment với virtual filesystem
-- ✅ Bifrost AI Gateway cho multi-provider LLM
-- 🔲 KGS Platform namespace isolation integration
-- 🔲 Unified Memory API Gateway
+### Phase 1 — Foundation ✅ (Complete)
+- ✅ 35-service monolith architecture
+- ✅ VNP Gateway với 50+ REST routes
+- ✅ MCP Server với 16 tools
+- ✅ WebSocket real-time events
+- ✅ Memobase profile memory (YOLO engine)
+- ✅ Supermemory adaptive memory
+- ✅ Console API routes (12 feature areas)
+- ✅ Embedded NATS JetStream
+- ✅ InProcessRegistry (bufconn)
 
-### Phase 2 — Graph Memory
-- 🔲 Graphiti + KGS ontology integration
-- 🔲 KGS Rule Engine cho auto-enrichment
+### Phase 2 — Console UI 🔲
+- 🔲 SPA embedded UI (apps/memory/internal/ui)
+- 🔲 Dashboard với real-time metrics
+- 🔲 Memory Explorer với graph visualization
+- 🔲 Profile management UI
+- 🔲 Agent Context Debugger
+
+### Phase 3 — Advanced Memory 🔲
 - 🔲 Cross-engine memory deduplication
-- 🔲 Unified search across all engines
-
-### Phase 3 — Organizational Memory
-- 🔲 KGS multi-tenant full deployment
-- 🔲 OPA policies per organization
-- 🔲 Context Compiler (task + user + org → optimized context)
-- 🔲 Memory observability dashboard
-
-### Phase 4 — Autonomous Memory Optimization
 - 🔲 Memory decay & salience scoring
-- 🔲 Auto-summarization hierarchy
+- 🔲 Supermemory connector auto-sync (Google Drive, GitHub, Notion)
+- 🔲 Graphiti + Memobase integration (temporal profiles)
+
+### Phase 4 — Enterprise 🔲
+- 🔲 OPA policy engine integration
+- 🔲 Kubernetes Helm charts
+- 🔲 Multi-region deployment
 - 🔲 SurrealDB unified storage evaluation
-- 🔲 Streaming ingestion & real-time subscriptions
+- 🔲 SDK (Python, TypeScript, Go)
 
 ---
 
@@ -503,13 +537,14 @@ Output: optimized context package (minimal tokens, max relevance)
 
 | Metric | Target | Measurement |
 |---|---|---|
-| Context retrieval latency (p95) | < 500ms | Prometheus/Grafana |
-| Task completion improvement | ≥ 40% vs vanilla RAG | Eval harness |
+| Memobase context retrieval (p95) | < 100ms | Prometheus |
+| Conversational context retrieval (p95) | < 200ms | Prometheus |
+| Cross-engine recall (p95) | < 500ms | Prometheus |
 | Token cost reduction | ≥ 80% | Usage monitoring |
-| Memory extraction accuracy | ≥ 85% relevance | Eval framework |
-| Tenant isolation verification | 100% (zero cross-tenant leaks) | Security audit |
+| Tenant isolation verification | 100% (zero leaks) | Integration tests |
 | API uptime | ≥ 99.9% | Health monitoring |
-| Agent framework integrations | ≥ 5 frameworks | SDK availability |
+| MCP tool success rate | ≥ 99% | Traces |
+| Profile extraction accuracy | ≥ 85% relevance | Eval framework |
 
 ---
 
@@ -517,24 +552,28 @@ Output: optimized context package (minimal tokens, max relevance)
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Integration complexity** | 4 engines + KGS = complex orchestration | Phased rollout, engine-by-engine |
-| **Semantic consistency** | Contradicting facts across engines | Graphiti temporal invalidation + KGS Rule Engine |
-| **Memory explosion** | Token cost & retrieval noise tăng | Salience scoring, memory decay, quota (KGS) |
-| **Context assembly latency** | Agent cần < 1s response | Precomputed neighborhoods, hot cache, tiered loading |
-| **Multi-tenant isolation** | Cross-tenant data leak = deal-breaker | KGS namespace labels + OPA policies + query injection |
+| **Integration complexity** | 6 engines + in-process = complex orchestration | Monolith simplifies dev, distributed for scale |
+| **Memobase token budget** | LLM flush cost scales with users | Fixed 3-call YOLO engine, async processing |
+| **Memory explosion** | Storage grows unbounded | Supermemory forgetAfter, Memobase TTL |
+| **Context assembly latency** | Agent cần < 1s response | Memobase < 100ms, precomputed profiles |
+| **Multi-tenant isolation** | Cross-tenant data leak | TenantID on every query, integration tests |
 | **LLM provider dependency** | Single provider failure | Bifrost multi-provider failover |
+| **NATS embedded single point** | Monolith NATS failure | External NATS option (VNP_MEMORY_NATS_MODE=external) |
 
 ---
 
-## 17. Appendix — Component PRD References
+## 17. Component References
 
-| Component | PRD Location | Version |
-|---|---|---|
-| Cognee | `services/cognee/docs/PRD.md` | 1.0.2 |
-| Graphiti | `services/graphiti/docs/PRD.md` | 0.28.2 |
-| Zep | `services/zep/docs/PRD.md` | 1.0 |
-| OpenViking | `services/OpenViking/docs/PRD.md` | 0.1.x |
-| KGS Platform | `docs/requirements.md` → Architecture refs | — |
+| Component | Location |
+|---|---|
+| **Gateway** | `gateway/` — REST, MCP, WebDAV |
+| **Monolith** | `apps/memory/` — 35 services, embedded NATS |
+| **Memory Service** | `services/memory-service/` — Memobase, Zep, SM domains |
+| **Pipeline Service** | `services/pipeline-service/` — Job management |
+| **Search Service** | `services/search-service/` — Cross-engine search |
+| **Storage Service** | `services/storage-service/` — VikingFS, sessions |
+| **VNP Platform** | `services/vnp-platform/` — Admin, Auth, Events |
+| **Obs Service** | `services/obs-service/` — Observability infra |
 
 ---
 
@@ -542,10 +581,11 @@ Output: optimized context package (minimal tokens, max relevance)
 
 | Decision | Choice | Rationale | Trade-off |
 |---|---|---|---|
-| Multi-engine vs monolith | Multi-engine | Mỗi engine chuyên biệt 1 memory type | Integration complexity cao |
-| Multi-tenancy | Shared graph + namespace (KGS) | Tối ưu chi phí, dễ migrate | Logical isolation, không physical |
-| Raw Cypher | KHÔNG cho phép | Bảo mật namespace, guardrails | App mất flexibility |
-| Ontology storage | PostgreSQL | ACID, config data | Thêm store cần sync |
-| Rule execution | Async (Redis Streams) | Không block API, dễ retry | Delay giữa event và execution |
-| Access Control | OPA | Mature, auditable, Rego | Cần maintain OPA bundle |
-| Storage strategy | Dual-backend (Specialized + SurrealDB planned) | Proven stack now, simplified later | Higher infra complexity hiện tại |
+| Monolith vs microservices | Monolith (bufconn) | Zero-latency in-process, dev simplicity | Single process failure |
+| NATS embedded | Embedded by default | Zero infra overhead for dev | External NATS cho production |
+| HTTP router | stdlib net/http | No dependency, Go 1.22+ patterns | Less middleware ecosystem |
+| Vector storage | pgvector (PostgreSQL) | Consolidated infra, ACID | Qdrant optional cho scale |
+| Auth | SHA-256 API key + JWT RS256 | Standard, auditable | No ABAC yet (OPA planned) |
+| Memobase flush | Fixed 3 LLM calls (YOLO) | Predictable cost, fast | Less granular control |
+| Supermemory versioning | parent → root chain | Full audit trail, contradiction resolution | Storage overhead |
+| UI embedding | SPA embedded in binary | Single binary deployment | UI rebuild = binary rebuild |

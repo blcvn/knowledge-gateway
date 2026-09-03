@@ -1,0 +1,39 @@
+# ─── Existing config (unchanged) ──────────────────────────────────────────
+
+# ─── [NEW] AgentMemory configuration ──────────────────────────────────────
+agentmemory:
+  # Observe service
+  max_obs_per_session: 500          # AGENTMEMORY_MAX_OBS_PER_SESSION
+  dedup_ttl_secs: 30                # AGENTMEMORY_DEDUP_TTL
+  inject_context: false             # AGENTMEMORY_INJECT_CONTEXT=true to enable
+  token_budget: 2000                # AGENTMEMORY_TOKEN_BUDGET
+
+  # Memory lifecycle
+  strength_default: 0.7             # default strength for new memories
+  half_life_days: 30                # AGENTMEMORY_HALF_LIFE_DAYS
+  max_memories_project: 1000        # AGENTMEMORY_MAX_MEMORIES_PROJECT
+
+  # Agent scope
+  agent_scope: "shared"             # AGENTMEMORY_AGENT_SCOPE: "shared"|"isolated"
+
+  # Consolidation
+  consolidation_interval_hours: 2   # AGENTMEMORY_CONSOLIDATION_INTERVAL
+  min_procedure_frequency: 3        # minimum repeated workflows to extract
+  lesson_half_life_days: 90         # AGENTMEMORY_LESSON_HALF_LIFE
+
+  # Auto-compress
+  auto_compress: false              # AGENTMEMORY_AUTO_COMPRESS=true to enable LLM compression
+
+search:
+  embedding_provider: "none"        # AGENTMEMORY_EMBEDDING_PROVIDER: "none"|"bifrost"
+  embedding_model: "text-embedding-3-small"
+  embed_dims: 384                   # AGENTMEMORY_EMBED_DIMS
+  data_dir: "${HOME}/.agentmemory/indexes"  # AGENTMEMORY_DATA_DIR
+
+bifrost:
+  url: ""                           # AGENTMEMORY_BIFROST_URL (for LLM + embeddings)
+
+# ─── Snapshot ─────────────────────────────────────────────────────────────
+snapshot:
+  enabled: false                    # AGENTMEMORY_SNAPSHOT_ENABLED
+  data_dir: "${HOME}/.agentmemory"

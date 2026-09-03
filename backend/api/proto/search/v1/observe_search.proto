@@ -1,0 +1,93 @@
+syntax = "proto3";
+package search.v1;
+option go_package = "github.com/vnp-memory/api/proto/search/v1";
+
+service ObserveSearchService {
+  rpc SmartSearch(SmartSearchRequest) returns (SmartSearchResponse);
+  rpc BM25Search(BM25SearchRequest) returns (BM25SearchResponse);
+  rpc VectorSearch(VectorSearchRequest) returns (VectorSearchResponse);
+  rpc BuildContext(ContextRequest) returns (ContextResponse);
+  rpc IndexAdd(IndexAddRequest) returns (IndexAddResponse);
+  rpc IndexRemove(IndexRemoveRequest) returns (IndexRemoveResponse);
+  rpc RebuildIndex(RebuildIndexRequest) returns (RebuildIndexResponse);
+  rpc GetIndexStats(GetIndexStatsRequest) returns (GetIndexStatsResponse);
+}
+
+message SearchWeights { double bm25 = 1; double vector = 2; double graph = 3; }
+
+message SmartSearchRequest {
+  string  query     = 1;
+  string  tenant_id = 2;
+  string  project   = 3;
+  string  session_filter = 4;
+  int32   limit     = 5;
+  SearchWeights weights = 6;
+}
+
+message SearchResultProto {
+  string id         = 1;
+  string session_id = 2;
+  string obs_type   = 3;
+  string title      = 4;
+  string narrative  = 5;
+  repeated string facts    = 6;
+  repeated string concepts = 7;
+  double combined_score    = 8;
+  double bm25_score        = 9;
+  double vector_score      = 10;
+}
+
+message SmartSearchResponse {
+  repeated SearchResultProto results = 1;
+  int64 took_ms = 2;
+}
+
+message BM25SearchRequest  { string query = 1; string tenant_id = 2; int32 limit = 3; }
+message BM25SearchResponse { repeated SearchResultProto results = 1; }
+message VectorSearchRequest { string query = 1; string tenant_id = 2; int32 limit = 3; }
+message VectorSearchResponse { repeated SearchResultProto results = 1; }
+
+message ContextRequest {
+  string tenant_id    = 1;
+  string project      = 2;
+  string session_id   = 3;
+  string query        = 4;
+  int32  token_budget = 5;
+}
+
+message ContextBlock {
+  string type    = 1;  // memory|summary|observation
+  string content = 2;
+  int32  tokens  = 3;
+  string source  = 4;
+}
+
+message ContextResponse {
+  repeated ContextBlock blocks = 1;
+  int32  total_tokens = 2;
+  string formatted    = 3;
+}
+
+message IndexAddRequest {
+  string obs_id     = 1;
+  string session_id = 2;
+  string agent_id   = 3;
+  string tenant_id  = 4;
+  string title      = 5;
+  repeated string facts    = 6;
+  repeated string concepts = 7;
+}
+
+message IndexAddResponse  { bool ok = 1; }
+message IndexRemoveRequest { string doc_id = 1; }
+message IndexRemoveResponse { bool ok = 1; }
+message RebuildIndexRequest { string tenant_id = 1; }
+message RebuildIndexResponse { int32 documents_indexed = 1; }
+
+message GetIndexStatsRequest {}
+message GetIndexStatsResponse {
+  int32 bm25_documents   = 1;
+  int32 vector_documents = 2;
+  bool  bm25_loaded      = 3;
+  bool  vector_loaded    = 4;
+}

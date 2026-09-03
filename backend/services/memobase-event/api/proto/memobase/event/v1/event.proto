@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package memobase.event.v1;
+
+option go_package = "vnp-memory/services/memobase-event/api/proto/memobase/event/v1;eventv1";
+
+// EventService manages event timeline storage and semantic search.
+// SOL-MB-004: Event Timeline & Semantic Search (CR-MB-004)
+service EventService {
+    // CRUD
+    rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
+    rpc UpdateEvent(UpdateEventRequest) returns (UpdateEventResponse);
+    rpc DeleteEvent(DeleteEventRequest) returns (DeleteEventResponse);
+
+    // Semantic Search
+    rpc SearchEvents(SearchEventsRequest) returns (SearchEventsResponse);
+    rpc SearchEventGists(SearchEventGistsRequest) returns (SearchEventGistsResponse);
+
+    // Tag Filtering
+    rpc FilterEventsByTags(FilterByTagsRequest) returns (FilterByTagsResponse);
+
+    // Internal (called by memobase-engine after LLM flush)
+    rpc AppendEvent(AppendEventRequest) returns (AppendEventResponse);
+
+    // Recent event gists for context service (no embedding required)
+    rpc GetRecentEventGists(GetRecentEventGistsRequest) returns (GetRecentEventGistsResponse);
+
+    // Health
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// --- Common ---
+
+message EventTagProto {
+    string tag   = 1;
+    string value = 2;
+}
+
+message EventDataProto {
+    string                event_tip = 1;
+    repeated EventTagProto event_tags = 2;
+}
+
+message EventProto {
+    string         id          = 1;
+    string         user_id     = 2;
+    string         project_id  = 3;
+    EventDataProto event_data  = 4;
+    int64          created_at  = 5; // Unix seconds
+    int64          updated_at  = 6;
+}
+
+message EventGistProto {
+    string id           = 1;
+    string event_id     = 2;
+    string user_id      = 3;
+    string project_id   = 4;
+    string gist_content = 5;
+    int64  created_at   = 6;
+    double similarity   = 7; // set on search results
+}
+
+// --- CRUD ---
+
+message GetEventsRequest {
+    string user_id    = 1;
+    string project_id = 2;
+    int32  limit      = 3; // default 20
+}
+message GetEventsResponse { repeated EventProto events = 1; }
+
+message UpdateEventRequest {
+    string         id          = 1;
+    string         user_id     = 2;
+    string         project_id  = 3;
+    EventDataProto event_data  = 4;
+}
+message UpdateEventResponse { bool updated = 1; }
+
+message DeleteEventRequest {
+    string id         = 1;
+    string user_id    = 2;
+    string project_id = 3;
+}
+message DeleteEventResponse { bool deleted = 1; }
+
+// --- Semantic Search ---
+
+message SearchEventsRequest {
+    string user_id              = 1;
+    string project_id           = 2;
+    string query                = 3;
+    int32  topk                 = 4;  // default 10
+    double similarity_threshold = 5;  // default 0.2
+    int32  time_range_in_days   = 6;  // default 21
+}
+
+message SearchResultProto {
+    EventProto event      = 1;
+    double     similarity = 2;
+}
+
+message SearchEventsResponse { repeated SearchResultProto results = 1; }
+
+message SearchEventGistsRequest {
+    string user_id              = 1;
+    string project_id           = 2;
+    string query                = 3;             // Option A: text query (service embeds)
+    repeated float embedding    = 4 [packed=true]; // Option B: pre-computed embedding
+    int32  topk                 = 5;
+    double similarity_threshold = 6;
+    int32  time_range_in_days   = 7;
+}
+
+message SearchEventGistsResponse { repeated EventGistProto gists = 1; }
+
+// --- Tag Filtering ---
+
+message TagEqualEntry {
+    string tag   = 1;
+    string value = 2;
+}
+
+message FilterByTagsRequest {
+    string   user_id           = 1;
+    string   project_id        = 2;
+    int32    time_range_in_days = 3;
+    repeated string has_event_tag   = 4; // tag key must exist
+    repeated TagEqualEntry event_tag_equal = 5; // tag=value pairs
+}
+
+message FilterByTagsResponse { repeated EventProto events = 1; }
+
+// --- Internal: AppendEvent (called by memobase-engine) ---
+
+message AppendEventRequest {
+    string         user_id          = 1;
+    string         project_id       = 2;
+    EventDataProto event_data       = 3;
+    repeated float embedding        = 4 [packed=true]; // pre-computed by engine
+    repeated GistEmbeddingProto gist_embeddings = 5;   // per-gist
+}
+
+message GistEmbeddingProto { repeated float values = 1 [packed=true]; }
+
+message AppendEventResponse {
+    string event_id   = 1;
+    int32  gist_count = 2;
+}
+
+// --- Recent Gists (for context service) ---
+
+message GetRecentEventGistsRequest {
+    string user_id    = 1;
+    string project_id = 2;
+    int32  limit      = 3; // default 20
+}
+
+message GetRecentEventGistsResponse { repeated EventGistProto gists = 1; }
+
+// --- Health ---
+
+message HealthCheckRequest  {}
+message HealthCheckResponse { string status = 1; }

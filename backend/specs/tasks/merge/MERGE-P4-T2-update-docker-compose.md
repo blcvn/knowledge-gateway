@@ -1,0 +1,387 @@
+---
+id: MERGE-P4-T2
+title: "Cleanup: Cập nhật docker-compose.yml → 8 services"
+phase: P4
+service: deploy
+priority: P2
+status: Done
+estimated: 2h
+created: 2026-06-11
+linked_sol: SOL-003
+depends_on: [MERGE-P4-T1]
+---
+
+## Mục Tiêu
+
+Tạo `docker-compose.consolidated.yml` mới với 8 services thay vì 47. Giữ nguyên `docker-compose.yml` cũ như reference.
+
+## File Mới: `docker-compose.consolidated.yml`
+
+```yaml
+# VNP Memory Platform — Consolidated Deployment (SOL-003)
+# 8 services: gateway + 7 backends
+# Usage: docker compose -f docker-compose.consolidated.yml up
+
+name: vnp-memory
+
+services:
+  # ═══════════════════════════════════════════════
+  # INFRASTRUCTURE
+  # ═══════════════════════════════════════════════
+  
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: vnp
+      POSTGRES_PASSWORD: vnppassword
+      POSTGRES_DB: vnp_memory
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vnp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5.x-community
+    ports:
+      - "7474:7474"    # HTTP browser
+      - "7687:7687"    # Bolt protocol
+    environment:
+      NEO4J_AUTH: neo4j/vnppassword
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+    volumes:
+      - neo4jdata:/data
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cognee:
+    image: cogneeai/cognee:latest
+    ports:
+      - "18000:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://vnp:vnppassword@postgres:5432/cognee"
+      VECTOR_DB_PROVIDER: pgvector
+      VECTOR_DB_URL: "postgresql+asyncpg://vnp:vnppassword@postgres:5432/cognee"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ═══════════════════════════════════════════════
+  # BACKEND SERVICES (7 consolidated services)
+  # ═══════════════════════════════════════════════
+
+  vnp-platform:
+    build:
+      context: .
+      dockerfile: services/vnp-platform/Dockerfile
+    ports:
+      - "9010:9090"
+      - "9110:9110"
+    environment:
+      GRPC_PORT: "9090"
+      HEALTH_PORT: "9110"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      NATS_URL: "nats://nats:4222"
+      AUTH_JWT_PRIVATE_KEY: "${AUTH_JWT_PRIVATE_KEY}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9110/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kg-service:
+    build:
+      context: .
+      dockerfile: services/kg-service/Dockerfile
+    ports:
+      - "9020:9090"
+      - "9120:9120"
+    environment:
+      GRPC_PORT: "9090"
+      HEALTH_PORT: "9120"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      NEO4J_URL: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "vnppassword"
+      NATS_URL: "nats://nats:4222"
+      COGNEE_URL: "http://cognee:8000"
+      COGNEE_ENABLED: "true"
+      EMBEDDING_URL: "${EMBEDDING_URL:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      cognee:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9120/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  memory-service:
+    build:
+      context: .
+      dockerfile: services/memory-service/Dockerfile
+    ports:
+      - "9030:9090"
+      - "9130:9130"
+    environment:
+      GRPC_PORT: "9090"
+      HEALTH_PORT: "9130"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/1"
+      NATS_URL: "nats://nats:4222"
+      ZEP_API_KEY: "${ZEP_API_KEY:-}"
+      ZEP_ENABLED: "${ZEP_ENABLED:-false}"
+      EMBEDDING_URL: "${EMBEDDING_URL:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9130/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  storage-service:
+    build:
+      context: .
+      dockerfile: services/storage-service/Dockerfile
+    ports:
+      - "9040:9090"
+      - "9140:9140"
+    environment:
+      GRPC_PORT: "9090"
+      HEALTH_PORT: "9140"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      FS_BASE_DIR: "/data/storage"
+      CRYPTO_KEY_DERIVATION_SECRET: "${CRYPTO_SECRET:-changeme}"
+    volumes:
+      - storagedata:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9140/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  search-service:
+    build:
+      context: .
+      dockerfile: services/search-service/Dockerfile
+    ports:
+      - "9050:9090"
+      - "9150:9150"
+    environment:
+      GRPC_PORT: "9090"
+      HEALTH_PORT: "9150"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      KG_SERVICE_ADDR: "kg-service:9090"
+      MEMORY_SERVICE_ADDR: "memory-service:9090"
+      STORAGE_SERVICE_ADDR: "storage-service:9090"
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      - kg-service
+      - memory-service
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9150/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pipeline-service:
+    build:
+      context: .
+      dockerfile: services/pipeline-service/Dockerfile
+      args:
+        BINARY: server
+    ports:
+      - "9060:9090"
+      - "9160:9160"
+    environment:
+      GRPC_PORT: "9090"
+      HEALTH_PORT: "9160"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      NATS_URL: "nats://nats:4222"
+      KG_SERVICE_ADDR: "kg-service:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9160/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pipeline-worker:
+    build:
+      context: .
+      dockerfile: services/pipeline-service/Dockerfile
+      args:
+        BINARY: worker
+    environment:
+      REDIS_ADDR: "redis:6379"
+      REDIS_DB: "2"
+      WORKER_CONCURRENCY: "10"
+      NATS_URL: "nats://nats:4222"
+      KG_SERVICE_ADDR: "kg-service:9090"
+    depends_on:
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  obs-service:
+    build:
+      context: .
+      dockerfile: services/obs-service/Dockerfile
+    ports:
+      - "9070:9090"
+      - "9170:9170"
+    environment:
+      GRPC_PORT: "9090"
+      HEALTH_PORT: "9170"
+      DATABASE_URL: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      DOCKER_ENABLED: "true"
+      GATEWAY_HEALTH_URL: "http://vnp-gateway:11080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9170/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ═══════════════════════════════════════════════
+  # GATEWAY (entry point)
+  # ═══════════════════════════════════════════════
+
+  vnp-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"    # REST API
+      - "8082:8082"    # MCP server
+      - "11080:11080"  # Health + metrics
+    environment:
+      REST_PORT: "8080"
+      MCP_PORT: "8082"
+      HEALTH_PORT: "11080"
+      AUTH_DEV_MODE: "${AUTH_DEV_MODE:-false}"
+      POSTGRES_DSN: "postgres://vnp:vnppassword@postgres:5432/vnp_memory?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+      NATS_URL: "nats://nats:4222"
+      # Service registry — 7 backends
+      SERVICE_VNP_PLATFORM: "vnp-platform:9090"
+      SERVICE_KG: "kg-service:9090"
+      SERVICE_MEMORY: "memory-service:9090"
+      SERVICE_STORAGE: "storage-service:9090"
+      SERVICE_SEARCH: "search-service:9090"
+      SERVICE_PIPELINE: "pipeline-service:9090"
+      SERVICE_OBS: "obs-service:9090"
+    depends_on:
+      - vnp-platform
+      - kg-service
+      - memory-service
+      - storage-service
+      - search-service
+      - pipeline-service
+      - obs-service
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:11080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  neo4jdata:
+  storagedata:
+```
+
+## `.env.consolidated` Template
+
+```bash
+# Required
+AUTH_JWT_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+
+# Optional integrations
+GOOGLE_CLIENT_ID=
+ZEP_API_KEY=
+ZEP_ENABLED=false
+EMBEDDING_URL=http://llm-proxy:8080
+CRYPTO_SECRET=changeme-in-production
+AUTH_DEV_MODE=false
+```
+
+## Acceptance Criteria
+
+- [ ] `docker compose -f docker-compose.consolidated.yml up` starts successfully
+- [ ] All 8 services (+ gateway + 5 infra) healthy within 60 seconds
+- [ ] `docker compose -f docker-compose.consolidated.yml ps` shows all services "Up"
+- [ ] `docker compose -f docker-compose.consolidated.yml down` clean shutdown
+- [ ] `docker compose -f docker-compose.consolidated.yml build` < 10 minutes
+- [ ] Storage volume `storagedata` mounted correctly
+- [ ] Docker socket mount works for obs-service
+- [ ] Neo4j browser accessible at http://localhost:7474
+
+## Ghi Chú
+
+- `docker-compose.yml` cũ → rename thành `docker-compose.scale.yml` (production với 47 services)
+- `docker-compose.compact.yml` cũ → archive (superseded)
+- Neo4j community edition → consider plugin licensing
+- cognee image version → pin to specific tag trong production

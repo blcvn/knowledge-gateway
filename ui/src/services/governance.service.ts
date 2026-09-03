@@ -1,45 +1,72 @@
-import { apiClient } from '../lib/api-client';
+/**
+ * Governance Service — calls real /v1/console/governance/* endpoints
+ * TASK-API-009: typed GDPR preview/forget responses, AuditFilters
+ */
+
+import { apiClient }  from '../lib/api-client';
 import { API_CONFIG } from '../config/api.config';
-import type { Tenant, Policy, AuditLogEntry } from '../types/governance';
+import type {
+  Tenant, Policy, AuditLogEntry, AuditFilters,
+  GDPRPreviewResponse, GDPRForgetResponse,
+} from '../types/governance';
 
 const BASE = API_CONFIG.console.governance;
 
+function buildQuery(filters: Record<string, string | undefined>): string {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
 export const governanceService = {
+  // ── Tenants ──────────────────────────────────────────────────────────────
+
   /** GET /v1/console/governance/tenants */
-  getTenants: () =>
+  getTenants: (): Promise<Tenant[]> =>
     apiClient.get<Tenant[]>(`${BASE}/tenants`),
 
   /** POST /v1/console/governance/tenants */
-  createTenant: (data: Partial<Tenant>) =>
+  createTenant: (data: Partial<Tenant>): Promise<Tenant> =>
     apiClient.post<Tenant>(`${BASE}/tenants`, data),
 
   /** PUT /v1/console/governance/tenants/{id} */
-  updateTenant: (id: string, data: Partial<Tenant>) =>
+  updateTenant: (id: string, data: Partial<Tenant>): Promise<Tenant> =>
     apiClient.put<Tenant>(`${BASE}/tenants/${id}`, data),
 
+  // ── Policies ─────────────────────────────────────────────────────────────
+
   /** GET /v1/console/governance/policies */
-  getPolicies: () =>
+  getPolicies: (): Promise<Policy[]> =>
     apiClient.get<Policy[]>(`${BASE}/policies`),
 
   /** POST /v1/console/governance/policies */
-  createPolicy: (policy: Partial<Policy>) =>
+  createPolicy: (policy: Partial<Policy>): Promise<Policy> =>
     apiClient.post<Policy>(`${BASE}/policies`, policy),
 
   /** PUT /v1/console/governance/policies/{id} */
-  updatePolicy: (id: string, policy: Partial<Policy>) =>
+  updatePolicy: (id: string, policy: Partial<Policy>): Promise<Policy> =>
     apiClient.put<Policy>(`${BASE}/policies/${id}`, policy),
 
-  /** GET /v1/console/governance/audit */
-  getAuditLogs: (filters: Record<string, string>) => {
-    const qs = new URLSearchParams(filters).toString();
-    return apiClient.get<AuditLogEntry[]>(`${BASE}/audit?${qs}`);
-  },
+  // ── Audit Logs ────────────────────────────────────────────────────────────
 
-  /** POST /v1/console/governance/gdpr/forget */
-  gdprForget: (userId: string) =>
-    apiClient.post<void>(`${BASE}/gdpr/forget`, { user_id: userId }),
+  /** GET /v1/console/governance/audit[?...filters] */
+  getAuditLogs: (filters: AuditFilters = {}): Promise<AuditLogEntry[]> =>
+    apiClient.get<AuditLogEntry[]>(`${BASE}/audit${buildQuery(filters as Record<string, string>)}`),
 
-  /** POST /v1/console/governance/gdpr/forget/preview */
-  gdprForgetPreview: (userId: string) =>
-    apiClient.post<unknown>(`${BASE}/gdpr/forget/preview`, { user_id: userId }),
+  // ── GDPR ──────────────────────────────────────────────────────────────────
+
+  /**
+   * POST /v1/console/governance/gdpr/forget/preview
+   * Step 1: preview what would be deleted — UI must show this before executing
+   */
+  gdprForgetPreview: (userId: string): Promise<GDPRPreviewResponse> =>
+    apiClient.post<GDPRPreviewResponse>(`${BASE}/gdpr/forget/preview`, { user_id: userId }),
+
+  /**
+   * POST /v1/console/governance/gdpr/forget
+   * Step 2: execute deletion (requires user confirmation in UI)
+   */
+  gdprForget: (userId: string): Promise<GDPRForgetResponse> =>
+    apiClient.post<GDPRForgetResponse>(`${BASE}/gdpr/forget`, { user_id: userId }),
 };

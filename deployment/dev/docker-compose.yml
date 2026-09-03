@@ -253,6 +253,7 @@ services:
       # Vector — use PGVector
       - VECTOR_DB_PROVIDER=pgvector
       - VECTOR_DB_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/cognee_db
+      - POSTGRES_DSN=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/cognee_db?sslmode=disable
       # Access control
       - ENABLE_BACKEND_ACCESS_CONTROL=false
     ports:
@@ -294,6 +295,7 @@ services:
       - ./bin/graphiti:/app/graphiti:ro
     environment:
       - ENVIRONMENT=dev
+      - AUTH_JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
       # LLM — routed through external Bifrost AI Gateway
       - OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
       - OPENAI_BASE_URL=${BIFROST_URL:-https://b9.openledger.vn}/v1
@@ -336,7 +338,7 @@ services:
       - ./bin/openviking:/app/openviking:ro
       - openviking_data:/app/.openviking
     environment:
-      - AUTH_DEV_MODE=true
+      - AUTH_JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
     networks:
       - memory-net
     healthcheck:
@@ -364,7 +366,7 @@ services:
       - ./bin/zep:/app/zep:ro
       - ./config/zep.yaml:/config/zep.yaml:ro
     environment:
-      - AUTH_DEV_MODE=true
+      - AUTH_JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
       - ZEP_CONFIG_FILE=/config/zep.yaml
       - ZEP_OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
     depends_on:
@@ -398,6 +400,7 @@ services:
       - ./bin/graphiti:/app/graphiti:ro
     environment:
       - ENVIRONMENT=dev
+      - AUTH_JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
       # LLM — routed through external Bifrost AI Gateway
       - OPENAI_API_KEY=${BIFROST_API_KEY:-bifrost}
       - OPENAI_BASE_URL=${BIFROST_URL:-https://b9.openledger.vn}/v1
@@ -437,7 +440,33 @@ services:
       - ./bin/memobase:/app/memobase:ro
     environment:
       - ENVIRONMENT=dev
-      - AUTH_DEV_MODE=true
+      - AUTH_JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
+      - LLM_API_KEY=${BIFROST_API_KEY:-bifrost}
+      - LLM_ENDPOINT=${BIFROST_URL:-https://b9.openledger.vn}/v1
+    networks:
+      - memory-net
+
+  # ---------------------------------------------------------------------------
+  # SM Auth — Authentication & SSO Service
+  # Binary: ./bin/sm-auth (cross-compiled for linux/amd64)
+  # ---------------------------------------------------------------------------
+  sm-auth:
+    container_name: vnp_sm_auth
+    profiles:
+      - memory
+    restart: unless-stopped
+    image: vnp/runtime:latest
+    working_dir: /app
+    command: ["./sm-auth"]
+    volumes:
+      - ./bin/sm-auth:/app/sm-auth:ro
+    environment:
+      - ENVIRONMENT=dev
+      - AUTH_JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
+      - AUTH_JWT_PRIVATE_KEY=${AUTH_JWT_PRIVATE_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-your-google-client-id.apps.googleusercontent.com}
+      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@vnp.com}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-admin}
     networks:
       - memory-net
 
@@ -456,7 +485,11 @@ services:
     volumes:
       - ./bin/supermemory:/app/supermemory:ro
     environment:
-      - AUTH_DEV_MODE=true
+      - AUTH_JWT_PUBLIC_KEY=${AUTH_JWT_PUBLIC_KEY}
+    ports:
+      - "${MEMORY_REST_PORT:-8080}:8080"
+      - "${MEMORY_MCP_PORT:-8082}:8082"
+      - "${MEMORY_HEALTH_PORT:-8083}:8083"
     networks:
       - memory-net
 

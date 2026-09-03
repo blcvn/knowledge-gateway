@@ -1,0 +1,56 @@
+syntax = "proto3";
+package cognee.search.v1;
+option go_package = "github.com/vnp-memory/api/proto/cognee/search/v1";
+
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc ListInteractions(ListInteractionsRequest) returns (ListInteractionsResponse);  // [NEW] CR-005
+}
+
+message SearchRequest {
+  string           query            = 1;
+  repeated string  strategies       = 2;
+  string           dataset_id       = 3;
+  string           dataset_name     = 4;
+  string           tenant_id        = 5;
+  repeated string  node_sets        = 6;  // [NEW] CR-002
+  int32            top_k            = 7;
+  // [NEW] CR-005 Feedback fields
+  bool             save_interaction = 8;
+  string           session_id       = 9;
+  string           feedback_for     = 10;  // interaction UUID — triggers FEEDBACK strategy
+  optional double  feedback_score   = 11;  // -1.0 to 1.0
+  string           feedback_text    = 12;
+}
+
+message SearchResult {
+  string id          = 1;
+  string content     = 2;
+  double score       = 3;
+  map<string, string> metadata = 4;
+}
+
+message SearchResponse {
+  repeated SearchResult results        = 1;
+  optional string       interaction_id = 2;  // [NEW] present when save_interaction=true
+  map<string, string>   metadata       = 3;  // e.g. {"applied": "true", "affected_nodes": "5"}
+}
+
+// ── Interactions (CR-005) ──────────────────────────────────────────────────
+
+message ListInteractionsRequest {
+  string tenant_id  = 1;
+  string session_id = 2;
+  int32  limit      = 3;
+  int32  offset     = 4;
+}
+
+message InteractionInfo {
+  string          id         = 1;
+  string          query      = 2;
+  string          strategy   = 3;
+  repeated string result_ids = 4;
+  string          timestamp  = 5;
+}
+
+message ListInteractionsResponse { repeated InteractionInfo interactions = 1; }

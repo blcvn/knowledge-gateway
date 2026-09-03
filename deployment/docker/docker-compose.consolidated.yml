@@ -126,7 +126,7 @@ services:
 
   vnp-gateway:
     build:
-      context: ../../gateway
+      context: ../../backend/gateway
       dockerfile: Dockerfile
     container_name: vnp-gateway
     restart: unless-stopped
@@ -162,7 +162,7 @@ services:
 
   vnp-dashboard:
     build:
-      context: ../../services/vnp-dashboard
+      context: ../../backend/services/vnp-dashboard
       dockerfile: Dockerfile
     container_name: vnp-dashboard
     restart: unless-stopped
@@ -181,7 +181,7 @@ services:
 
   vnp-pipelines:
     build:
-      context: ../../services/vnp-pipelines
+      context: ../../backend/services/vnp-pipelines
       dockerfile: Dockerfile
     container_name: vnp-pipelines
     restart: unless-stopped
@@ -199,7 +199,7 @@ services:
 
   vnp-infra:
     build:
-      context: ../../services/vnp-infra
+      context: ../../backend/services/vnp-infra
       dockerfile: Dockerfile
     container_name: vnp-infra
     restart: unless-stopped
@@ -216,7 +216,7 @@ services:
 
   vnp-observability:
     build:
-      context: ../../services/vnp-observability
+      context: ../../backend/services/vnp-observability
       dockerfile: Dockerfile
     container_name: vnp-observability
     restart: unless-stopped
@@ -233,7 +233,7 @@ services:
 
   vnp-search-hub:
     build:
-      context: ../../services/vnp-search-hub
+      context: ../../backend/services/vnp-search-hub
       dockerfile: Dockerfile
     container_name: vnp-search-hub
     restart: unless-stopped
@@ -254,7 +254,7 @@ services:
 
   cognee-pipeline:
     build:
-      context: ../../services/cognee-pipeline
+      context: ../../backend/services/cognee-pipeline
       dockerfile: Dockerfile
     container_name: cognee-pipeline
     restart: unless-stopped
@@ -278,7 +278,7 @@ services:
 
   cognee-search:
     build:
-      context: ../../services/cognee-search
+      context: ../../backend/services/cognee-search
       dockerfile: Dockerfile
     container_name: cognee-search
     restart: unless-stopped
@@ -301,7 +301,7 @@ services:
 
   graphiti-pipeline:
     build:
-      context: ../../services/graphiti-pipeline
+      context: ../../backend/services/graphiti-pipeline
       dockerfile: Dockerfile
     container_name: graphiti-pipeline
     restart: unless-stopped
@@ -322,7 +322,7 @@ services:
 
   graphiti-store:
     build:
-      context: ../../services/graphiti-store
+      context: ../../backend/services/graphiti-store
       dockerfile: Dockerfile
     container_name: graphiti-store
     restart: unless-stopped
@@ -340,7 +340,7 @@ services:
 
   graphiti-search:
     build:
-      context: ../../services/graphiti-search
+      context: ../../backend/services/graphiti-search
       dockerfile: Dockerfile
     container_name: graphiti-search
     restart: unless-stopped
@@ -362,7 +362,7 @@ services:
 
   memobase-pipeline:
     build:
-      context: ../../services/memobase-pipeline
+      context: ../../backend/services/memobase-pipeline
       dockerfile: Dockerfile
     container_name: memobase-pipeline
     restart: unless-stopped
@@ -383,7 +383,7 @@ services:
 
   memobase-context:
     build:
-      context: ../../services/memobase-context
+      context: ../../backend/services/memobase-context
       dockerfile: Dockerfile
     container_name: memobase-context
     restart: unless-stopped
@@ -405,7 +405,7 @@ services:
 
   ov-storage:
     build:
-      context: ../../services/ov-storage
+      context: ../../backend/services/ov-storage
       dockerfile: Dockerfile
     container_name: ov-storage
     restart: unless-stopped
@@ -424,7 +424,7 @@ services:
 
   ov-search:
     build:
-      context: ../../services/ov-search
+      context: ../../backend/services/ov-search
       dockerfile: Dockerfile
     container_name: ov-search
     restart: unless-stopped
@@ -441,7 +441,7 @@ services:
 
   ov-session:
     build:
-      context: ../../services/ov-session
+      context: ../../backend/services/ov-session
       dockerfile: Dockerfile
     container_name: ov-session
     restart: unless-stopped
@@ -462,7 +462,7 @@ services:
 
   zep-core:
     build:
-      context: ../../services/zep-core
+      context: ../../backend/services/zep-core
       dockerfile: Dockerfile
     container_name: zep-core
     restart: unless-stopped
@@ -483,7 +483,7 @@ services:
 
   zep-graph:
     build:
-      context: ../../services/zep-graph
+      context: ../../backend/services/zep-graph
       dockerfile: Dockerfile
     container_name: zep-graph
     restart: unless-stopped
@@ -502,7 +502,7 @@ services:
 
   zep-search:
     build:
-      context: ../../services/zep-search
+      context: ../../backend/services/zep-search
       dockerfile: Dockerfile
     container_name: zep-search
     restart: unless-stopped
@@ -523,7 +523,7 @@ services:
 
   sm-engine:
     build:
-      context: ../../services/sm-engine
+      context: ../../backend/services/sm-engine
       dockerfile: Dockerfile
     container_name: sm-engine
     restart: unless-stopped
@@ -544,7 +544,7 @@ services:
 
   sm-search:
     build:
-      context: ../../services/sm-search
+      context: ../../backend/services/sm-search
       dockerfile: Dockerfile
     container_name: sm-search
     restart: unless-stopped
@@ -561,7 +561,7 @@ services:
 
   sm-connector:
     build:
-      context: ../../services/sm-connector
+      context: ../../backend/services/sm-connector
       dockerfile: Dockerfile
     container_name: sm-connector
     restart: unless-stopped

@@ -1,0 +1,8 @@
+{
+    "env": {
+        "ANTHROPIC_BASE_URL": "https://b8.openledger.vn/anthropic",
+        "ANTHROPIC_AUTH_TOKEN": "sk-bf-87d84edb-df25-4a4d-88c2-5d6c2e4544d0",
+        "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1"
+    }
+}

@@ -90,7 +90,7 @@ env: ## Create .env from .env.example
 # Cross-Compilation — All Go apps compiled locally for linux/amd64
 # =============================================================================
 
-compile-memory: compile-ui ## Cross-compile Memory Monolith (with embedded UI)
+compile-memory: ## Cross-compile Memory Monolith (with embedded UI)
 	@echo "\033[36m⚙  Compiling Memory Monolith (linux/amd64)...\033[0m"
 	@mkdir -p $(BIN_DIR)
 	@# Embed UI assets into Go binary
@@ -159,6 +159,15 @@ compile-supermemory: ## Cross-compile Supermemory (linux/amd64)
 		./cmd/supermemory/
 	@echo "\033[32m✓ Compiled: bin/supermemory\033[0m"
 
+compile-sm-auth: ## Cross-compile SM Auth (linux/amd64)
+	@echo "\033[36m⚙  Compiling SM Auth (linux/amd64)...\033[0m"
+	@mkdir -p $(BIN_DIR)
+	cd $(MONOREPO_ROOT)/services/sm-auth && $(GO_BUILD_FLAGS) go build \
+		$(GO_LDFLAGS) \
+		-o $(BIN_DIR)/sm-auth \
+		./cmd/server/
+	@echo "\033[32m✓ Compiled: bin/sm-auth\033[0m"
+
 compile-kgs: ## Cross-compile KGS Platform (linux/amd64)
 	@echo "\033[36m⚙  Compiling KGS Platform (linux/amd64)...\033[0m"
 	@mkdir -p $(BIN_DIR)
@@ -175,7 +184,7 @@ compile-ui: ## Build UI frontend (npm run build)
 	cd $(MONOREPO_ROOT)/ui && npm run build
 	@echo "\033[32m✓ UI built: $(MONOREPO_ROOT)/ui/dist/\033[0m"
 
-compile-apps: compile-cognee compile-graphiti compile-openviking compile-zep compile-memobase compile-supermemory ## Cross-compile all individual app services
+compile-apps: compile-cognee compile-graphiti compile-openviking compile-zep compile-memobase compile-supermemory compile-sm-auth ## Cross-compile all individual app services
 
 compile-all: compile-apps compile-kgs compile-memory ## Cross-compile ALL services (apps + KGS + Memory Monolith with UI)
 	@echo ""

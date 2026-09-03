@@ -120,16 +120,11 @@ export function AgentContextDebugger() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const debugMutation = useMutation({
-    mutationFn: async (q: string): Promise<DebugResponse> => {
-      if (API_CONFIG.useMockData) {
-        await new Promise(r => setTimeout(r, 800 + Math.random() * 400));
-        return buildMockDebugResponse(q);
-      }
-      return apiClient.post<DebugResponse>(
-        `${API_CONFIG.engines.gateway.baseUrl}/v1/debug/context`,
+    mutationFn: (q: string): Promise<DebugResponse> =>
+      apiClient.post<DebugResponse>(
+        '/v1/console/debugger/context',
         { query: q, config }
-      );
-    },
+      ),
     onSuccess: (data) => {
       setResult(data);
       setActiveTab('results');

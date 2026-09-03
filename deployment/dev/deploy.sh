@@ -107,6 +107,7 @@ compile_kgs() {
 compile_ui() {
     log "Building UI frontend ..."
     cd "${MONOREPO_ROOT}/ui"
+    npm install
     npm run build
     ok "UI built: ui/dist/"
 }
@@ -199,10 +200,12 @@ sync_nginx() {
     log "Syncing nginx config to ${GATEWAY_SERVER} ..."
     scp "${SCRIPT_DIR}/nginx/c6-openledger-vn.conf" "${GATEWAY_USER}@${GATEWAY_SERVER}:/tmp/c6-openledger-vn.conf"
     ssh "${GATEWAY_USER}@${GATEWAY_SERVER}" "\
-        docker cp /tmp/c6-openledger-vn.conf nginx:/etc/nginx/conf.d/c6-openledger-vn.conf && \
-        docker exec nginx nginx -t && \
-        docker exec nginx nginx -s reload && \
-        rm -f /tmp/c6-openledger-vn.conf"
+        NGINX_CONTAINER=\$(docker ps -qf \"name=nginx\" | head -n 1) && \
+        if [ -z \"\$NGINX_CONTAINER\" ]; then echo 'Nginx container not found'; exit 1; fi && \
+        mv /tmp/c6-openledger-vn.conf /home/ubuntu/vnp-qa-platform/proxy/conf.d/c6-openledger-vn.conf && \
+        rm -f /home/ubuntu/vnp-qa-platform/proxy/conf.d/c6-openledger-nginx.conf && \
+        docker exec \$NGINX_CONTAINER nginx -t && \
+        docker exec \$NGINX_CONTAINER nginx -s reload"
     ok "Nginx config updated and reloaded on ${GATEWAY_SERVER}"
     echo "  https://c6.openledger.vn → ${DEV_SERVER}:8080"
 }

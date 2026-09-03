@@ -2,26 +2,31 @@
  * React Query global configuration for Enterprise-grade data fetching.
  *
  * Features:
+ * - Smart retry: skip 401/403 auth errors (no infinite loop)
  * - Smart caching with configurable staleTime / gcTime
- * - Automatic retry with exponential backoff for transient errors
  * - Global error handler via MutationCache / QueryCache
  * - Optimistic Update utilities
  */
 
 import { QueryClient } from '@tanstack/react-query';
-import { logger } from './logger';
+import { AppError }    from './api-client';
+import { logger }      from './logger';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000,     // 5 minutes — data is fresh for this period
-      gcTime: 30 * 60 * 1000,        // 30 minutes — garbage collect unused cache
-      retry: 2,                       // Retry failed queries up to 2 times
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-      refetchOnWindowFocus: false,    // Prevent refetch on window focus (dev-friendly)
+      staleTime: 30_000,            // 30s default — modules override per need
+      gcTime:    30 * 60 * 1000,   // 30 minutes garbage collect
+      retry: (failureCount, error) => {
+        // Never retry auth errors — they go through refresh interceptor instead
+        if (error instanceof AppError && error.status === 401) return false;
+        if (error instanceof AppError && error.status === 403) return false;
+        return failureCount < 2;
+      },
+      refetchOnWindowFocus: false,
     },
     mutations: {
-      retry: 1,
+      retry: false,
     },
   },
 });
