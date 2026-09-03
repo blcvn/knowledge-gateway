@@ -5,6 +5,8 @@
 **Version:** v3/console
 **Depends on:** CR-UI-001, SOL-UI-001
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** GraphHandler: Subgraph/Entity/Timeline/Ontology/Query
 ---
 
 ## 1. Architecture

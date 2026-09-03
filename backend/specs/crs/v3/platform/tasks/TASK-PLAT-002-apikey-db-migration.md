@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 1h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** No api_keys DB migration found in deployment/dev/migrations/
 ---
 
 ## Mục tiêu

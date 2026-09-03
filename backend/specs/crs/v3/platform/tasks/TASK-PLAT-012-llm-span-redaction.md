@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-010 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** LLM span redaction (PII removal from trace attributes) not implemented
 ---
 
 ## Mục tiêu

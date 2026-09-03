@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-004 |
 | **Estimated** | 4h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** vnp-search-hub: temporal filter parameter documented in specs/tasks; implementation in search_orchestrator.go partial
 ---
 
 ## Mục tiêu

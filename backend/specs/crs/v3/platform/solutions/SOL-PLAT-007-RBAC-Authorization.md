@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/01-gateway.md §2`, `architecture/09-shared-packages.md §2`
 **Version:** v3/platform
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** requireAdmin() guard; full permission matrix RBAC not implemented
 ---
 
 ## 1. Architecture Analysis

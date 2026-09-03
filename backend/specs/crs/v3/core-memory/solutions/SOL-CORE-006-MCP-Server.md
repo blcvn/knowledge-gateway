@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🟡 High |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** MCP server with 43 tools (agentmemory+cognee); graphiti/admin tools pending
 ---
 
 ## 1. Phân tích

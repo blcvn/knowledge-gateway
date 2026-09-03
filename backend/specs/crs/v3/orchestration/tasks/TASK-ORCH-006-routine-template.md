@@ -10,6 +10,8 @@
 | **Depends On** | TASK-ORCH-005 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** orchestration/sketches.go: SketchService with LLM-based routine template generation
 ---
 
 ## Mục tiêu

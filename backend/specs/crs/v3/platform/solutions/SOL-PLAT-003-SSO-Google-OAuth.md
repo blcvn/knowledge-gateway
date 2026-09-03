@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🟡 High |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** LoginWithGoogle RPC exists; Google token validation in sm-auth not fully implemented
 ---
 
 ## 1. Phân tích kiến trúc

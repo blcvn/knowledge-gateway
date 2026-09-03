@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 4h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** TypeScript SDK not implemented — no sdk/ directory found
 ---
 
 ## Mục tiêu

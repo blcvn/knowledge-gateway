@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-010 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** ObservabilityHandler: Metrics, Errors, Traces endpoints + Prometheus /metrics server (observability.go)
 ---
 
 ## Mục tiêu

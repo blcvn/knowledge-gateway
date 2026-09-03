@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CONSOLE-001 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** DashboardHandler: Health/Metrics/Throughput/Heatmap handlers (console.go:55+)
 ---
 
 ## Mục tiêu

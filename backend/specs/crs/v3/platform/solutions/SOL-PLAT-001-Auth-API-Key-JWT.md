@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🔴 Critical |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** APIKey entity + JWT RSA256 + sm-auth Register/Login/Logout/Refresh/GetCurrentUser
 ---
 
 ## 1. Phân tích kiến trúc

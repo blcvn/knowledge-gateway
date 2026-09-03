@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-001 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** observe-service: session_repo.go + GetWorkingMemory; ov-session session context assembly
 ---
 
 ## Mục tiêu

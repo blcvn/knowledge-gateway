@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/10-data-models-deployment.md`, `architecture/09-shared-packages.md §telemetry`
 **Version:** v3/console
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** InfraHandler: Services/Config/Deploy; health deep-check partial
 ---
 
 ## 1. Architecture

@@ -4,6 +4,8 @@
 **TDD refs:** `backend-api-specs.md`, `architecture/01-gateway.md §4`
 **Version:** v3/platform
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** Python + TypeScript SDK not implemented
 ---
 
 ## 1. Architecture: SDK Design Pattern

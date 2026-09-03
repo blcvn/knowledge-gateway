@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-010 |
 | **Estimated** | 2h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** OTel initialized in telemetry pkg; tracing middleware not applied to gateway HTTP handlers
 ---
 
 ## Mục tiêu

@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-005, TASK-CORE-009 |
 | **Estimated** | 3h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** MCP server.go: ToolRegistry exists; admin tools (tenant/user CRUD) not implemented
 ---
 
 ## Mục tiêu

@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-017 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** ws.go: WebSocket upgrade + ping/pong + message routing handlers
 ---
 
 ## Mục tiêu

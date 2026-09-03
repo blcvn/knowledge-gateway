@@ -10,6 +10,8 @@
 | **Depends On** | TASK-ORCH-001 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** orchestration/actions.go: ActionService with dependency graph (Requires/ConflictsWith); DAG executor logic
 ---
 
 ## Mục tiêu

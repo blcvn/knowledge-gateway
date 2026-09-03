@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-014 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** Webhook delivery service (HTTP POST + retry + signature) not implemented — only entity/handler scaffold
 ---
 
 ## Mục tiêu

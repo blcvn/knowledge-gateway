@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** orchestration-service/domain/entity.go: Checkpoint struct (pending/approved/rejected/expired)
 ---
 
 ## Mục tiêu

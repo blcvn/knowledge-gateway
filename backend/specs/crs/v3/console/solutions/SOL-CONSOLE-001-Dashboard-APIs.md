@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/08-platform-services.md §VNP Search Hub`, `architecture/01-gateway.md §4`
 **Version:** v3/console
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** Dashboard: Health/Metrics/Throughput/Heatmap + Prometheus client
 ---
 
 ## 1. Architecture

@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-027 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** Member usecase (InviteMember/RemoveMember/AcceptInvitation) not implemented
 ---
 
 ## Mục tiêu

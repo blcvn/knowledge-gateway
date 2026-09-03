@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/12-agentmemory-services.md`, `models/obs-service.md`
 **Version:** v3/orchestration
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** ActionService DAG executor + SketchService routine templates implemented
 ---
 
 ## 1. Architecture: State Machine Pattern

@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** shared/pkg/telemetry/otel.go: InitProvider() with OTLP gRPC exporter + propagators
 ---
 
 ## Mục tiêu

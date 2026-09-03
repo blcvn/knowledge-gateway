@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-022 |
 | **Estimated** | 2h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** requireAdmin() applied to org/sdk routes; route-level permission map not configured
 ---
 
 ## Mục tiêu

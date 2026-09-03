@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-017 |
 | **Estimated** | 2h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** Event buffer in ws.go: basic in-memory buffer; no durable queue / missed-event replay
 ---
 
 ## Mục tiêu

@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 3h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** ObservabilityHandler: Metrics/Errors/Traces handlers exist; error_log table migration missing
 ---
 
 ## Mục tiêu

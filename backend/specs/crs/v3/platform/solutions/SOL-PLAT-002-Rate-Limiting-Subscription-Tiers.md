@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🔴 Critical |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** RedisRateLimiter (sliding window) + RateLimit middleware per-tenant
 ---
 
 ## 1. Phân tích kiến trúc

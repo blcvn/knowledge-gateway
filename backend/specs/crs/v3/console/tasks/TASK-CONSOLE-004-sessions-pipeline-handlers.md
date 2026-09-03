@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** SessionHandler + PipelineHandler in console.go; routes /v1/console/sessions/* + /pipeline/*
 ---
 
 ## Mục tiêu

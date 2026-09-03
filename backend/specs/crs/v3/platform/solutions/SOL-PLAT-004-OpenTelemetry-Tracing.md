@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🟡 High |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** OTel InitProvider + OTLP exporter implemented; HTTP tracing middleware not applied
 ---
 
 ## 1. Phân tích kiến trúc

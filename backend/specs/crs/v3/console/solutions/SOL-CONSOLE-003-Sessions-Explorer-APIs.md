@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/12-agentmemory-services.md §observe-service`
 **Version:** v3/console
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** SessionHandler: ListSessions/GetSession/GetDiff/GetWorkingMemory
 ---
 
 ## 1. Architecture

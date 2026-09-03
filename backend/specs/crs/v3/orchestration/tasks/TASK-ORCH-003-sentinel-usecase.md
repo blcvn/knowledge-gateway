@@ -10,6 +10,8 @@
 | **Depends On** | TASK-ORCH-001 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** orchestration/sentinels.go: SentinelService.EvaluateAll() runs every 30s; conditionMet + trigger implemented
 ---
 
 ## Mục tiêu

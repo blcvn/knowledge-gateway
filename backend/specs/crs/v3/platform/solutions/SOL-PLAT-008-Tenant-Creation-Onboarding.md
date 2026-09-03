@@ -4,6 +4,8 @@
 **TDD refs:** `models/vnp-platform.md`, `architecture/01-gateway.md §4.1`
 **Version:** v3/platform
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** Register usecase exists; email verification + onboarding checklist not implemented
 ---
 
 ## 1. Architecture Analysis

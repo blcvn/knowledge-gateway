@@ -10,6 +10,8 @@
 | **Depends On** | TASK-ORCH-002, TASK-ORCH-003 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** HTTP/gRPC handler for checkpoint endpoints not in gateway router
 ---
 
 ## Mục tiêu

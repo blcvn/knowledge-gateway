@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** GraphHandler.Query() at console.go:189 forwards Cypher to graphiti-store; Cypher validator middleware not implemented
 ---
 
 ## Mục tiêu

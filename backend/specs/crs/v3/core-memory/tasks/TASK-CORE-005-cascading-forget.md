@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-007 (audit migration) |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** vnp-event/usecase/gdpr_service.go: Forget() cascades across all 6 engines; dry-run preview
 ---
 
 ## Mục tiêu

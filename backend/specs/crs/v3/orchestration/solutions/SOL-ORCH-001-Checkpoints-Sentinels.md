@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/12-agentmemory-services.md`, `models/obs-service.md`
 **Version:** v3/orchestration
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** Checkpoint + Sentinel domain + SentinelService implemented; checkpoint HTTP handler pending
 ---
 
 ## 1. Architecture Analysis

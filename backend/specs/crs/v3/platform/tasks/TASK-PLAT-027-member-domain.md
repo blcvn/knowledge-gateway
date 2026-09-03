@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** OrgMember struct added to entity.go; MemberUseCase (invite/remove) not implemented
 ---
 
 ## Mục tiêu

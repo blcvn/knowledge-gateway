@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-021 |
 | **Estimated** | 2h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** requireAdmin() guard in console.go; full RBAC middleware with permission matrix not created
 ---
 
 ## Mục tiêu

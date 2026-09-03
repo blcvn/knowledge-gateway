@@ -10,6 +10,8 @@
 | **Depends On** | TASK-ORCH-001 |
 | **Estimated** | 3h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** orchestration/actions.go: ActionService.Create; Checkpoint usecase (RequestCheckpoint/Approve/Reject) partial in orchestration/
 ---
 
 ## Mục tiêu

@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-001 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** vnp-search-hub: RecallService + SearchOrchestrator (9 .go files); RRF fusion implemented
 ---
 
 ## Mục tiêu

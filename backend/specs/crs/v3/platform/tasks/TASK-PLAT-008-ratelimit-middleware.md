@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-007, TASK-PLAT-003 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** RateLimit() middleware in auth.go:81 — per-tenant quota with X-RateLimit-Remaining header
 ---
 
 ## Mục tiêu

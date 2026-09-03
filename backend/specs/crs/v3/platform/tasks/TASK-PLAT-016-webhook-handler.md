@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-015 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** console_sdk.go: ListWebhooks/CreateWebhook/DeleteWebhook handlers via vnp-admin forward
 ---
 
 ## Mục tiêu

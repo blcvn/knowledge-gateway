@@ -10,6 +10,8 @@
 | **Depends On** | TASK-UI-002, TASK-UI-003 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** GraphHandler: Subgraph/GetEntity/Timeline/GetOntology/UpdateOntology/Query in console.go
 ---
 
 ## Mục tiêu

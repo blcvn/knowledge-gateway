@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/12-agentmemory-services.md §pipeline-service`, `models/pipeline-service.md`
 **Version:** v3/console
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** PipelineHandler: ListRuns/GetRun/GetSteps/ListTemplates
 ---
 
 ## 1. Architecture

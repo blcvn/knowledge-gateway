@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-001, TASK-PLAT-002 |
 | **Estimated** | 4h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** APIKey domain exists; ValidateAPIKey RPC in sm-auth; usecase layer in vnp-platform partial
 ---
 
 ## Mục tiêu

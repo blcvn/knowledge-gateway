@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** Webhook domain entity + CreateWebhookPayload + WebhookStatus constants in entity.go (TASK-008/v2)
 ---
 
 ## Mục tiêu

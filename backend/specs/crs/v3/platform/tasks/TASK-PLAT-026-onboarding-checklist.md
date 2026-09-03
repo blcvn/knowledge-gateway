@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-025 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** Onboarding checklist endpoint not implemented
 ---
 
 ## Mục tiêu

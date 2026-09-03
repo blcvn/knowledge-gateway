@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/09-shared-packages.md §telemetry`, `architecture/08-platform-services.md §VNP Observability`
 **Version:** v3/console
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** ObservabilityHandler: Metrics/Errors/Traces; error_log migration missing
 ---
 
 ## 1. Architecture

@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** RedisRateLimiter (112 lines): sliding window with sorted sets — ratelimit_redis.go
 ---
 
 ## Mục tiêu

@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** UserRole constants in entity.go (admin/editor/viewer); Permission model struct not created
 ---
 
 ## Mục tiêu

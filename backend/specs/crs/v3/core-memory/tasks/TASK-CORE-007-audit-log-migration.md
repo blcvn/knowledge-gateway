@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 1h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** deployment/dev/migrations: observe tables (0040) + agent_memory tables (0041) — audit_log in 0044
 ---
 
 ## Mục tiêu

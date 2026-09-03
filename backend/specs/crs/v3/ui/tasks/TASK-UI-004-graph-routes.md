@@ -10,6 +10,8 @@
 | **Depends On** | TASK-UI-001 |
 | **Estimated** | 1h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** Router: /v1/console/graph/* routes (subgraph, entity, timeline, ontology, query) in router.go
 ---
 
 ## Mục tiêu

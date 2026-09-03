@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** GovernanceHandler: Policies/GDPR/Forget + audit_log table (migration 0044_governance)
 ---
 
 ## Mục tiêu

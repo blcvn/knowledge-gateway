@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** gateway/internal/infra/server/observability.go: Prometheus client + /metrics endpoint
 ---
 
 ## Mục tiêu

@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-001 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** RouteUseCase.Classify() in route.go; LLM-based classification via registered adapter
 ---
 
 ## Mục tiêu

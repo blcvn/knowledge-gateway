@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** ws.go: WSHandler with connections map + mu sync.RWMutex hub (191 lines)
 ---
 
 ## Mục tiêu

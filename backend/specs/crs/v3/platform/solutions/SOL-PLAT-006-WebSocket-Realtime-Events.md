@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🟡 High |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** WSHandler: hub + upgrade + ping/pong + broadcast (191 lines)
 ---
 
 ## 1. Phân tích kiến trúc

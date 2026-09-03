@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-005 |
 | **Estimated** | 3h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** console_sdk.go CreateKey/ListKeys/DeleteKey handlers present; backend usecase not fully wired
 ---
 
 ## Mục tiêu

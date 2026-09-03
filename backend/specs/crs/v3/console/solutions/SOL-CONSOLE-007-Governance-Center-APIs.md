@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/12-agentmemory-services.md §governance`, `models/vnp-admin.md`
 **Version:** v3/console
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** GovernanceHandler: Policies/GDPR/Forget + audit_log migration
 ---
 
 ## 1. Architecture

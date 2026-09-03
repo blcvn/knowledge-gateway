@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** APIKey domain struct (entity.go): ID/TenantID/KeyHash/KeyPrefix/Permissions/Active
 ---
 
 ## Mục tiêu

@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-018 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** SSE fallback endpoint not implemented (ws.go only has WebSocket)
 ---
 
 ## Mục tiêu

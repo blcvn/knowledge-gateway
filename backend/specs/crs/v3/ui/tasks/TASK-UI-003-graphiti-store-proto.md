@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** graphiti-store: 49 .go files; shared/proto/graphiti + api/proto/graphiti generated
 ---
 
 ## Mục tiêu

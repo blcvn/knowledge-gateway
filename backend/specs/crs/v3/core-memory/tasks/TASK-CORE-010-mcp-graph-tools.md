@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-009 |
 | **Estimated** | 4h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** gateway/adapter/mcp/tools/cognee: 6 Cognee tools registered; graphiti MCP tools not in mcp/tools dir
 ---
 
 ## Mục tiêu

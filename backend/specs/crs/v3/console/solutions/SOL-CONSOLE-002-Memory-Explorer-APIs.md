@@ -4,6 +4,8 @@
 **TDD refs:** `architecture/08-platform-services.md §VNP Search Hub`, `architecture/03-graphiti-services.md`
 **Version:** v3/console
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** ExplorerHandler: Search/GetMemory/GetNeighbors/GetVersions
 ---
 
 ## 1. Architecture

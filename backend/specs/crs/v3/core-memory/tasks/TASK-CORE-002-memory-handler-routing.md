@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-001, TASK-CORE-003 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** MemoryHandler + RouteUseCase (route.go): Store → classify → route to engine; Recall → cross-engine search
 ---
 
 ## Mục tiêu

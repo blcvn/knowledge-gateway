@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** sm-auth: Register() usecase exists (auth.go); JWT issued on registration
 ---
 
 ## Mục tiêu

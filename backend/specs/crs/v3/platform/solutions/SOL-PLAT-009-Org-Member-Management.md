@@ -4,6 +4,8 @@
 **TDD refs:** `models/vnp-platform.md §admin`, `architecture/01-gateway.md §4`
 **Version:** v3/platform
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** OrgMember entity + OrgHandler; member invite/remove usecase not implemented
 ---
 
 ## 1. TDD Model Reference

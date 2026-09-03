@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-003 (JWT service) |
 | **Estimated** | 5h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** LoginWithGoogle RPC exists in sm-auth proto; gateway handler calls ForwardToService; Google token validation in sm-auth pending
 ---
 
 ## Mục tiêu

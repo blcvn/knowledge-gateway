@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🟡 High |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** Webhook entity + handler; delivery service (retry/signature) not implemented
 ---
 
 ## 1. Phân tích kiến trúc

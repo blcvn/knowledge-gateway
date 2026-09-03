@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** ExplorerHandler: Search/GetMemory/GetNeighbors/GetVersions in console.go
 ---
 
 ## Mục tiêu

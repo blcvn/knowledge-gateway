@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** domain/entity.go: MemoryTypeSemantic/Episodic/Conversational/Profile/Procedural/Auto types
 ---
 
 ## Mục tiêu

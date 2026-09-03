@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🔴 Critical |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** vnp-search-hub RecallService: cross-engine recall with RRF fusion
 ---
 
 ## 1. Phân tích kiến trúc

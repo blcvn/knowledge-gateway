@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-028 |
 | **Estimated** | 2h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** OrgHandler in console_org.go: GetSettings/UpdateSettings/ListMembers/ListRoles — forwards to vnp-admin; vnp-admin usecase not fully wired
 ---
 
 ## Mục tiêu

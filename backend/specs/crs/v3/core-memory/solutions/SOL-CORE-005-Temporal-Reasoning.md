@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🟡 High |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** Temporal filter in search spec; full temporal reasoning in search_orchestrator partial
 ---
 
 ## 1. Giải pháp

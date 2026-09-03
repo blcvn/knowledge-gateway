@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🔴 Critical |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** vnp-event GDPR cascading forget across 6 engines + dry-run preview
 ---
 
 ## 1. Giải pháp

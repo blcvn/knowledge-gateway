@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-003 |
 | **Estimated** | 1h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** DevMode guard in gateway auth usecase (cfg.Auth.DevMode)
 ---
 
 ## Mục tiêu

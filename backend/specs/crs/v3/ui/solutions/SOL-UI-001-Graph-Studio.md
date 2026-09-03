@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🟡 High |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú audit:** GraphHandler.Query() Cypher forwarding works; Cypher validator middleware missing
 ---
 
 ## 1. Phân tích kiến trúc

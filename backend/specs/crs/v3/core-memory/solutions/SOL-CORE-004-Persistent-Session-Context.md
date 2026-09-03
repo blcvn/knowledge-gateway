@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🟡 High |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** observe-service session context + GetWorkingMemory + audit_log migration
 ---
 
 ## 1. Giải pháp

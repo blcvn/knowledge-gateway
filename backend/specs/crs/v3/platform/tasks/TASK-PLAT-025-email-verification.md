@@ -10,6 +10,8 @@
 | **Depends On** | TASK-PLAT-024 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú audit:** Email verification flow not implemented in sm-auth
 ---
 
 ## Mục tiêu

@@ -10,6 +10,8 @@
 | **Depends On** | TASK-CORE-002 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** gateway/adapter/mcp/tools/agentmemory: 37 tools (memory core/session/observe) registered
 ---
 
 ## Mục tiêu

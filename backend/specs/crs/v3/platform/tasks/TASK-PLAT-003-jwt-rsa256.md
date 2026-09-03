@@ -10,6 +10,8 @@
 | **Depends On** | — |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** JWT RSA256 parsing in gateway/internal/usecase/auth.go (pem.Decode + ParseRSAPublicKey)
 ---
 
 ## Mục tiêu

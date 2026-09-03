@@ -8,6 +8,8 @@
 | **Status** | Open |
 | **Priority** | 🔴 Critical |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú audit:** MemoryHandler + RouteUseCase: auto-classify + route to 5 engine types
 ---
 
 ## 1. Phân tích kiến trúc
