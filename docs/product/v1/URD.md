@@ -5,9 +5,9 @@
 | Field | Value |
 |---|---|
 | **Product** | VNP Memory |
-| **Version** | 2.0.0 |
+| **Version** | 2.1.0 |
 | **Status** | Active Development |
-| **Last Updated** | 2026-06-16 |
+| **Last Updated** | 2026-09-03 |
 | **PRD Reference** | [PRD.md](PRD.md) |
 
 ---
