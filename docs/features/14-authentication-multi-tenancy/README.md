@@ -176,3 +176,28 @@ Auth Middleware
 |---------|---------|
 | `vnp-platform` / `vnp-admin` | Tenant lifecycle, user management, API key CRUD |
 | `gateway` middleware | Auth validation, rate limiting per request |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P2-03 (Tenant isolation gap)**
+- **PP-P4-03 (No policy enforcement)**
+
+### Actors hưởng lợi
+
+P2 Platform Engineer, P4 Enterprise Architect
+
+### Giải pháp tham chiếu
+
+- [S9 — Enterprise Governance](../../bussiness/solutions/S9-governance-compliance.md)
+
+### ROI / Kết quả đo được
+
+> Zero cross-tenant leaks (integration-tested) | API key lifecycle management
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

@@ -179,3 +179,30 @@ POST /v1/ov/resources/ingest
 | `ov-crypto` | File encryption at rest |
 | `ov-admin` | Admin APIs, storage management |
 | `ov-storage` | Low-level MinIO integration |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P5-01 (AI quên project context)**
+- **PP-P5-02 (Không tìm code cũ)**
+- **PP-P5-04 (Re-read files)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P5 IDE Plugin User
+
+### Giải pháp tham chiếu
+
+- [S1 — Persistent Memory Layer](../../bussiness/solutions/S1-persistent-memory.md)
+- [S6 — Smart Context Assembly](../../bussiness/solutions/S6-context-efficiency.md)
+
+### ROI / Kết quả đo được
+
+> L0/L1/L2 tiered loading giảm 60-80% token | Semantic grep không chỉ string match
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

@@ -137,3 +137,28 @@ GET /v1/console/observability/costs    → LLM cost breakdown
 | `obs-service` | Observability infrastructure, OpenTelemetry collector |
 | `vnp-observability` | Platform-level observability APIs |
 | `observe-service` | Agent-level observation (Feature 08) |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P2-02 (Monitoring fragmented)**
+- **PP-P8-02 (No quality metrics)**
+
+### Actors hưởng lợi
+
+P2 Platform Engineer, P3 ML/AI Engineer, P8 Product Manager
+
+### Giải pháp tham chiếu
+
+- [S10 — Zero-config Infrastructure](../../bussiness/solutions/S10-infrastructure-simplicity.md)
+
+### ROI / Kết quả đo được
+
+> MTTD 30min → 5min | LLM cost tracking per engine | Error rate breakdown
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

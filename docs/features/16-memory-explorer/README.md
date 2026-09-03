@@ -68,3 +68,28 @@ Console UI (Memory Explorer)
 | `GET` | `/v1/console/memory/{id}` | Memory detail |
 | `GET` | `/v1/console/memory/{id}/neighbors` | Graph neighbors |
 | `GET` | `/v1/console/memory/{id}/versions` | Version history |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P4-01 (Không biết AI nhớ gì)**
+- **PP-P7-04 (No transparency)**
+
+### Actors hưởng lợi
+
+P4 Enterprise Architect, P7 AI Power User
+
+### Giải pháp tham chiếu
+
+- [S9 — Enterprise Governance](../../bussiness/solutions/S9-governance-compliance.md)
+
+### ROI / Kết quả đo được
+
+> Full visibility: inspect, neighbors, versions của từng memory
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

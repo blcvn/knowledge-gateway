@@ -88,3 +88,27 @@ Console UI (Pipeline Monitor)
 | `GET` | `/v1/console/pipelines/{engine}` | Per-engine status |
 | `GET` | `/v1/console/pipelines/{engine}/jobs` | Job list |
 | `GET` | `/v1/console/pipelines/{engine}/jobs/{id}` | Job detail |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P2-05 (Pipeline failures im lặng)**
+
+### Actors hưởng lợi
+
+P2 Platform Engineer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S10 — Zero-config Infrastructure](../../bussiness/solutions/S10-infrastructure-simplicity.md)
+
+### ROI / Kết quả đo được
+
+> Job status real-time | Failed job alerts | Worker throughput metrics
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

@@ -143,3 +143,28 @@ LLM Call Attempt
 | `memory-service` (extended) | Consolidation pipeline, circuit breaker |
 | `pipeline-service` | Job scheduling, queue management |
 | `vnp-pipelines` | Platform-level pipeline monitoring |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-09 (Storage explosion)**
+- **PP-P1-06 (Context tốn token)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P2 Platform Engineer
+
+### Giải pháp tham chiếu
+
+- [S6 — Smart Context Assembly](../../bussiness/solutions/S6-context-efficiency.md)
+
+### ROI / Kết quả đo được
+
+> 70-90% storage reduction | Session recall 20x nhanh hơn qua summaries
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

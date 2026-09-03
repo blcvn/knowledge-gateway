@@ -196,3 +196,27 @@ orchestration-service (background watcher)
 | Service | Vai trò |
 |---------|---------|
 | `orchestration-service` | Leases, signals, actions, checkpoints, sentinels, sketches/crystals |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-08 (Multi-agent race conditions)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer
+
+### Giải pháp tham chiếu
+
+- [S8 — Distributed Agent Coordination](../../bussiness/solutions/S8-multi-agent.md)
+
+### ROI / Kết quả đo được
+
+> Zero race conditions via leases | Guaranteed signal delivery (NATS) | Action DAG built-in
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

@@ -138,3 +138,30 @@ zep-memory service
 | `zep-graph` | Knowledge graph operations |
 | `zep-search` | Semantic + graph search |
 | `zep-admin` | Admin APIs, tenant management |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-01 (Agent mất context)**
+- **PP-P3-01 (Generic ontology)**
+- **PP-P1-03 (No temporal)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S1 — Persistent Memory Layer](../../bussiness/solutions/S1-persistent-memory.md)
+- [S3 — Temporal Reasoning](../../bussiness/solutions/S3-temporal-reasoning.md)
+
+### ROI / Kết quả đo được
+
+> Session context persist cross-session | Custom ontology cho domain-specific entities | Graph RAG < 200ms
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

@@ -125,3 +125,28 @@ Console UI uploads JSONL file
 - Feature 08 (Agent Observe) — produces observations that replay uses
 - Feature 21 (Sessions Explorer) — lists sessions available for replay
 - Feature 28 (WebSocket) — alternative real-time transport
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-07 (Cannot reproduce bugs)**
+- **PP-P4-04 (Cannot trace AI decision)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer, P4 Enterprise Architect
+
+### Giải pháp tham chiếu
+
+- [S7 — Agent Observability](../../bussiness/solutions/S7-agent-observability.md)
+
+### ROI / Kết quả đo được
+
+> Bug reproduction: impossible → 1 click | Claude Code JSONL import | Timeline scrubbing
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

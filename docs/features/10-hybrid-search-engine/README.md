@@ -160,3 +160,28 @@ On memory add/delete:
 - `shared/pkg/search/` — BM25 implementation, RRF fusion utilities
 - Feature 01 (Unified Memory API) — uses vnp-search-hub for recall
 - Feature 08 (Observe Service) — feeds data into search indexes
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-02 (Memory fragmented)**
+- **PP-P3-02 (Không benchmark engines)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S2 — Unified Memory API](../../bussiness/solutions/S2-unified-api.md)
+
+### ROI / Kết quả đo được
+
+> BM25 + Vector + RRF → tốt hơn any single strategy | Cross-engine recall < 500ms
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

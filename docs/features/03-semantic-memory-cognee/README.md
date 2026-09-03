@@ -132,3 +132,28 @@ POST /v1/cognee/search
 | `cognee-cognify` | 7-step pipeline execution |
 | `cognee-search` | Multi-strategy search |
 | `cognee-pipeline` | Job management, queue, retry |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-02 (Memory fragmented)**
+- **PP-P3-01 (Generic ontology)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S2 — Unified Memory API](../../bussiness/solutions/S2-unified-api.md)
+
+### ROI / Kết quả đo được
+
+> 15+ search strategies | Multi-modal ingestion (PDF, audio, image, CSV, URL)
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

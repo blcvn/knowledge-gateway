@@ -87,3 +87,29 @@ Console UI (User Profiles)
 | `GET` | `/v1/console/profiles/{user_id}/buffers` | Buffer status |
 | `GET` | `/v1/console/profiles/config` | Get config |
 | `PUT` | `/v1/console/profiles/config` | Update config |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P7-03 (Không quên được)**
+- **PP-P7-04 (No transparency)**
+- **PP-P8-01 (No insights)**
+
+### Actors hưởng lợi
+
+P7 AI Power User, P8 Product Manager
+
+### Giải pháp tham chiếu
+
+- [S5 — Automatic User Profiling](../../bussiness/solutions/S5-user-profiling.md)
+
+### ROI / Kết quả đo được
+
+> User tự xem/edit profile | Event timeline | Product insights aggregation
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

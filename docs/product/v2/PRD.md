@@ -5,11 +5,13 @@
 | Field | Value |
 |---|---|
 | **Product** | VNP Memory |
-| **Version** | 2.1.0 |
+| **Version** | 2.2.0 |
 | **Status** | Active Development |
 | **Last Updated** | 2026-09-03 |
 | **Category** | Enterprise AI Infrastructure |
 | **Feature Catalog** | [docs/features/](../features/README.md) — 28 features |
+| **Pain Points** | [docs/bussiness/painpoints/](../bussiness/painpoints/README.md) — 8 actors |
+| **Solutions** | [docs/bussiness/solutions/](../bussiness/solutions/README.md) — 10 solutions |
 
 ---
 
@@ -27,6 +29,20 @@ Thay vì xây dựng thêm "một vector DB nữa", VNP Memory tạo ra một **
 - Tự động quên thông tin hết hạn và giải quyết mâu thuẫn
 - Quan sát và capture toàn bộ agent lifecycle (hook capture, session replay)
 - Tuân thủ governance, audit trail, và multi-tenant isolation cấp enterprise
+
+### Business Value — Before vs After
+
+| Actor | Vấn đề trước đây | Với VNP Memory |
+|---|---|---|
+| AI Agent Developer | 6 tháng tự xây memory infra | **< 5 phút** (`make dev`) |
+| AI Agent Developer | Context token cost $0.50/call | **$0.02/call** (−80%) |
+| AI Agent Developer | Debug agent: 2-4 giờ/issue | **20 phút** (Session Replay) |
+| Platform Engineer | 35+ services riêng lẻ | **1 binary**, 1 healthz endpoint |
+| Enterprise Architect | GDPR forget: manual, bỏ sót | **1 API call**, cascading 6 engines |
+| IDE Plugin User | 10 phút brief AI mỗi sáng | **0 phút** (persistent context) |
+| AI Power User | AI không nhớ preferences | **Personalized từ session đầu** |
+
+> Chi tiết: [Pain Points](../bussiness/painpoints/README.md) | [Solutions](../bussiness/solutions/README.md)
 
 ### Giá trị cốt lõi
 
@@ -48,17 +64,19 @@ Thay vì xây dựng thêm "một vector DB nữa", VNP Memory tạo ra một **
 
 Enterprise AI đang chuyển từ `RAG → Agentic RAG → Persistent Memory Systems`. Các vấn đề lớn nhất:
 
-| # | Vấn đề | Impact |
-|---|---|---|
-| 1 | **Context window đắt** | Chi phí token tăng tuyến tính với context size |
-| 2 | **Agent không nhớ dài hạn** | Mất ngữ cảnh giữa các phiên, không tự cải thiện |
-| 3 | **Memory fragmented** | Thông tin rải rác ở nhiều hệ thống, không thống nhất |
-| 4 | **Thiếu temporal reasoning** | Không theo dõi được sự thay đổi thông tin theo thời gian |
-| 5 | **Thiếu user profiling** | Không có structured profiles từ conversations |
-| 6 | **Governance / Audit gap** | Không kiểm soát được AI nhớ gì, từ đâu, ai tạo |
-| 7 | **Memory không tự evolve** | Knowledge cũ không bị replace khi có thông tin mới |
-| 8 | **Thiếu agent observability** | Không theo dõi được agent lifecycle, hook events, session replay |
-| 9 | **Multi-agent coordination** | Không có distributed lease/signal mechanism cho agent coordination |
+| # | Vấn đề | Impact | Solution |
+|---|---|---|---|
+| 1 | **Context window đắt** | Chi phí token tăng tuyến tính | [S6](../bussiness/solutions/S6-context-efficiency.md) — 80% token reduction |
+| 2 | **Agent không nhớ dài hạn** | Mất ngữ cảnh giữa các phiên | [S1](../bussiness/solutions/S1-persistent-memory.md) — 4-layer persistent memory |
+| 3 | **Memory fragmented** | Thông tin rải rác, không thống nhất | [S2](../bussiness/solutions/S2-unified-api.md) — Unified Memory API |
+| 4 | **Thiếu temporal reasoning** | Không theo dõi thay đổi theo thời gian | [S3](../bussiness/solutions/S3-temporal-reasoning.md) — Graphiti validity windows |
+| 5 | **Thiếu user profiling** | Không có structured profiles | [S5](../bussiness/solutions/S5-user-profiling.md) — Memobase YOLO Engine |
+| 6 | **Governance / Audit gap** | Không kiểm soát AI nhớ gì | [S9](../bussiness/solutions/S9-governance-compliance.md) — Enterprise Governance |
+| 7 | **Memory không tự evolve** | Knowledge cũ không tự update | [S4](../bussiness/solutions/S4-knowledge-evolution.md) — Adaptive Knowledge Evolution |
+| 8 | **Thiếu agent observability** | Không track được agent lifecycle | [S7](../bussiness/solutions/S7-agent-observability.md) — Hook Capture + Session Replay |
+| 9 | **Multi-agent coordination** | Race conditions, không phối hợp | [S8](../bussiness/solutions/S8-multi-agent.md) — Distributed Leases + Signals |
+
+> Phân tích chi tiết: [Pain Points](../bussiness/painpoints/README.md)
 
 ### 2.2 Hạn chế giải pháp hiện tại
 
@@ -79,21 +97,40 @@ Enterprise AI đang chuyển từ `RAG → Agentic RAG → Persistent Memory Sys
 
 ### 3.1 Primary Users
 
-| Persona | Nhu cầu | Use Case |
-|---|---|---|
-| **AI Agent Developer** | Memory SDK cho agent, hook capture | Chatbot, coding assistant, support bot |
-| **Platform Engineer** | Self-host & scale memory infra | Multi-tenant deployment, monitoring |
-| **ML/AI Engineer** | Tối ưu context quality | Ontology tuning, retrieval evaluation |
-| **Enterprise Architect** | Governance & compliance | Audit trail, GDPR, tenant isolation |
+| Persona | Nhu cầu | Pain Points | Key Solutions |
+|---|---|---|---|
+| **AI Agent Developer** | Memory SDK cho agent, hook capture | [P1 pain points](../bussiness/painpoints/P1-ai-agent-developer.md) | S1, S2, S6, S7 |
+| **Platform Engineer** | Self-host & scale memory infra | [P2 pain points](../bussiness/painpoints/P2-platform-engineer.md) | S9, S10 |
+| **ML/AI Engineer** | Tối ưu context quality | [P3 pain points](../bussiness/painpoints/P3-ml-ai-engineer.md) | S3, S6, S7 |
+| **Enterprise Architect** | Governance & compliance | [P4 pain points](../bussiness/painpoints/P4-enterprise-architect.md) | S9 |
 
 ### 3.2 Secondary Users
 
-| Persona | Nhu cầu |
-|---|---|
-| **AI Framework Author** | Integration SDK (LangChain, CrewAI, AutoGen) |
-| **Product Manager** | User profile analytics, usage metrics |
-| **DevOps Team** | Container orchestration, health monitoring |
-| **IDE Plugin User** | AI coding assistant với persistent memory |
+| Persona | Nhu cầu | Pain Points | Key Solutions |
+|---|---|---|---|
+| **AI Framework Integrator** | Standard API, context injection | [P6 pain points](../bussiness/painpoints/P6-framework-integrator.md) | S2, S6 |
+| **Product Manager** | User profile analytics | [P8 pain points](../bussiness/painpoints/P8-product-manager.md) | S5 |
+| **IDE Plugin User** | AI coding assistant với persistent memory | [P5 pain points](../bussiness/painpoints/P5-ide-plugin-user.md) | S1, S6 |
+| **AI Power User** | Personalization, transparency | [P7 pain points](../bussiness/painpoints/P7-ai-power-user.md) | S1, S4, S5 |
+
+---
+
+## 3.3 Solution Architecture Overview
+
+Mỗi pain point của actor được giải quyết bởi một Solution cụ thể:
+
+| Solution | Giải quyết | Features |
+|---|---|---|
+| [S1 — Persistent Memory](../bussiness/solutions/S1-persistent-memory.md) | Agent mất context sau session | F01, F04, F05, F06, F07 |
+| [S2 — Unified API](../bussiness/solutions/S2-unified-api.md) | Memory fragmented, no standard | F01, F10, F13 |
+| [S3 — Temporal Reasoning](../bussiness/solutions/S3-temporal-reasoning.md) | RAG không hiểu thời gian | F02, F04, F09 |
+| [S4 — Knowledge Evolution](../bussiness/solutions/S4-knowledge-evolution.md) | Knowledge không tự update | F07, F09, F19 |
+| [S5 — User Profiling](../bussiness/solutions/S5-user-profiling.md) | Không có user profile | F05, F18 |
+| [S6 — Context Efficiency](../bussiness/solutions/S6-context-efficiency.md) | Context tốn token/chậm | F05, F06, F12, F13 |
+| [S7 — Agent Observability](../bussiness/solutions/S7-agent-observability.md) | Không debug được agent | F08, F20, F21, F26 |
+| [S8 — Multi-Agent Coordination](../bussiness/solutions/S8-multi-agent.md) | Race conditions | F11 |
+| [S9 — Enterprise Governance](../bussiness/solutions/S9-governance-compliance.md) | GDPR, audit, policy gap | F14, F16, F22, F27 |
+| [S10 — Infrastructure](../bussiness/solutions/S10-infrastructure-simplicity.md) | 35+ services phức tạp | F01, F15, F23, F24, F25 |
 
 ---
 

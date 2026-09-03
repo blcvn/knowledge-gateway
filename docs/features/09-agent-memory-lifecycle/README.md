@@ -173,3 +173,28 @@ memory-service
 |-------|---------|
 | `agent_memories` | Memory records với versioning, strength, TTL |
 | `memory_slots` | Named memory slots (scope + label) |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-04 (Knowledge không tự update)**
+- **PP-P1-09 (Storage explosion)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer
+
+### Giải pháp tham chiếu
+
+- [S4 — Adaptive Knowledge Evolution](../../bussiness/solutions/S4-knowledge-evolution.md)
+
+### ROI / Kết quả đo được
+
+> Jaccard dedup → no duplicate memories | Salience-based eviction tự động
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

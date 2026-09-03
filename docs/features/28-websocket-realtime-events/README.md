@@ -112,3 +112,27 @@ Dashboard component (UI)
 - Feature 08 (Agent Observe) — generates `observe_event` events
 - Feature 15 (Dashboard) — consumes events for live updates
 - Feature 14 (Auth) — WS connection requires valid JWT
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P2-05 (Pipeline failures im lặng)**
+
+### Actors hưởng lợi
+
+P2 Platform Engineer, P1 AI Agent Developer
+
+### Giải pháp tham chiếu
+
+- [S10 — Zero-config Infrastructure](../../bussiness/solutions/S10-infrastructure-simplicity.md)
+
+### ROI / Kết quả đo được
+
+> Real-time push alerts khi pipeline fails | No polling required
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

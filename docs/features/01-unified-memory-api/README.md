@@ -143,3 +143,29 @@ GET /v1/memory/timeline  ──►  Gateway
 | Store response | `< 50ms` (non-blocking, returns immediately) |
 | Cross-engine recall (p95) | `< 500ms` |
 | Timeline query (p95) | `< 200ms` |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-02 (Memory fragmented)**
+- **PP-P6-01 (No standard API)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P6 Framework Integrator, P2 Platform Engineer
+
+### Giải pháp tham chiếu
+
+- [S2 — Unified Memory API](../../bussiness/solutions/S2-unified-api.md)
+- [S10 — Zero-config Infrastructure](../../bussiness/solutions/S10-infrastructure-simplicity.md)
+
+### ROI / Kết quả đo được
+
+> 6 APIs → 1 API | 500 LOC → 20 LOC | 3 tháng → 5 phút setup
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

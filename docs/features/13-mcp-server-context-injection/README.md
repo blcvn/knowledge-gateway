@@ -168,3 +168,29 @@ Context Assembly
 | `gateway/adapter/mcp/server.go` | MCP server implementation |
 | `sm-mcp` | Supermemory-specific MCP tools |
 | All engine services | Backend for each MCP tool |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P6-03 (Manual context injection)**
+- **PP-P1-06 (Context tốn token)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P5 IDE Plugin User, P6 Framework Integrator
+
+### Giải pháp tham chiếu
+
+- [S2 — Unified Memory API](../../bussiness/solutions/S2-unified-api.md)
+- [S6 — Smart Context Assembly](../../bussiness/solutions/S6-context-efficiency.md)
+
+### ROI / Kết quả đo được
+
+> 37+ tools (vs 16 ban đầu) | Token budget management | 3 agent scopes
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

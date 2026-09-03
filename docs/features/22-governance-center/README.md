@@ -141,3 +141,29 @@ GovernanceHandler
 |-------|---------|
 | `audit_entries` | Audit trail records (40+ operation types) |
 | Tenant tables | In `vnp-platform` service |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P4-01 (No audit)**
+- **PP-P4-02 (GDPR forget không thực thi)**
+- **PP-P4-03 (No policy)**
+
+### Actors hưởng lợi
+
+P4 Enterprise Architect, P2 Platform Engineer
+
+### Giải pháp tham chiếu
+
+- [S9 — Enterprise Governance](../../bussiness/solutions/S9-governance-compliance.md)
+
+### ROI / Kết quả đo được
+
+> GDPR forget 1 API call cascading | Audit trail searchable | OPA policies | < 3s deletion
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

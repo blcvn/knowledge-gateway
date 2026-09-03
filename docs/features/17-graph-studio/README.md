@@ -85,3 +85,27 @@ Console UI (Graph Studio)
 | `GET` | `/v1/console/graph/ontology` | Get ontology |
 | `PUT` | `/v1/console/graph/ontology` | Update ontology |
 | `POST` | `/v1/console/graph/query` | Run graph query |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P3-02 (Không visualize graph)**
+
+### Actors hưởng lợi
+
+P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S3 — Temporal Reasoning](../../bussiness/solutions/S3-temporal-reasoning.md)
+
+### ROI / Kết quả đo được
+
+> Subgraph exploration | Entity + temporal timeline | Ontology editor
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

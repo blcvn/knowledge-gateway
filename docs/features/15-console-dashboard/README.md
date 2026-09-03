@@ -65,3 +65,27 @@ Real-time updates:
 | `GET` | `/v1/console/dashboard/metrics` | Key metrics |
 | `GET` | `/v1/console/dashboard/throughput` | Throughput timeseries |
 | `GET` | `/v1/console/dashboard/heatmap` | Memory activity heatmap |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P2-02 (Monitoring fragmented)**
+
+### Actors hưởng lợi
+
+P2 Platform Engineer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S10 — Zero-config Infrastructure](../../bussiness/solutions/S10-infrastructure-simplicity.md)
+
+### ROI / Kết quả đo được
+
+> 1 dashboard thay vì 35 | Real-time memory heatmap
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

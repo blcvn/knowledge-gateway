@@ -80,3 +80,27 @@ Console UI (Sessions Explorer)
 | `GET` | `/v1/console/sessions/{id}/diff` | Memory diff |
 | `GET` | `/v1/console/sessions/{id}/working-memory` | Working memory |
 | `GET` | `/v1/console/sessions/{id}/user-summary` | User summary |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-07 (Không track agent session)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S7 — Agent Observability](../../bussiness/solutions/S7-agent-observability.md)
+
+### ROI / Kết quả đo được
+
+> Live session monitoring | Working memory inspector | Memory diff view
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

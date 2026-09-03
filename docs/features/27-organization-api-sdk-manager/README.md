@@ -118,3 +118,29 @@ Webhook delivery:
 | `GET` | `/v1/console/sdk/webhooks` | List webhooks |
 | `POST` | `/v1/console/sdk/webhooks` | Create webhook |
 | `DELETE` | `/v1/console/sdk/webhooks/{id}` | Delete webhook |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P2-04 (No single API management)**
+- **PP-P6-02 (No SDK)**
+
+### Actors hưởng lợi
+
+P2 Platform Engineer, P6 Framework Integrator
+
+### Giải pháp tham chiếu
+
+- [S9 — Enterprise Governance](../../bussiness/solutions/S9-governance-compliance.md)
+- [S10 — Zero-config Infrastructure](../../bussiness/solutions/S10-infrastructure-simplicity.md)
+
+### ROI / Kết quả đo được
+
+> API key lifecycle central management | Engine aliases | SSO | SDK foundation
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

@@ -85,3 +85,28 @@ Data sources:
 | `GET` | `/v1/console/infra/databases` | Database status |
 | `GET` | `/v1/console/infra/resources` | Resource usage |
 | `GET` | `/v1/console/infra/deployments` | Deployments |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P2-01 (35+ services phức tạp)**
+- **PP-P2-02 (Monitoring fragmented)**
+
+### Actors hưởng lợi
+
+P2 Platform Engineer
+
+### Giải pháp tham chiếu
+
+- [S10 — Zero-config Infrastructure](../../bussiness/solutions/S10-infrastructure-simplicity.md)
+
+### ROI / Kết quả đo được
+
+> 1 aggregated /healthz endpoint | Service topology map | Database health stats
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

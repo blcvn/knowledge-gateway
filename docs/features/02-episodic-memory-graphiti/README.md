@@ -127,3 +127,28 @@ graphiti-search service
 - **Neo4j 5+**: Primary graph storage (nodes, edges, temporal properties)
 - **pgvector / Qdrant**: Vector embeddings for semantic search
 - **PostgreSQL**: Metadata, provenance, audit records
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-03 (RAG không hiểu thời gian)**
+- **PP-P3-02 (Không đo retrieval quality)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S3 — Temporal Reasoning](../../bussiness/solutions/S3-temporal-reasoning.md)
+
+### ROI / Kết quả đo được
+
+> Recall stale facts → isLatest=true only | 'Khi nào X thay đổi?' → có câu trả lời
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

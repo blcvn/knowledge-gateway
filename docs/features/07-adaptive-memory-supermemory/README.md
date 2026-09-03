@@ -188,3 +188,30 @@ sm-search service
 | `sm-analytics` | Usage analytics, cost tracking |
 | `sm-project` | Project space management |
 | `sm-engine` | Core adaptive KG engine |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-04 (Knowledge không tự update)**
+- **PP-P7-02 (Không dạy AI nhớ vĩnh viễn)**
+- **PP-P7-03 (Không quên được)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P7 AI Power User
+
+### Giải pháp tham chiếu
+
+- [S1 — Persistent Memory Layer](../../bussiness/solutions/S1-persistent-memory.md)
+- [S4 — Adaptive Knowledge Evolution](../../bussiness/solutions/S4-knowledge-evolution.md)
+
+### ROI / Kết quả đo được
+
+> Auto contradiction resolution | forgetAfter policy | 3 relation types (updates/extends/derives)
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

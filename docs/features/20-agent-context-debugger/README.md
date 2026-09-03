@@ -69,3 +69,28 @@ GET /v1/console/debugger/traces
 | `POST` | `/v1/console/debugger/trace` | Create debug trace |
 | `GET` | `/v1/console/debugger/traces/{id}` | Get trace detail |
 | `GET` | `/v1/console/debugger/traces` | List traces |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-07 (Không debug được)**
+- **PP-P3-03 (Context assembly black box)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S7 — Agent Observability](../../bussiness/solutions/S7-agent-observability.md)
+
+### ROI / Kết quả đo được
+
+> Full context trace per LLM call | Source breakdown + token count | MTTR 4h → 30min
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

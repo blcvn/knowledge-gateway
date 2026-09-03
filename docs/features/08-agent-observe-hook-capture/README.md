@@ -158,3 +158,28 @@ POST /v1/observe/sessions/{id}/end      → End session
 |---------|---------|
 | `observe-service` | 14-step pipeline, session management, SSE stream |
 | `obs-service` | Alias / extended version for platform-level observability |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-07 (Không track agent)**
+- **PP-P4-04 (Không trace AI decision)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer, P4 Enterprise Architect
+
+### Giải pháp tham chiếu
+
+- [S7 — Agent Observability](../../bussiness/solutions/S7-agent-observability.md)
+
+### ROI / Kết quả đo được
+
+> Debug time 4h → 20min | Auto privacy redaction | Real-time SSE stream
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

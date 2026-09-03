@@ -87,3 +87,27 @@ Console UI (Adaptive Memory)
 | `GET` | `/v1/console/adaptive/analytics` | Analytics |
 | `GET` | `/v1/console/adaptive/forget-rules` | Forget config |
 | `PUT` | `/v1/console/adaptive/forget-rules` | Update forget config |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-04 (Knowledge không tự update)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P3 ML/AI Engineer
+
+### Giải pháp tham chiếu
+
+- [S4 — Adaptive Knowledge Evolution](../../bussiness/solutions/S4-knowledge-evolution.md)
+
+### ROI / Kết quả đo được
+
+> Visual version explorer | Forget rules UI | Connector management
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*

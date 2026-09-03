@@ -163,3 +163,30 @@ memobase-context service
 | Context retrieval (p95) | `< 100ms` |
 | LLM calls per flush | Fixed 3 (predictable cost) |
 | Buffer flush threshold | 20 blobs (configurable) |
+
+---
+
+## Business Value
+
+### Pain Points được giải quyết
+
+- **PP-P1-05 (No user profile)**
+- **PP-P7-01 (No personalization)**
+- **PP-P8-01 (No insights)**
+
+### Actors hưởng lợi
+
+P1 AI Agent Developer, P7 AI Power User, P8 Product Manager
+
+### Giải pháp tham chiếu
+
+- [S1 — Persistent Memory Layer](../../bussiness/solutions/S1-persistent-memory.md)
+- [S5 — Automatic User Profiling](../../bussiness/solutions/S5-user-profiling.md)
+
+### ROI / Kết quả đo được
+
+> Context retrieval < 100ms | Fixed 3 LLM calls (predictable cost) | 4 structured categories
+
+---
+
+*Xem thêm: [Pain Points](../../bussiness/painpoints/README.md) | [Solutions](../../bussiness/solutions/README.md)*
