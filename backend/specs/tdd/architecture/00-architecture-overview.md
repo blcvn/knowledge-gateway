@@ -132,8 +132,8 @@ Hợp nhất **Cognee** (semantic KG, RAG), **Graphiti** (temporal episodic KG),
 | **Zep (Context)** | zep-user, zep-thread, zep-memory, zep-graph, zep-search, zep-admin | 6 | Context engineering, temporal KG, sub-200ms |
 | **Supermemory (Adaptive)** | sm-document, sm-memory, sm-search, sm-profile, sm-connector, sm-mcp, sm-auth, sm-analytics, sm-project | 9 | Adaptive KG, forgetting curve, connectors |
 | **Platform** | vnp-event, vnp-search-hub, vnp-admin, kg-service | 4 | Cross-engine orchestration |
-| **AgentMemory** | observe-service, orchestration-service, pipeline-service | 3 | Hook capture, multi-agent leases, consolidation |
-| **Infrastructure** | obs-service, search-service, storage-service, memory-service | 4 | Observability, search, storage, unified memory adapter |
+| **AgentMemory** | observe-service, memory-service, orchestration-service, pipeline-service | 4 | Hook capture, memory lifecycle, multi-agent leases, consolidation |
+| **Infrastructure** | obs-service, search-service, storage-service | 3 | Observability, cross-engine search, unified storage adapter |
 
 ### 3.3 What Is Shared vs Separate
 
@@ -155,6 +155,7 @@ Hợp nhất **Cognee** (semantic KG, RAG), **Graphiti** (temporal episodic KG),
 |-------|-----------|---------|
 | **Language** | Go 1.25+ | All |
 | **External API** | net/http (stdlib) + OpenAPI 3.1 | Gateway |
+| **MCP Server** | JSON-RPC 2.0 (SSE + HTTP Streamable) | Gateway (MCP adapter, 37+ tools target) |
 | **Internal RPC** | gRPC + Protobuf v3 | All services |
 | **Async events** | NATS JetStream (embedded dev / external prod) | All services |
 | **Relational DB** | PostgreSQL 17 | Admin, Memobase, observe-service |

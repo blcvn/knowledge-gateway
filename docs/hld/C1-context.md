@@ -36,7 +36,7 @@ C4Context
     Rel(p7, memory, "View/edit profile\nGET /v1/console/profiles", "REST JSON / Console UI")
 
     Rel(memory, llm, "LLM calls for:\nextract, classify, summarize", "HTTPS / Bifrost")
-    Rel(claude, memory, "22 MCP tools\nmemory_store, ov_grep...", "MCP JSON-RPC 2.0")
+    Rel(claude, memory, "37+ MCP tools\nmemory_store, ov_grep...", "MCP JSON-RPC 2.0")
     Rel(framework, memory, "REST API integration\nLangChain, AutoGen...", "REST JSON")
     Rel(memory, connectors, "Sync external data\nGDrive, Notion, GitHub", "HTTPS OAuth2")
     Rel(sso, memory, "Google OAuth2 token\n→ VNP JWT", "HTTPS OIDC")

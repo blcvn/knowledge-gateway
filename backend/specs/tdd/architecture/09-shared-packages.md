@@ -217,7 +217,40 @@ import "vnp-memory/shared/pkg/tenant"
 
 ---
 
-## 5. What Does NOT Exist (Common Mistakes)
+## 5. HLD Target vs Current Implementation
+
+### MemoryType — HLD defines 6+1 types (C4-code.md canonical)
+
+```go
+// HLD target interface (docs/hld/C4-code.md)
+const (
+    MemoryTypeEpisodic      MemoryType = "episodic"
+    MemoryTypeSemantic      MemoryType = "semantic"
+    MemoryTypeConversational MemoryType = "conversational"
+    MemoryTypeProfile       MemoryType = "profile"
+    MemoryTypeProcedural    MemoryType = "procedural"
+    MemoryTypeAdaptive      MemoryType = "adaptive"   // Supermemory engine target
+    MemoryTypeAuto          MemoryType = "auto"       // LLM classified
+)
+// Current gateway/domain/entity.go: missing "adaptive" — pending implementation
+```
+
+### Vector Storage — HLD includes Qdrant as optional
+
+| HLD target | Current implementation | Status |
+|---|---|---|
+| pgvector (default) | ✅ Implemented | Production |
+| Qdrant (optional) | 🔲 Pluggable interface pending | CR-INFRA-002 |
+
+### MCP Server — HLD target: 37+ tools
+
+| HLD target | Current implementation | Status |
+|---|---|---|
+| 37+ tools | 22 tools registered | 15 tools pending (AgentMemory MCP) |
+
+---
+
+## 6. What Does NOT Exist (Common Mistakes)
 
 Các paths sau **không tồn tại** trong codebase — đây là TDD lỗi thời:
 

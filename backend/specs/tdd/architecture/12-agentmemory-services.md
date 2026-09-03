@@ -36,37 +36,51 @@ type RawObservation struct {
     ID        string
     SessionID string
     TenantID  string
-    HookType  string     // 12 HookTypes (value_object.go):
-                         // session_start, prompt_submit, pre_tool_use,
-                         // post_tool_use, post_tool_failure, session_end,
-                         // task_completed, pre_subagent, post_subagent,
-                         // notification, stop, custom
-    ObsType   string     // 15 ObsTypes: tool_call, tool_success, error, conversation,
-                         // file_write, file_read, search, exec, commit, build,
-                         // test, install, api_call, memory, decision
+    HookType  string     // 12 hook types (per HLD C4 canonical definition):
+                         // session_start, session_end, llm_prompt, llm_response,
+                         // tool_call, tool_result, memory_read, memory_write,
+                         // plan_step, decision, error, checkpoint
+                         // Note: current code uses alternate names — see ADR alignment task
+    ObsType   string     // 15 observation sub-types: tool_call, tool_success, error,
+                         // conversation, file_write, file_read, search, exec,
+                         // commit, build, test, install, api_call, memory, decision
     ToolName  string
     Payload   []byte     // JSON, PII-redacted before persist
     CreatedAt time.Time
 }
 ```
 
-### 14-Step Pipeline
+### 14-Step Pipeline (HLD canonical — docs/hld/C3-component.md)
+
+> **HLD definition** (C3): Validate → Auth → Dedup → Redact → Parse → Enrich → Classify
+> → Store(postgres) → Index(BM25) → Embed(vector) → Publish(NATS) → Update Session → Stream SSE
+>
+> **Current implementation** (`observe/pipeline.go`): 13 steps — Auth delegated to Gateway middleware,
+> Embed step pending implementation. All other steps present with different naming.
+
+| Step | HLD name | Current impl | Status |
+|---|---|---|---|
+| 1 | Validate | validate | ✅ |
+| 2 | Auth + TenantID | (gateway middleware) | ✅ delegated |
+| 3 | Dedup (30s TTL) | dedup | ✅ |
+| 4 | Redact PII+secrets | privacy | ✅ |
+| 5 | Parse payload | build | ✅ |
+| 6 | Enrich metadata | agentId | ✅ partial |
+| 7 | Classify hook type | (implicit in build) | ✅ |
+| 8 | Store → PostgreSQL | persist | ✅ |
+| 9 | Index BM25 | index | ✅ |
+| 10 | Embed → vector | (pending) | 🔲 CR-AGENT-002 |
+| 11 | Publish NATS | (NATS on EndSession) | ✅ |
+| 12 | Update session state | session | ✅ |
+| 13 | Stream SSE | stream | ✅ |
+| 14 | Compress (rule-based) | compress | ✅ |
 
 ```
-1. validate       — schema check HookType valid
-2. dedup          — SHA256 hash, 30s TTL window
-3. privacy        — PII redaction (shared/pkg/privacy)
-4. build          — construct RawObservation struct
-5. image          — extract image attachments (if any)
-6. mutex          — per-session ordering mutex
-7. limit          — max observations per session check
-8. agentId        — validate + normalize agent ID
-9. persist        — save to PostgreSQL
-10. stream        — SSE broadcast to viewers
-11. session       — update session metadata (LastActiveAt, ObservationCount)
-12. compress      — synthetic compression (no LLM, rule-based)
-13. index         — update BM25 in-memory index for observe-search
-(NATS publish)     — "agent.session.complete" on EndSession
+HLD 14-step pipeline implementation status:
+1.validate → 2.auth(gateway) → 3.dedup → 4.privacy → 5.build → 6.image
+→ 7.mutex → 8.limit → 9.agentId → 10.persist → 11.stream → 12.session
+→ 13.compress → 14.index
+[Embed step: pending — see CR-AGENT-002]
 ```
 
 ### API Endpoints (HTTP)
@@ -266,4 +280,54 @@ orchestration-service ◀── all agents (lease acquire/release, signals)
 
 pipeline-service Tier 3 ──▶ ov-resource (procedural memory)
 pipeline-service Tier 4 ──▶ sm-memory (adaptive memory / insights)
+```
+
+---
+
+## 4. memory-service [AgentMemory Layer — per HLD]
+
+**Module**: `vnp-memory/services/memory-service`
+**Role**: Agent Memory Lifecycle — per HLD C2/C3 (F09)
+**Layer**: AgentMemory (not Platform) per HLD canonical grouping
+
+> **Implementation note**: memory-service provides Jaccard versioning, salience-based
+> eviction, and 6 memory type support. It is architecturally grouped under AgentMemory
+> in HLD, though its Go module currently sits alongside platform services.
+
+### HLD Memory Types (C4 canonical — 6 types)
+
+```go
+// Per HLD C4-code.md — target interface
+type MemoryType string
+const (
+    MemoryTypeEpisodic      MemoryType = "episodic"
+    MemoryTypeSemantic      MemoryType = "semantic"
+    MemoryTypeConversational MemoryType = "conversational"
+    MemoryTypeProfile       MemoryType = "profile"
+    MemoryTypeProcedural    MemoryType = "procedural"
+    MemoryTypeAdaptive      MemoryType = "adaptive"  // Supermemory engine
+    // "auto" for LLM-classified routing
+)
+```
+
+### Core Components (per HLD C3)
+
+| Component | Function |
+|---|---|
+| **Jaccard Versioning Engine** | similarity threshold → merge or create new version |
+| **Eviction Manager** | salience = importance × recency × frequency |
+| **Memory Decay** | time-based score decay for all types |
+| **Slots Manager** | scope+label based key-value memory slots |
+
+### StoreRequest (HLD canonical — TenantID in body)
+
+```go
+// Per HLD C4 — TenantID carried in request for cross-service consistency
+type StoreRequest struct {
+    TenantID string         `json:"tenant_id"` // propagated from gateway auth
+    UserID   string         `json:"user_id"`
+    Content  string         `json:"content"`
+    Type     MemoryType     `json:"type"`
+    Metadata map[string]any `json:"metadata,omitempty"`
+}
 ```

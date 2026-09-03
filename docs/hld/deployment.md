@@ -82,7 +82,7 @@ Internet
     │  Redis Sentinel (×3)      MinIO Distributed (×4)             │
     │  (master + 2 sentinels)   (S3 compatible, erasure coding)    │
     │                                                               │
-    │  pgvector (via postgres)  LLM Proxy (Bifrost)               │
+    │  Qdrant (optional, ×2)    LLM Proxy (Bifrost)               │
     │  (high-scale vector)      (multi-provider routing)           │
     └───────────────────────────────────────────────────────────────┘
                                     │

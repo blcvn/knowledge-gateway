@@ -53,6 +53,6 @@ Level 4 — CODE       : Domain models, interfaces (tham khảo source)
 │    └─────────────────────────────────────────-┘                │
 │                 │                                               │
 │    ┌────────────┼──────────────────┐                           │
-│    PostgreSQL  Neo4j   Redis  NATS  MinIO  pgvector         │
+│    PostgreSQL  Neo4j   Redis  NATS  MinIO  Qdrant(opt)         │
 └─────────────────────────────────────────────────────────────────┘
 ```

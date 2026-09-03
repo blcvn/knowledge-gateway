@@ -98,42 +98,36 @@ AI Agent              API Gateway         vnp-search-hub         Engines
 
 ## Flow 3 — Agent Observe Hook (F08)
 
-> **Note**: Session must be started first via `POST /v1/observe/sessions`
-
 ```
 AI Agent (with SDK)        observe-service         Storage / NATS
     │                           │                       │
-    │  1. POST /v1/observe/sessions                     │
-    │  {project, cwd, model, agent_id}                  │
-    │─────────────────────────────────────────────────► │
-    │  ← {session_id: "s_xxx"}                          │
-    │                           │                       │
-    │  2. POST /v1/observe/sessions/{id}/observe         │
-    │  {hook_type: "prompt_submit",                      │
-    │   payload: {prompt, tokens, model}}               │
+    │  POST /v1/observe/hooks    │                       │
+    │  {session_id: "s1",        │                       │
+    │   hook_type: "llm_prompt", │                       │
+    │   payload: {prompt, tokens}}                       │
     │───────────────────────────►│                       │
     │                           │                       │
-    │               13-Step Pipeline:                   │
-    │               ├── 1. validate   (schema check)    │
-    │               ├── 2. dedup      (SHA256, 30s TTL) │
-    │               ├── 3. privacy    (PII redaction)   │
-    │               ├── 4. build      (RawObservation)  │
-    │               ├── 5. image      (extract images)  │
-    │               ├── 6. mutex      (session ordering)│
-    │               ├── 7. limit      (max obs check)   │
-    │               ├── 8. agentId    (normalize)       │
-    │               ├── 9. persist  → PostgreSQL        │──►│
-    │               ├── 10. stream  → SSE broadcast     │──►│
-    │               ├── 11. session   (update metadata) │──►│
-    │               ├── 12. compress  (rule-based)      │──►│
-    │               └── 13. index     (BM25 update)     │──►│
+    │                   14-Step Pipeline:               │
+    │                   ├── 1. Validate schema          │
+    │                   ├── 2. Auth + TenantID          │
+    │                   ├── 3. Dedup (DedupMap 30s TTL) │
+    │                   ├── 4. Redact PII + secrets     │
+    │                   ├── 5. Parse payload            │
+    │                   ├── 6. Enrich (agent metadata)  │
+    │                   ├── 7. Classify hook type       │
+    │                   ├── 8. Store → PostgreSQL       │──►│
+    │                   ├── 9. Index BM25               │──►│
+    │                   ├── 10. Embed → pgvector        │──►│
+    │                   ├── 11. Publish NATS →          │──►│
+    │                   │        agent.hook.captured    │   │
+    │                   ├── 12. Update session state    │   │
+    │                   └── 13. Stream SSE (Console)    │   │
     │◄───────────────────────────│                       │
-    │  HTTP 200 OK               │    NATS (async):      │
-    │  {hook_id: "h_xxx"}        │  agent.hook.captured → pipeline-service
-    │                            │  (on EndSession: agent.session.complete)
+    │  HTTP 200 OK               │                       │
+    │  {hook_id: "h_xxx"}        │    14. NATS triggers (async):
+    │                            │    └── pipeline-service (if session complete)
+    │                            │    └── vnp-event timeline update
 ```
-
-> **Auth note**: TenantID is resolved at Gateway middleware — observe-service receives TenantID in gRPC metadata, not in hook payload.
 
 ---
 

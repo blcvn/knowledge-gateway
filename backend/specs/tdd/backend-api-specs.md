@@ -64,16 +64,24 @@ All requests require **one** of:
 | `DELETE` | `/v1/memory/slots/{scope}/{label}` | `AgentMemoryHandler.DeleteSlot` | Delete slot |
 
 ### Observe API — `/v1/observe/*` [AgentMemory Layer]
-| Method | Path | Handler | Description |
-|--------|------|---------|-------------|
-| `POST` | `/v1/observe/sessions` | `AgentMemoryHandler.StartSession` | Start agent session |
-| `POST` | `/v1/observe/sessions/{id}/observe` | `AgentMemoryHandler.Observe` | Submit hook event |
-| `POST` | `/v1/observe/sessions/{id}/end` | `AgentMemoryHandler.EndSession` | End session |
-| `GET` | `/v1/observe/sessions/{id}` | `AgentMemoryHandler.GetSession` | Get session detail |
-| `GET` | `/v1/observe/sessions` | `AgentMemoryHandler.ListSessions` | List sessions |
-| `DELETE` | `/v1/observe/sessions/{id}` | `AgentMemoryHandler.DeleteSession` | Delete session |
-| `GET` | `/v1/observe/sessions/{id}/observations` | `AgentMemoryHandler.GetObservations` | List observations |
-| `GET` | `/v1/observe/stream` | `AgentMemoryHandler.StreamEvents` | SSE live stream |
+
+> **HLD canonical API** (`docs/hld/data-flow.md`): `POST /v1/observe/hooks`
+> **Current implementation** (`gateway/adapter/handler/router.go`): session-based flow
+
+| Method | Path | Handler | Description | HLD Status |
+|--------|------|---------|-------------|------------|
+| `POST` | `/v1/observe/hooks` | `AgentMemoryHandler.Observe` | Submit hook (HLD target) | **Target** |
+| `POST` | `/v1/observe/sessions` | `AgentMemoryHandler.StartSession` | Start agent session | Current |
+| `POST` | `/v1/observe/sessions/{id}/observe` | `AgentMemoryHandler.Observe` | Submit hook event | Current |
+| `POST` | `/v1/observe/sessions/{id}/end` | `AgentMemoryHandler.EndSession` | End session | Current |
+| `GET` | `/v1/observe/sessions/{id}` | `AgentMemoryHandler.GetSession` | Get session detail | Current |
+| `GET` | `/v1/observe/sessions` | `AgentMemoryHandler.ListSessions` | List sessions | Current |
+| `DELETE` | `/v1/observe/sessions/{id}` | `AgentMemoryHandler.DeleteSession` | Delete session | Current |
+| `GET` | `/v1/observe/sessions/{id}/observations` | `AgentMemoryHandler.GetObservations` | List observations | Current |
+| `GET` | `/v1/observe/stream` | `AgentMemoryHandler.StreamEvents` | SSE live stream | Current |
+
+> **Gap**: HLD defines simple `POST /v1/observe/hooks` → current impl requires session pre-creation.
+> Tracking: CR-AGENT-001 to align implementation with HLD API design.
 
 ---
 
