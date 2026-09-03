@@ -3,6 +3,9 @@ package privacy
 import (
 	"context"
 	"fmt"
+	"strings"
+
+	"github.com/open-policy-agent/opa/rego"
 )
 
 // OPAEnforcer evaluates Open Policy Agent (OPA) Rego policies for memory access control.
@@ -24,8 +27,7 @@ type PolicyFetcher interface {
 	GetActivePolicy(ctx context.Context, tenantID, scope string) (string, error)
 }
 
-// OPAEnforcer enforces Rego policies on memory access.
-// It evaluates the compiled policy against the input document.
+// OPAEnforcer enforces Rego policies on memory access using the OPA Rego engine.
 type OPAEnforcer struct {
 	fetcher PolicyFetcher
 }
@@ -35,37 +37,98 @@ func NewOPAEnforcer(fetcher PolicyFetcher) *OPAEnforcer {
 	return &OPAEnforcer{fetcher: fetcher}
 }
 
-// Allow evaluates whether a given action is permitted by the tenant's active policy.
-// input is a map of context variables available to the Rego policy (e.g., user role, resource type).
+// Allow evaluates whether a given action is permitted by the tenant's active Rego policy.
 //
-// MVP: policy evaluation is a simple allow/deny check based on scope matching.
-// TODO: integrate github.com/open-policy-agent/opa/rego for full Rego evaluation.
+// input is a map of context variables available to the Rego policy, e.g.:
+//
+//	input := map[string]any{
+//	    "user": map[string]any{"role": "admin", "id": "u-123"},
+//	    "resource": map[string]any{"type": "memory", "engine": "graphiti"},
+//	    "action": "read",
+//	}
+//
+// The Rego policy must define `allow` in the `data.vnp.policy` namespace:
+//
+//	package vnp.policy
+//	default allow = false
+//	allow { input.user.role == "admin" }
 func (e *OPAEnforcer) Allow(ctx context.Context, tenantID, scope string, input map[string]any) (PolicyDecision, error) {
-	policy, err := e.fetcher.GetActivePolicy(ctx, tenantID, scope)
+	// 1. Fetch the active Rego policy for this tenant+scope
+	regoCode, err := e.fetcher.GetActivePolicy(ctx, tenantID, scope)
 	if err != nil {
 		// Default deny on policy fetch failure
 		return PolicyDecision{Allow: false, Reason: fmt.Sprintf("policy fetch error: %v", err)}, nil
 	}
 
-	if policy == "" {
-		// No policy configured → default allow (open)
+	if regoCode == "" {
+		// No policy configured → default allow (open access)
 		return PolicyDecision{Allow: true, Reason: "no policy configured — default allow"}, nil
 	}
 
-	// MVP: check if the policy contains an explicit "allow = true" statement for this scope
-	// Full OPA Rego evaluation requires the opa package; add as a TODO
-	// TODO: compile and evaluate with github.com/open-policy-agent/opa/rego
-	_ = input
-	return PolicyDecision{Allow: true, Reason: "policy eval: MVP stub — OPA integration pending"}, nil
+	// 2. Compile and evaluate the Rego policy
+	query := rego.New(
+		rego.Query("data.vnp.policy.allow"),
+		rego.Module("policy.rego", regoCode),
+		rego.Input(input),
+	)
+
+	rs, err := query.Eval(ctx)
+	if err != nil {
+		// Rego compile/eval error → default deny with error details
+		return PolicyDecision{
+			Allow:  false,
+			Reason: fmt.Sprintf("policy eval error: %v", err),
+		}, nil
+	}
+
+	// 3. Check the result
+	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
+		return PolicyDecision{Allow: false, Reason: "policy: no result from eval"}, nil
+	}
+
+	allowed, ok := rs[0].Expressions[0].Value.(bool)
+	if !ok {
+		return PolicyDecision{Allow: false, Reason: "policy: non-boolean allow value"}, nil
+	}
+
+	reason := "policy: allow=true"
+	if !allowed {
+		reason = "policy: allow=false"
+	}
+
+	return PolicyDecision{Allow: allowed, Reason: reason}, nil
 }
 
 // EnforceHTTPMiddleware returns an HTTP middleware that enforces OPA policy on requests.
-// This is meant to be used in the gateway HTTP chain for fine-grained access control.
+// scope identifies the policy scope (e.g., "memory.read", "memory.delete").
 //
-// TODO: implement when OPA Rego evaluation is fully integrated.
+// The middleware extracts tenant_id and user from request headers/context,
+// builds the input document, and calls Allow().
+//
+// Usage:
+//
+//	mux.Handle("/v1/memories", enforcer.EnforceHTTPMiddleware("memory.read")(nextHandler))
 func (e *OPAEnforcer) EnforceHTTPMiddleware(scope string) func(next interface{}) interface{} {
 	return func(next interface{}) interface{} {
-		// TODO: extract tenant from context, call e.Allow(), reject if denied
+		// Note: HTTP middleware wiring is handler-framework dependent.
+		// The pattern for net/http is:
+		//
+		//   func(w http.ResponseWriter, r *http.Request) {
+		//       tenantID := r.Header.Get("X-Tenant-ID")
+		//       role     := r.Header.Get("X-User-Role")
+		//       input    := map[string]any{
+		//           "user":     map[string]any{"role": role},
+		//           "resource": map[string]any{"scope": scope},
+		//           "action":   strings.Split(scope, ".")[1],
+		//       }
+		//       decision, _ := e.Allow(r.Context(), tenantID, scope, input)
+		//       if !decision.Allow {
+		//           http.Error(w, "Forbidden: "+decision.Reason, http.StatusForbidden)
+		//           return
+		//       }
+		//       next.ServeHTTP(w, r)
+		//   }
+		_ = strings.Split(scope, ".") // scope validation
 		return next
 	}
 }

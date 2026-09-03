@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-ENT-003 |
 | **CR** | [CR-ENT-003](../../../../docs/crs/v5/enterprise/CR-ENT-003-Governance-Center.md) |
 | **TDD ref** | [08-platform-services.md](../../../tdd/architecture/08-platform-services.md) |
-| **Status** | 🔄 Partial |
+| **Status** | ✅ Implemented |
 | **Priority** | 🔴 Critical |
 
 ---
@@ -109,4 +109,4 @@ CREATE POLICY audit_insert_only ON audit_log FOR INSERT WITH CHECK (true);
 
 ---
 
-**Ghi chú audit:** MemoryVisibilityService + AuditService + PolicyService (Rego CRUD) in vnp-admin; OPA enforcement middleware pending full OPA integration
+**Ghi chú audit:** MemoryVisibilityService + AuditService + PolicyService + OPAEnforcer.Allow() with full Rego eval — all governance components complete

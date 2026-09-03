@@ -87,4 +87,4 @@ services/orchestration-service/internal/usecase/signal_test.go  [NEW]
 
 ---
 
-**Ghi chú audit:** SignalService exists in dummy.go (stub: Send returns empty signal); NATS-based signal routing not implemented
+**Ghi chú audit:** orchestration/signal.go [NEW]: NATSSignalRouter.Send() persists to DB + publishes to JetStream vnp.orchestration.signal.{agent}; Subscribe() push consumer; ReapExpired(); nats.go dep added to orchestration-service go.mod

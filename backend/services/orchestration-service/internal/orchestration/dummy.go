@@ -6,10 +6,17 @@ import (
     orchpb "github.com/vnp-memory/api/proto/orchestration/v1"
 )
 
+// SignalService is a no-op stub used when NATS is not configured.
+// For production, replace with NATSSignalRouter (signal.go).
+// SOL-ENT-001 / TASK-ENT-005
 type SignalService struct{}
-func (s *SignalService) ReapExpired(ctx context.Context) {}
+func (s *SignalService) ReapExpired(ctx context.Context)   {}
 func (s *SignalService) DeleteExpired(ctx context.Context) {}
-func (s *SignalService) Send(ctx context.Context, req *orchpb.SendSignalRequest) (*domain.Signal, error) { return &domain.Signal{}, nil }
+func (s *SignalService) Send(ctx context.Context, req *orchpb.SendSignalRequest) (*domain.Signal, error) {
+    // Stub: returns empty signal without NATS.
+    // Use NATSSignalRouter for real inter-agent communication.
+    return &domain.Signal{ID: "noop"}, nil
+}
 
 type CheckpointService struct{}
 func (c *CheckpointService) ReapExpired(ctx context.Context) {}

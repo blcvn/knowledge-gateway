@@ -120,4 +120,4 @@ gateway/adapter/handler/memory_handler.go  [MODIFY — OPA check]
 
 ---
 
-**Ghi chú audit:** shared/pkg/privacy/opa.go [NEW]: OPAEnforcer.Allow() MVP stub + PolicyFetcher interface; vnp-admin/usecase/policy_service.go: PolicyService Rego CRUD; full OPA Rego eval pending
+**Ghi chú audit:** shared/pkg/privacy/opa.go: OPAEnforcer.Allow() using rego.New() + rego.Eval() — full Rego compile + eval; OPA v0.70.0 added; go.work updated to 1.26

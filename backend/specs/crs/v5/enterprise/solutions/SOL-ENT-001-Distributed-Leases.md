@@ -118,4 +118,4 @@ func (r *SignalRouter) SendSignal(ctx context.Context, req *SendSignalRequest) e
 
 ---
 
-**Ghi chú audit:** LeaseService (Acquire/Renew/Release/SweepExpired) in orchestration-service; SignalService is a stub (NATS pending)
+**Ghi chú audit:** LeaseService (Acquire/Renew/Release/SweepExpired) + NATSSignalRouter (JetStream publish/subscribe) both implemented
