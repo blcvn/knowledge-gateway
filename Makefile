@@ -45,7 +45,7 @@ ps:
 # === Dev ===
 .PHONY: archive-old-services
 archive-old-services:
-	bash scripts/archive-old-services.sh
+	bash tests/scripts/archive-old-services.sh
 
 # === AgentMemory Protobufs ===
 .PHONY: proto-agentmemory
