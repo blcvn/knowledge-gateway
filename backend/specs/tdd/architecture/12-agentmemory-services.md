@@ -36,10 +36,14 @@ type RawObservation struct {
     ID        string
     SessionID string
     TenantID  string
-    HookType  string     // 12 types: session_start, prompt_submit, pre_tool_use,
-                         // post_tool_use, post_tool_failure, pre_compact,
-                         // subagent_start, subagent_stop, notification,
-                         // task_completed, stop, session_end
+    HookType  string     // 12 HookTypes (value_object.go):
+                         // session_start, prompt_submit, pre_tool_use,
+                         // post_tool_use, post_tool_failure, session_end,
+                         // task_completed, pre_subagent, post_subagent,
+                         // notification, stop, custom
+    ObsType   string     // 15 ObsTypes: tool_call, tool_success, error, conversation,
+                         // file_write, file_read, search, exec, commit, build,
+                         // test, install, api_call, memory, decision
     ToolName  string
     Payload   []byte     // JSON, PII-redacted before persist
     CreatedAt time.Time

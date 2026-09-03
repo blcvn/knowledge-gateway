@@ -17,7 +17,7 @@ type MemoryUnit struct {
     UserID    string            `json:"user_id"`
     AgentID   string            `json:"agent_id,omitempty"`
     SessionID string            `json:"session_id,omitempty"`
-    Type      MemoryType        `json:"type"`        // episodic/semantic/conversational/profile/procedural/adaptive
+    Type      MemoryType        `json:"type"`        // semantic/episodic/conversational/profile/procedural/auto
     Content   string            `json:"content"`
     Metadata  map[string]any    `json:"metadata,omitempty"`
     Score     float64           `json:"score,omitempty"`    // relevance score from search
@@ -27,13 +27,13 @@ type MemoryUnit struct {
 
 type MemoryType string
 const (
-    MemoryTypeEpisodic      MemoryType = "episodic"
-    MemoryTypeSemantic      MemoryType = "semantic"
+    MemoryTypeSemantic       MemoryType = "semantic"
+    MemoryTypeEpisodic       MemoryType = "episodic"
     MemoryTypeConversational MemoryType = "conversational"
-    MemoryTypeProfile       MemoryType = "profile"
-    MemoryTypeProcedural    MemoryType = "procedural"
-    MemoryTypeAdaptive      MemoryType = "adaptive"
-    MemoryTypeAuto          MemoryType = "auto"     // LLM classifies
+    MemoryTypeProfile        MemoryType = "profile"
+    MemoryTypeProcedural     MemoryType = "procedural"
+    MemoryTypeAuto           MemoryType = "auto"     // LLM classifies via Bifrost
+    // Note: "adaptive" (Supermemory) accessed via MemoryTypeSemantic or /v1/sm/* routes directly
 )
 ```
 
@@ -48,21 +48,23 @@ type MemoryStore interface {
     Timeline(ctx context.Context, req *TimelineRequest) (*TimelineResponse, error)
 }
 
+// TenantID is NOT in request body — injected from JWT via auth middleware
 type StoreRequest struct {
-    TenantID  string            `json:"tenant_id"`
-    UserID    string            `json:"user_id"`
-    Content   string            `json:"content"`
-    Type      MemoryType        `json:"type"`
-    Metadata  map[string]any    `json:"metadata,omitempty"`
+    Type     string            `json:"type"`     // "auto"|"semantic"|"episodic"|"conversational"|"profile"|"procedural"
+    Content  string            `json:"content"`
+    Metadata map[string]string `json:"metadata,omitempty"`
+    SourceID string            `json:"source_id,omitempty"`
+    UserID   string            `json:"user_id,omitempty"`
+    // TenantID extracted from AuthContext (gateway/domain/entity.go)
 }
 
 type RecallRequest struct {
-    TenantID  string            `json:"tenant_id"`
     UserID    string            `json:"user_id"`
     Query     string            `json:"query"`
     Types     []MemoryType      `json:"types,omitempty"`      // filter by type
     TimeRange *TimeRange        `json:"time_range,omitempty"` // temporal filter
     Limit     int               `json:"limit,omitempty"`
+    // TenantID extracted from AuthContext, not in request body
 }
 
 type RecallResponse struct {
@@ -75,36 +77,68 @@ type RecallResponse struct {
 
 ```go
 // Observe domain — services/observe-service/domain/
+// Source: services/observe-service/internal/domain/value_object.go
 type HookType string
 const (
-    HookSessionStart    HookType = "session_start"
-    HookSessionEnd      HookType = "session_end"
-    HookLLMPrompt       HookType = "llm_prompt"
-    HookLLMResponse     HookType = "llm_response"
-    HookToolCall        HookType = "tool_call"
-    HookToolResult      HookType = "tool_result"
-    HookMemoryRead      HookType = "memory_read"
-    HookMemoryWrite     HookType = "memory_write"
-    HookPlanStep        HookType = "plan_step"
-    HookDecision        HookType = "decision"
-    HookError           HookType = "error"
-    HookCheckpoint      HookType = "checkpoint"
+    HookSessionStart    HookType = "session_start"      // agent starts a session
+    HookPromptSubmit    HookType = "prompt_submit"       // user prompt submitted to LLM
+    HookPreToolUse      HookType = "pre_tool_use"        // before tool execution
+    HookPostToolUse     HookType = "post_tool_use"       // after successful tool execution
+    HookPostToolFailure HookType = "post_tool_failure"   // after failed tool execution
+    HookSessionEnd      HookType = "session_end"         // agent session ends
+    HookTaskCompleted   HookType = "task_completed"      // task/goal marked complete
+    HookPreSubagent     HookType = "pre_subagent"        // before spawning subagent
+    HookPostSubagent    HookType = "post_subagent"       // after subagent completes
+    HookNotification    HookType = "notification"        // agent sends notification
+    HookStop            HookType = "stop"                // agent stopped
+    HookCustom          HookType = "custom"              // custom hook payload
 )
 
-type ObserveHook struct {
-    TenantID  string            `json:"tenant_id"`
-    AgentID   string            `json:"agent_id"`
-    SessionID string            `json:"session_id"`
-    HookType  HookType          `json:"hook_type"`
-    Payload   map[string]any    `json:"payload"`
-    Timestamp time.Time         `json:"timestamp"`
+// ObsType classifies the observation content (within a hook)
+type ObsType string
+const (
+    ObsToolCall    ObsType = "tool_call"     // tool invocation
+    ObsToolSuccess ObsType = "tool_success"  // tool succeeded
+    ObsError       ObsType = "error"         // error/exception
+    ObsConversation ObsType = "conversation" // llm turn
+    ObsFileWrite   ObsType = "file_write"
+    ObsFileRead    ObsType = "file_read"
+    ObsSearch      ObsType = "search"
+    ObsExec        ObsType = "exec"
+    ObsCommit      ObsType = "commit"
+    ObsBuild       ObsType = "build"
+    ObsTest        ObsType = "test"
+    ObsInstall     ObsType = "install"
+    ObsAPI         ObsType = "api_call"
+    ObsMemory      ObsType = "memory"
+    ObsDecision    ObsType = "decision"
+)
+
+// RawObservation captures a single hook event (stored in PostgreSQL)
+type RawObservation struct {
+    ID                string
+    SessionID         string
+    TenantID          string
+    HookType          string    // one of HookType constants
+    ToolName          string
+    ToolInput         []byte    // JSON
+    ToolOutput        []byte    // JSON
+    UserPrompt        string
+    AssistantResponse string
+    Modality          string    // "text" | "image"
+    AgentID           string
+    Raw               []byte    // full JSON payload (PII-redacted)
+    Timestamp         time.Time
 }
 
 type ObserveService interface {
-    CaptureHook(ctx context.Context, hook *ObserveHook) error
-    GetSession(ctx context.Context, sessionID string) (*AgentSession, error)
-    ListSessions(ctx context.Context, req *ListSessionsRequest) ([]*AgentSession, error)
-    ReplaySession(ctx context.Context, sessionID string) (<-chan *ObserveHook, error)
+    StartSession(ctx context.Context, req *StartSessionRequest) (*Session, error)
+    Observe(ctx context.Context, sessionID string, hook *RawObservation) error
+    EndSession(ctx context.Context, sessionID string) error
+    GetSession(ctx context.Context, sessionID string) (*Session, error)
+    ListSessions(ctx context.Context, tenantID string) ([]*Session, error)
+    GetObservations(ctx context.Context, sessionID string) ([]*RawObservation, error)
+    StreamEvents(ctx context.Context, tenantID string) (<-chan *RawObservation, error)
 }
 ```
 

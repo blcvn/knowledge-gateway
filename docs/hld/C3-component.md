@@ -105,13 +105,13 @@ AgentMemory Layer
 │  OBSERVE SERVICE (F08 — Agent Hook Capture)                         │
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │  Hook Receiver                                               │  │
-│  │  (12 hook types: session_start, llm_prompt, tool_call...)    │  │
+│  │  (12 HookTypes: session_start, prompt_submit, pre_tool_use, post_tool_use, post_tool_failure, session_end, task_completed, pre/post_subagent, notification, stop, custom)    │  │
 │  │          │                                                   │  │
-│  │  14-Step Pipeline:                                           │  │
-│  │  Validate → Auth → Dedup(30s TTL) → Redact(PII/secrets)     │  │
-│  │  → Parse → Enrich → Classify → Store(postgres)              │  │
-│  │  → Index(BM25) → Embed(vector) → Publish(NATS)              │  │
-│  │  → Update Session State → Stream SSE                        │  │
+│  │  13-Step Pipeline (auth done at Gateway):                    │  │
+│  │  1.validate → 2.dedup(30sTTL) → 3.privacy(PII/secrets)     │  │
+│  │  → 4.build → 5.image → 6.mutex → 7.limit → 8.agentId       │  │
+│  │  → 9.persist(postgres) → 10.stream(SSE) → 11.session        │  │
+│  │  → 12.compress(rule-based) → 13.index(BM25)                 │  │
 │  │          │                                                   │  │
 │  │  Session Manager                 SSE Streamer               │  │
 │  │  (active/completed/abandoned)    (Console real-time)        │  │

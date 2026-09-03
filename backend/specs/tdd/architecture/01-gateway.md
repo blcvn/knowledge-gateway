@@ -14,7 +14,7 @@ Single entry point cho ALL VNP Memory APIs — routes tới 35 domain services. 
 **Key files:**
 - `gateway/adapter/handler/router.go` — tất cả HTTP routes
 - `gateway/adapter/client/registry.go` — `GRPCRegistry` (35 downstream services)
-- `gateway/adapter/mcp/server.go` — MCP SSE + HTTP Streamable server (16 tools)
+- `gateway/adapter/mcp/server.go` — MCP SSE + HTTP Streamable server (22 tools)
 - `gateway/internal/infra/middleware/auth.go` — JWT + API Key authentication
 - `gateway/internal/infra/config/config.go` — Viper config struct
 
@@ -282,7 +282,7 @@ type Config struct {
 
 **Transport:** SSE (`GET /sse`) và HTTP Streamable (`POST /message`)
 
-**16 tools registered** (từ `gateway/adapter/mcp/server.go`):
+**22 tools registered** (từ `gateway/adapter/mcp/server.go`):
 
 | Tool | Description | Backend |
 |------|-------------|---------|

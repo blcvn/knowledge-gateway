@@ -164,9 +164,6 @@ Hợp nhất **Cognee** (semantic KG, RAG), **Graphiti** (temporal episodic KG),
 | **Cache** | Redis | Rate limiting, session cache |
 | **LLM Router** | Bifrost (self-hosted proxy) | All LLM calls (OpenAI, Anthropic, Ollama) |
 | **Observability** | OpenTelemetry + Prometheus | All services |
-| **Multi-Model DB** | SurrealDB 2.x (optional) | Replaces Neo4j + Qdrant + PostgreSQL when enabled |
-| **Cache** | Redis 7+ | Gateway, Search, Context, Profiles |
-| **Object Storage** | MinIO / S3 | Cognee file storage |
 | **Filesystem** | Go-native VikingFS | OpenViking file operations |
 | **LLM Gateway** | Bifrost | All LLM-dependent services |
 | **Encryption** | AES-256-GCM envelope | OpenViking per-file encryption |
