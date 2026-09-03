@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-INTEL-004 |
 | **CR** | [CR-INTEL-004](../../../../docs/crs/v4/intelligence/CR-INTEL-004-Memory-Decay-Eviction.md) |
 | **TDD ref** | [12-agentmemory-services.md](../../../tdd/architecture/12-agentmemory-services.md) §memory-service |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🟡 High |
 
 ---
@@ -89,3 +89,7 @@ func (h *AgentMemoryHandler) EvictMemories(w http.ResponseWriter, r *http.Reques
 - [ ] Daily sweep archives memories with salience < 0.05
 - [ ] Archived memories recoverable (soft delete)
 - [ ] `GET /v1/memory/agent/{id}/retention` returns current salience score
+
+---
+
+**Ghi chú audit:** DecayScheduler (exponential half-life) + ConsolidationPipeline.step4DecayAndEvict + 0053_memory_salience migration

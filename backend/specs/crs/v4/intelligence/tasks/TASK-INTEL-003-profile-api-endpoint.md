@@ -74,3 +74,9 @@ r.Post("/v1/profiles/{user_id}/rebuild", profileHandler.RebuildProfile)
 gateway/adapter/handler/profile_handler.go  [NEW]
 gateway/adapter/handler/router.go           [MODIFY]
 ```
+
+**Trạng thái:** 🔄 Partial
+
+---
+
+**Ghi chú audit:** /v1/console/profiles/{user_id} route exists; ProfileHandler in console.go; cross-engine aggregation (Zep+Cognee) not wired

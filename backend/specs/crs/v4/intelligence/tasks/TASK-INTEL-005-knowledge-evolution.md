@@ -103,3 +103,9 @@ services/sm-memory/internal/usecase/evolution.go          [NEW]
 services/sm-memory/internal/domain/entity.go              [MODIFY — SupersededBy]
 deployment/dev/migrations/0042_memory_evolution.sql        [NEW — add superseded_by column]
 ```
+
+**Trạng thái:** ✅ Implemented
+
+---
+
+**Ghi chú audit:** sm-memory/usecase/evolution.go created: KnowledgeEvolutionUseCase.Evolve() — supersede/merge/coexist resolution via LLM

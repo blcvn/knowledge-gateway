@@ -85,3 +85,9 @@ r.Get("/v1/observe/sessions/{id}/export", handler.ExportSession)
 gateway/adapter/handler/agentmemory_handler.go  [MODIFY — add replay+export]
 gateway/adapter/handler/router.go               [MODIFY — register routes]
 ```
+
+**Trạng thái:** ✅ Implemented
+
+---
+
+**Ghi chú audit:** gateway: GET /v1/observe/replay/sessions, /replay/{id}/timeline, /replay/{id}/export (JSONL) routes registered; ExportSessionJSONL handler added

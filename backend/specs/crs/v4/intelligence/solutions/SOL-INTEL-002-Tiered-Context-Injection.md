@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-INTEL-002 |
 | **CR** | [CR-INTEL-002](../../../../docs/crs/v4/intelligence/CR-INTEL-002-Tiered-Context-Injection.md) |
 | **TDD ref** | [05-openviking-services.md](../../../tdd/architecture/05-openviking-services.md) |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🔴 Critical |
 
 ---
@@ -99,3 +99,7 @@ s.Register("ov_get_context", func(ctx context.Context, params map[string]any) (a
 - [ ] Token budget respected (no overflow)
 - [ ] L0/L1/L2 tiers assembled in priority order
 - [ ] `ov_get_context` MCP tool returns structured bundle
+
+---
+
+**Ghi chú audit:** ov-fs: ContextLevel L0/L1/L2 + abstract_repo StoreAbstract/GetAbstract fully implemented in file_ops.go

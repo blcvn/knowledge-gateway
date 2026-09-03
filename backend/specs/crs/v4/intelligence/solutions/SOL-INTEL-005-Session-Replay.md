@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-INTEL-005 |
 | **CR** | [CR-INTEL-005](../../../../docs/crs/v4/intelligence/CR-INTEL-005-Session-Replay.md) |
 | **TDD ref** | [12-agentmemory-services.md](../../../tdd/architecture/12-agentmemory-services.md) §observe-service |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🟡 High |
 
 ---
@@ -100,3 +100,7 @@ func (h *AgentMemoryHandler) ExportSession(w http.ResponseWriter, r *http.Reques
 - [ ] JSONL export contains all observations (no truncation)
 - [ ] `from_index` parameter allows partial replay
 - [ ] Replay respects tenant isolation
+
+---
+
+**Ghi chú audit:** ReplayUseCase.ListSessions+LoadTimeline + Playback() streaming + JSONL export endpoint + gateway routes

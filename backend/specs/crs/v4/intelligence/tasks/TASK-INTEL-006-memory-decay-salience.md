@@ -119,3 +119,9 @@ services/memory-service/internal/usecase/decay_test.go     [NEW]
 services/memory-service/internal/domain/entity.go          [MODIFY — salience, access_count]
 gateway/adapter/handler/agentmemory_handler.go             [MODIFY — add evict endpoint]
 ```
+
+**Trạng thái:** ✅ Implemented
+
+---
+
+**Ghi chú audit:** memory-service/usecase/agentmemory/decay.go: DecayScheduler with exponential half-life decay; FlagForEviction at strength<0.05

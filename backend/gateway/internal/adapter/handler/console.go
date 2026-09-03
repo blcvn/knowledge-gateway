@@ -373,6 +373,20 @@ func (h *DebuggerHandler) ListTraces(w http.ResponseWriter, r *http.Request) {
 	ForwardToService(h.registry, "vnp-event", h.logger)(w, r)
 }
 
+// GetAgentContext handles GET /v1/debug/context/{user_id} — Agent Context Debugger (SOL-INTEL-006 / TASK-INTEL-010).
+// Returns a diagnostic snapshot of what the AI "knows" about a user:
+// profile, recent memories, active sessions, and assembled context.
+func (h *DebuggerHandler) GetAgentContext(w http.ResponseWriter, r *http.Request) {
+	ForwardToService(h.registry, "memobase-engine", h.logger)(w, r)
+}
+
+// ExportSessionJSONL handles GET /v1/observe/replay/{id}/export — JSONL session export (SOL-INTEL-005 / TASK-INTEL-009).
+func (h *DebuggerHandler) ExportSessionJSONL(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"session.jsonl\"")
+	ForwardToService(h.registry, "observe-service", h.logger)(w, r)
+}
+
 // ──── T18: Session Handler (FEAT-014) ──────────────────────────
 
 // SessionHandler handles /v1/console/sessions/* routes.

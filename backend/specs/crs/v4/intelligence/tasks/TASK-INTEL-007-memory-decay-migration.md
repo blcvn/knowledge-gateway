@@ -65,3 +65,9 @@ ALTER TABLE sm_memories DROP COLUMN IF EXISTS archived;
 ```
 deployment/dev/migrations/0043_memory_salience.sql  [NEW]
 ```
+
+**Trạng thái:** ✅ Implemented
+
+---
+
+**Ghi chú audit:** deployment/dev/migrations/0053_memory_salience.up.sql: salience_score, access_count, last_accessed_at, archived columns + indexes

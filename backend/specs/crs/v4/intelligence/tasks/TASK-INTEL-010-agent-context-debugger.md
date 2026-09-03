@@ -104,3 +104,9 @@ if os.Getenv("ENABLE_DEBUG_API") == "true" {
 gateway/adapter/handler/debug_handler.go  [NEW]
 gateway/adapter/handler/router.go         [MODIFY — gated debug route]
 ```
+
+**Trạng thái:** ✅ Implemented
+
+---
+
+**Ghi chú audit:** DebuggerHandler.GetAgentContext() added to console.go; GET /v1/debug/context/{user_id} route registered in router.go

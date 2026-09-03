@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-INTEL-001 |
 | **CR** | [CR-INTEL-001](../../../../docs/crs/v4/intelligence/CR-INTEL-001-User-Profile-Assembly.md) |
 | **TDD ref** | [04-memobase-services.md](../../../tdd/architecture/04-memobase-services.md) |
-| **Status** | Open |
+| **Status** | 🔄 Partial |
 | **Priority** | 🔴 Critical |
 
 ---
@@ -92,3 +92,7 @@ func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 - [ ] Profile categories: preferences, skills, work_context, communication_style, goals
 - [ ] Profile version tracked, history queryable
 - [ ] RBAC: user can only read own profile; admin reads any
+
+---
+
+**Ghi chú audit:** user_profiles migration done; extract_profile + merge_profile usecase stubs exist; cross-engine aggregation (Zep/Cognee) not wired

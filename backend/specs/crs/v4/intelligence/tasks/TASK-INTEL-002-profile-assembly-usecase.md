@@ -94,3 +94,9 @@ services/memobase-engine/internal/usecase/profile_assembly.go  [NEW]
 services/memobase-engine/internal/port/assembly.go             [NEW]
 services/memobase-engine/internal/adapter/pg/profile_repo.go   [NEW]
 ```
+
+**Trạng thái:** 🔄 Partial
+
+---
+
+**Ghi chú audit:** extract_profile.go + merge_profile.go exist in memobase-engine/usecase; ExtractProfile/MergeProfile stub implementations — LLM integration needed

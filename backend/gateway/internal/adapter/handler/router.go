@@ -169,6 +169,10 @@ func Router(
 	// === /v1/observe/replay/* — session replay ===
 	mux.HandleFunc("GET /v1/observe/replay/sessions", agentmemH.ListReplaySessions)
 	mux.HandleFunc("GET /v1/observe/replay/{id}/timeline", agentmemH.LoadReplayTimeline)
+	mux.HandleFunc("GET /v1/observe/replay/{id}/export",  debugger.ExportSessionJSONL) // JSONL export (SOL-INTEL-005)
+
+	// === /v1/debug/* — Agent Context Debugger (SOL-INTEL-006 / TASK-INTEL-010) ===
+	mux.HandleFunc("GET /v1/debug/context/{user_id}", debugger.GetAgentContext)
 
 	// === /v1/stream — SSE for real-time session events ===
 	mux.HandleFunc("GET /v1/stream", agentmemH.StreamSSE)

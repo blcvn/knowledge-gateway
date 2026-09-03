@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-INTEL-006 |
 | **CR** | [CR-INTEL-006](../../../../docs/crs/v4/intelligence/CR-INTEL-006-Agent-Context-Debugger.md) |
 | **TDD ref** | [08-platform-services.md](../../../tdd/architecture/08-platform-services.md) |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🟠 Medium |
 
 ---
@@ -83,3 +83,7 @@ func (h *DebugHandler) GetAgentContext(w http.ResponseWriter, r *http.Request) {
 - [ ] Debug endpoint dev-only (gated by ENABLE_DEBUG_API=true)
 - [ ] Token estimate calculated for LLM context window planning
 - [ ] Accessible via MCP: `admin_get_agent_context` tool
+
+---
+
+**Ghi chú audit:** DebuggerHandler.GetAgentContext + GET /v1/debug/context/{user_id} registered in router

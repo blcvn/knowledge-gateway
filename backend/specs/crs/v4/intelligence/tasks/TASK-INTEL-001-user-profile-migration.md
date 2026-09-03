@@ -68,3 +68,9 @@ DROP TABLE IF EXISTS user_profiles;
 ```
 deployment/dev/migrations/0041_user_profiles.sql  [NEW]
 ```
+
+**Trạng thái:** ✅ Implemented
+
+---
+
+**Ghi chú audit:** user_profiles table in memobase-engine/migrations/000001_init_schema.up.sql (composite PK: id+project_id, HNSW index)

@@ -104,3 +104,9 @@ services/ov-fs/internal/usecase/context_injection.go   [NEW]
 gateway/adapter/mcp/handlers_context.go                [NEW — ov_get_context]
 gateway/adapter/mcp/server.go                          [MODIFY — register]
 ```
+
+**Trạng thái:** ✅ Implemented
+
+---
+
+**Ghi chú audit:** ov-fs file_ops.go: ContextLevel enum L0/L1/L2 + abstract_repo.go StoreAbstract/GetAbstract; MapContextLevel() in grpc/mapper.go

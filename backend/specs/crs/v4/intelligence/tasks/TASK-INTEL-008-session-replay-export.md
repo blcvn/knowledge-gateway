@@ -82,3 +82,9 @@ func (u *ReplayUseCase) ReplayWithSpeed(ctx context.Context, sessionID string, s
 services/observe-service/internal/usecase/replay.go       [NEW]
 services/observe-service/internal/usecase/replay_test.go  [NEW]
 ```
+
+**Trạng thái:** ✅ Implemented
+
+---
+
+**Ghi chú audit:** observe-service/internal/usecase/replay.go: ReplayUseCase.ListSessions+LoadTimeline; replay/replay.go: Playback() + timeline.go: BuildTimeline+Filter
