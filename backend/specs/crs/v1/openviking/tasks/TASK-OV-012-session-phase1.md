@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-OV-004 §3, §4.1, §4.2, §4.6](../solutions/SOL-OV-004-Session-Service.md)  
 **Port gRPC:** 9013
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** ov-session: 0 internal .go - session phase 1 not started  
 ---
 
 ## Mục tiêu

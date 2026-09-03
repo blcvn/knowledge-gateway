@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-001, TASK-AM-004 |
 | **Estimated** | 8h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** observe-service: 21 .go - core domain + session management  
 ---
 
 ## Context

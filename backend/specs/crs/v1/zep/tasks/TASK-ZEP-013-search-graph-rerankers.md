@@ -7,6 +7,8 @@
 **Ước tính:** 5h  
 **Priority:** High
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-search: 9 .go - graph + semantic search + rerankers  
 ---
 
 ## Mục tiêu

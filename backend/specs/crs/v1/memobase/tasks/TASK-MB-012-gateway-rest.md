@@ -6,6 +6,8 @@
 **Ước tính:** 5 giờ  
 **Solution tham chiếu:** [SOL-MB-006 §3-§12](../solutions/SOL-MB-006-Gateway-MCP-Server.md)
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** gateway routes present but memobase context proxy incomplete  
 ---
 
 ## Mục tiêu

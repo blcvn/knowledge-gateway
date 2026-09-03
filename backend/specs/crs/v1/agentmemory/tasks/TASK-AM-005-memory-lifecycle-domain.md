@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-001 |
 | **Estimated** | 6h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** observe-service domain: memory lifecycle entity  
 ---
 
 ## Context

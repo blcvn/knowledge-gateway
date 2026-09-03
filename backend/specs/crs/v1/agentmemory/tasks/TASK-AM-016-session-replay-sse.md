@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-003 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** observe-service SSE streaming implemented  
 ---
 
 ## Context

@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-021 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Grafana dashboards not implemented  
 ---
 
 ## Context

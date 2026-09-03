@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-014 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** orchestration-service background workers: signal handler + NATS  
 ---
 
 ## Target Files

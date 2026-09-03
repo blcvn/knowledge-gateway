@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-OV-001 §6, §7, §8](../solutions/SOL-OV-001-Gateway-Service.md)  
 **Ports:** MCP=8082, WebDAV=8083
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** MCP + WebDAV proxy in gateway, WebDAV fully proxied, MCP tools partial  
 ---
 
 ## Mục tiêu

@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-OV-006 §3](../solutions/SOL-OV-006-Crypto-Admin-Services.md)  
 **Port gRPC:** 9030
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** ov-admin: 21 .go - admin + tenant management  
 ---
 
 ## Mục tiêu

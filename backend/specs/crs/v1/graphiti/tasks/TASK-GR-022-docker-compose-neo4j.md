@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-005, TASK-GR-020 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** deployment/dev/docker-compose has Neo4j config  
 ---
 
 ## Context

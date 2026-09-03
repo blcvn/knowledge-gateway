@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-005 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** observe-service repos: PostgreSQL + BM25 index  
 ---
 
 ## Target Files

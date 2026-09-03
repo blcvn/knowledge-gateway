@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-011 |
 | **Estimated** | 6h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** MCP tool handlers: 6/15 target tools implemented  
 ---
 
 ## Target Files

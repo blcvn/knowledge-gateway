@@ -7,6 +7,8 @@
 **Ước tính:** 3h  
 **Priority:** Critical — auth foundation cho tất cả services
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** sm-auth: 8 .go - API key + basic RBAC present; OAuth2 server pending  
 ---
 
 ## Mục tiêu

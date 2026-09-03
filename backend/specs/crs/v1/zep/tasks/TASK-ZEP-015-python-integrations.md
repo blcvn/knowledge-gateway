@@ -7,6 +7,8 @@
 **Ước tính:** 6h  
 **Priority:** High — developer ecosystem
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Python integrations (LangChain, CrewAI) not implemented  
 ---
 
 ## Mục tiêu

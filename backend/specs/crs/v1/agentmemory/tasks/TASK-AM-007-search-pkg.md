@@ -11,6 +11,8 @@
 | **Depends On** | — |
 | **Estimated** | 6h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/search: 9 .go - BM25 + vector + RRF fusion  
 ---
 
 ## Context

@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-002, TASK-AM-008 |
 | **Estimated** | 3h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** Context injection in gateway MCP; memory-first prompt incomplete  
 ---
 
 ## Context

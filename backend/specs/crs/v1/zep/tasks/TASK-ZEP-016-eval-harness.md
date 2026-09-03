@@ -7,6 +7,8 @@
 **Ước tính:** 5h  
 **Priority:** Medium — quality measurement
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Evaluation harness not implemented  
 ---
 
 ## Mục tiêu

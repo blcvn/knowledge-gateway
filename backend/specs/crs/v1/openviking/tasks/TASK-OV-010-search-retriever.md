@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-OV-003 §3, §4, §5](../solutions/SOL-OV-003-Search-Service.md)  
 **Port gRPC:** 9012
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** ov-search: 23 .go - hierarchical retriever  
 ---
 
 ## Mục tiêu

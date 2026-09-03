@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-002 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-store entity repos: node/edge CRUD  
 ---
 
 ## Context

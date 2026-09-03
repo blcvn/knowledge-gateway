@@ -11,6 +11,8 @@
 | **Depends On** | — |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** api/proto/cognee/ protobuf contracts generated  
 ---
 
 ## Context

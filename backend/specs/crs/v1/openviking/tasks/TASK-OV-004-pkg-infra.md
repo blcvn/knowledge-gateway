@@ -6,6 +6,8 @@
 **Ước tính:** 4 giờ  
 **Solution tham chiếu:** [SOL-OV-007 §6-§10](../solutions/SOL-OV-007-Shared-Infrastructure.md)
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/telemetry + shared/pkg/resilience infra  
 ---
 
 ## Mục tiêu

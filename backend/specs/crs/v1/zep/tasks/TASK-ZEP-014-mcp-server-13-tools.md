@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** High — AI agent access
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** zep-go: 0 .go - MCP server scaffold missing; gateway MCP partial  
 ---
 
 ## Mục tiêu

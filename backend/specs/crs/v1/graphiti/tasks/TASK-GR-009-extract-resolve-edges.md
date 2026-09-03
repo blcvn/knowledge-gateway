@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-008 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-pipeline edge extraction + resolution  
 ---
 
 ## Context

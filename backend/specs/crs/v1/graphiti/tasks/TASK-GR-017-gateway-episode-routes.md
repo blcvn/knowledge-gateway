@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-011 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** gateway graphiti episode routes implemented  
 ---
 
 ## Context

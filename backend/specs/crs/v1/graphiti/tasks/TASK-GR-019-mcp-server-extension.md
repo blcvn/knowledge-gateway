@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-017, TASK-GR-018 |
 | **Estimated** | 4h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** Gateway MCP server has graphiti tools; full extension pending  
 ---
 
 ## Context

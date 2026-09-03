@@ -7,6 +7,8 @@
 **Ước tính:** 5h  
 **Priority:** Medium — developer ecosystem
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** SDK/framework integrations not implemented  
 ---
 
 ## Mục tiêu

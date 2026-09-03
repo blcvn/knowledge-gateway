@@ -11,6 +11,8 @@
 | **Depends On** | TASK-CE-001, TASK-CE-011 (migration CE-011 creates `cognee_pipeline_runs` table) |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** cognee-cognify Memify usecase implemented  
 ---
 
 ## Context

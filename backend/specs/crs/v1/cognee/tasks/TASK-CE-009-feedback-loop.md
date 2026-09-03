@@ -11,6 +11,8 @@
 | **Depends On** | TASK-CE-001, TASK-CE-011 |
 | **Estimated** | 6h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Feedback loop not yet implemented  
 ---
 
 ## Context

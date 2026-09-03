@@ -5,7 +5,8 @@
 **Phụ thuộc:** TASK-MB-001 (pkg/config)  
 **Ước tính:** 5 giờ  
 **Solution tham chiếu:** [SOL-MB-005](../solutions/SOL-MB-005-Admin-Service.md)  
-**Trạng thái:** ✅ Implemented
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** memobase-admin: 4 .go + memobase-engine admin domain
 **Port gRPC:** 9045
 
 ---

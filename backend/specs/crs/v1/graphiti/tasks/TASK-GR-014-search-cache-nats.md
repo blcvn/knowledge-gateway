@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-013 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-search NATS cache invalidation  
 ---
 
 ## Context

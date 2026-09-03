@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-001 |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-knowledge ontology presets (general/code/legal)  
 ---
 
 ## Context

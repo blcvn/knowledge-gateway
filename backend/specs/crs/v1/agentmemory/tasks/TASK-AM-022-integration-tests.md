@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-018 (all services running) |
 | **Estimated** | 5h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Integration tests not implemented  
 ---
 
 ## Context

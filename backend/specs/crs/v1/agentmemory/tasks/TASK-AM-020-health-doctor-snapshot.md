@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-017 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Health doctor + snapshot endpoint not implemented  
 ---
 
 ## Target Files

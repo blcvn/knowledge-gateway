@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-006 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-knowledge prompt registry  
 ---
 
 ## Context

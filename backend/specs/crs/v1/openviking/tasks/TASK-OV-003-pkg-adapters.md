@@ -6,6 +6,8 @@
 **Ước tính:** 4 giờ  
 **Solution tham chiếu:** [SOL-OV-007 §5](../solutions/SOL-OV-007-Shared-Infrastructure.md)
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/adapters covers LLM + storage adapters  
 ---
 
 ## Mục tiêu

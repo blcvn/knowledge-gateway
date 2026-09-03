@@ -11,6 +11,8 @@
 | **Depends On** | TASK-CE-007 |
 | **Estimated** | 4h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** Basic loaders implemented; PDF/HTML advanced loaders pending  
 ---
 
 ## Context

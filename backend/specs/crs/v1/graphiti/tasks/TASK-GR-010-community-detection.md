@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-009 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-pipeline community detection (Leiden/Louvain)  
 ---
 
 ## Context

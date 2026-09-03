@@ -11,6 +11,8 @@
 | **Depends On** | — (can run in parallel with Wave 2) |
 | **Estimated** | 1h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** DB migrations: cognee tables exist in deployment/dev/migrations  
 ---
 
 ## Context

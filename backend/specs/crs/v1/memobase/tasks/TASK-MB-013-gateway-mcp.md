@@ -6,6 +6,8 @@
 **Ước tính:** 4 giờ  
 **Solution tham chiếu:** [SOL-MB-006 §7, §8](../solutions/SOL-MB-006-Gateway-MCP-Server.md)
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** MCP server for memobase not implemented  
 ---
 
 ## Mục tiêu

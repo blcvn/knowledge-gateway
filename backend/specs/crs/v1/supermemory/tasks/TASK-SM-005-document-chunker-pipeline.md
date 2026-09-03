@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** Critical
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Document chunker pipeline not implemented (sm-document minimal)  
 ---
 
 ## Mục tiêu

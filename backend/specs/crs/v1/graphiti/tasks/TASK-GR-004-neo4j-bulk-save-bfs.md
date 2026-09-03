@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-003 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-store bulk save + BFS traversal  
 ---
 
 ## Context

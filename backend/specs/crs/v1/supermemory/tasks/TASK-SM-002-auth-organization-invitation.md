@@ -7,6 +7,8 @@
 **Ước tính:** 3h  
 **Priority:** Critical — multi-user org management
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** sm-auth: 8 .go - organization scaffold; invitation flow incomplete  
 ---
 
 ## Mục tiêu

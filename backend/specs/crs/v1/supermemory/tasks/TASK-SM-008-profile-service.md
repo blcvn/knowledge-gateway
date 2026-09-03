@@ -7,6 +7,8 @@
 **Ước tính:** 3h  
 **Priority:** High
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** sm-profile: 3 .go - scaffold only, service logic missing  
 ---
 
 ## Mục tiêu

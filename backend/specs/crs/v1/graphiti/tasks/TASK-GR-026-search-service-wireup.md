@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-013, TASK-GR-025 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-search: 32 .go - service wire-up complete  
 ---
 
 ## Context

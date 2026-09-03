@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-001 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-knowledge: 60 .go - LLM client adapters  
 ---
 
 ## Context

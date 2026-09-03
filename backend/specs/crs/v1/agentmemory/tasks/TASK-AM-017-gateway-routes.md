@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-015, TASK-AM-016 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** gateway routes: /v1/observe/* + /v1/agent/* fully mapped  
 ---
 
 ## Context

@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-OV-005 §3, §4](../solutions/SOL-OV-005-Resource-Service.md)  
 **Port gRPC:** 9014
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** ov-resource: 29 .go - resource ingestion pipeline  
 ---
 
 ## Mục tiêu

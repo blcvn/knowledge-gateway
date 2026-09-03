@@ -11,6 +11,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/privacy: 3 .go - PII redaction engine  
 ---
 
 ## Context

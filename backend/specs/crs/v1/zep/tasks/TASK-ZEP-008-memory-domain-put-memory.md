@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** Critical — sub-200ms SLA
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-memory: 16 .go - PutMemory domain + pipeline  
 ---
 
 ## Mục tiêu

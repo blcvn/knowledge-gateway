@@ -6,6 +6,8 @@
 **Ước tính:** 3 giờ  
 **Solution tham chiếu:** [SOL-OV-002 §5, §6, §7](../solutions/SOL-OV-002-Filesystem-Service.md)
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** ov-fs gRPC server + NATS integration  
 ---
 
 ## Mục tiêu

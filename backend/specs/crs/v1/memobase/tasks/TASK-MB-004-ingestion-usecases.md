@@ -5,7 +5,8 @@
 **Phụ thuộc:** TASK-MB-003 (domain + repositories)  
 **Ước tính:** 4 giờ  
 **Solution tham chiếu:** [SOL-MB-001 §5, §6, §7, §8](../solutions/SOL-MB-001-Blob-Ingestion-Buffer-Zone.md)
-**Trạng thái:** ✅ Implemented
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** memobase-engine: 30 .go, ingestion usecases present
 
 ---
 

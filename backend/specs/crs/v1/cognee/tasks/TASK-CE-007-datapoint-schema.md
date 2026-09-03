@@ -11,6 +11,8 @@
 | **Depends On** | TASK-CE-001, TASK-CE-011 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** DataPoint schema in cognee-cognify domain  
 ---
 
 ## Context

@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-017 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** gateway graphiti search routes implemented  
 ---
 
 ## Context

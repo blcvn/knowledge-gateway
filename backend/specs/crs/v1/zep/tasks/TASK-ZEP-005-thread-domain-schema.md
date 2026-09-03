@@ -7,6 +7,8 @@
 **Ước tính:** 2h  
 **Priority:** Critical
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-thread: 6 .go - thread/session domain + schema  
 ---
 
 ## Mục tiêu

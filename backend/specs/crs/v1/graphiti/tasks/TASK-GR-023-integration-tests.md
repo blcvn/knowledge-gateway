@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-022 |
 | **Estimated** | 4h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** graphiti integration tests in graphiti-knowledge/tests/ but not all paths  
 ---
 
 ## Context

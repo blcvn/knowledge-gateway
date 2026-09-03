@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-001 |
 | **Estimated** | 8h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** orchestration-service: 12 .go - core domain + lease system  
 ---
 
 ## Context

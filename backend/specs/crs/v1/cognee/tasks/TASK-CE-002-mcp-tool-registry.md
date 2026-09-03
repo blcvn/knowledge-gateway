@@ -11,6 +11,8 @@
 | **Depends On** | TASK-CE-001 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** cognee-search: 38 .go - MCP tool registry in gateway  
 ---
 
 ## Context

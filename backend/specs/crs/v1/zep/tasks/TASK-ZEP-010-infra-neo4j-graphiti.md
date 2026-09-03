@@ -7,6 +7,8 @@
 **Ước tính:** 2h  
 **Priority:** Critical — prerequisite cho zep-graph service
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-graph: 6 .go - Neo4j + graphiti infra  
 ---
 
 ## Mục tiêu

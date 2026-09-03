@@ -6,6 +6,8 @@
 **Ước tính:** 3 giờ  
 **Solution tham chiếu:** [SOL-OV-003 §6, §7, §8](../solutions/SOL-OV-003-Search-Service.md)
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** ov-search NATS index subscription  
 ---
 
 ## Mục tiêu

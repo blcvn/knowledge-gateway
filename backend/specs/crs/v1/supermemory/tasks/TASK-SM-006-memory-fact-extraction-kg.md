@@ -7,6 +7,8 @@
 **Ước tính:** 5h  
 **Priority:** Critical — LongMemEval 81.6% benchmark requires this
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** sm-engine: 0 .go - memory fact extraction KG not started  
 ---
 
 ## Mục tiêu

@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-009, TASK-GR-010 |
 | **Estimated** | 6h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-ingestion: 24 .go - full ingestion pipeline  
 ---
 
 ## Context

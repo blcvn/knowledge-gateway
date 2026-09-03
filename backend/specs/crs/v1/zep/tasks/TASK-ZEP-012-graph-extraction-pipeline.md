@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** Critical — core Temporal KG pipeline
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-graph: 6 .go - graph extraction pipeline  
 ---
 
 ## Mục tiêu

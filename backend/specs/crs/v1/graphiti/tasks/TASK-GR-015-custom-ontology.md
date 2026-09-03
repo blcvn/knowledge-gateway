@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-001, TASK-GR-008 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-knowledge custom ontology support  
 ---
 
 ## Context

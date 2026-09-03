@@ -7,6 +7,8 @@
 **Ước tính:** 5h  
 **Priority:** Medium
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** sm-connector: 0 .go - Google/Notion connectors not started  
 ---
 
 ## Mục tiêu

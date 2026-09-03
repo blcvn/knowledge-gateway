@@ -8,6 +8,8 @@
 **Port gRPC:** 9043  
 **Latency target:** < 100ms P99 (cache hit path)
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** memobase-context: 0 internal .go - service scaffolded, logic missing  
 ---
 
 ## Mục tiêu

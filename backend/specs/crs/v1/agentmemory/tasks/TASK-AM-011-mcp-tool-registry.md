@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-001 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** gateway MCP tool registry: observe tools registered  
 ---
 
 ## Context

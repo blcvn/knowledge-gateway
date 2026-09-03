@@ -6,6 +6,8 @@
 **Ước tính:** 4 giờ  
 **Solution tham chiếu:** [SOL-OV-004 §4.3, §4.4, §4.5, §5](../solutions/SOL-OV-004-Session-Service.md)
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** ov-session phase 2 (two-phase commit) not started  
 ---
 
 ## Mục tiêu

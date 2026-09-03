@@ -7,6 +7,8 @@
 **Ước tính:** 2h  
 **Priority:** Critical — dùng bởi Thread Service, Memory Service, Admin Service
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-thread: 6 .go - metadata + advisory lock implemented  
 ---
 
 ## Mục tiêu

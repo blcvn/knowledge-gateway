@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** Critical
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-graph: 6 .go - graph domain + Neo4j queries  
 ---
 
 ## Mục tiêu

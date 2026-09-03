@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-010 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-admin: 6 .go - admin service  
 ---
 
 ## Context

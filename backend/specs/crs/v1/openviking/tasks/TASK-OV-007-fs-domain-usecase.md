@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-OV-002 §3, §4](../solutions/SOL-OV-002-Filesystem-Service.md)  
 **Port gRPC:** 9011
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** ov-fs: 34 .go - FS domain + usecases  
 ---
 
 ## Mục tiêu

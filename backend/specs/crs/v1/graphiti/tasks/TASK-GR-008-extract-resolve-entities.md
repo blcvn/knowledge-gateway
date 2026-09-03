@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-007 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-pipeline: 39 .go - entity extraction + resolve  
 ---
 
 ## Context

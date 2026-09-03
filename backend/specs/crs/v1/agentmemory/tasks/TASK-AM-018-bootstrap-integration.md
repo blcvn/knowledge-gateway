@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-015, TASK-AM-017 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** bootstrap integration: services start from compose  
 ---
 
 ## Context

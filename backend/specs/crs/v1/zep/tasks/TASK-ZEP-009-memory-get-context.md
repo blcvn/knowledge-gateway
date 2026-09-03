@@ -7,6 +7,8 @@
 **Ước tính:** 3h  
 **Priority:** Critical — LLM context injection
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-memory: 16 .go - GetContext + assembly  
 ---
 
 ## Mục tiêu

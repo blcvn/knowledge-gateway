@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** High — Claude Desktop / Cursor integration
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** sm-mcp: 3 .go - MCP scaffold only, tools not registered  
 ---
 
 ## Mục tiêu

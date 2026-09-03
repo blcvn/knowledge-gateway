@@ -11,6 +11,8 @@
 | **Depends On** | TASK-CE-001 |
 | **Estimated** | 4h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** cognee-ingestion: 49 .go - NodeSets ingestion pipeline  
 ---
 
 ## Context

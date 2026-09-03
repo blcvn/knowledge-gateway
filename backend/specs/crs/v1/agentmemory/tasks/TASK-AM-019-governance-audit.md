@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-006 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Governance/audit layer: audit_log table not created  
 ---
 
 ## Context

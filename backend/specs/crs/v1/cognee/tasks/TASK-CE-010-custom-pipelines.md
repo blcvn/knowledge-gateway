@@ -11,6 +11,8 @@
 | **Depends On** | TASK-CE-006 |
 | **Estimated** | 6h |
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** Custom pipelines UI/API not implemented  
 ---
 
 ## Context

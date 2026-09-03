@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-002 |
 | **Estimated** | 6h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** observe-service pipeline: 13/14 steps impl; Embed step pending  
 ---
 
 ## Context

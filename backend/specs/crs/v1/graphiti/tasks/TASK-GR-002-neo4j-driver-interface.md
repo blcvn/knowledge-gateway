@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-001 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-store: 49 .go - Neo4j driver + interface  
 ---
 
 ## Context

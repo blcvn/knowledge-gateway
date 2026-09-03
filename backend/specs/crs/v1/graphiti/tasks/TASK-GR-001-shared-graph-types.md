@@ -11,6 +11,8 @@
 | **Depends On** | — |
 | **Estimated** | 2h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/graph: 4 .go (Node, Edge, Community types)  
 ---
 
 ## Context

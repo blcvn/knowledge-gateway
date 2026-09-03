@@ -6,6 +6,8 @@
 **Ước tính:** 3h  
 **Priority:** Critical — foundation, mọi service khác depend vào
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/resilience: 2 .go (circuit breaker + retry)  
 ---
 
 ## Mục tiêu

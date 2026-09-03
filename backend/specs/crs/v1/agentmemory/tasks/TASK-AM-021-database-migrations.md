@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-001 |
 | **Estimated** | 3h |
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** DB migrations: observe tables done; consolidation migration pending  
 ---
 
 ## Context

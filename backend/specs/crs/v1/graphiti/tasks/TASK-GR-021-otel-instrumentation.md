@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-011 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/telemetry OTel instrumentation in all graphiti svcs  
 ---
 
 ## Context

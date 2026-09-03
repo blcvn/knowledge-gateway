@@ -5,7 +5,8 @@
 **Phụ thuộc:** Không có  
 **Ước tính:** 2 giờ  
 **Solution tham chiếu:** [SOL-MB-007 §3, §7](../solutions/SOL-MB-007-Shared-Infrastructure.md)
-**Trạng thái:** ✅ Implemented
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/tokenizer + shared/pkg/config exists (3+3 .go)
 
 ---
 

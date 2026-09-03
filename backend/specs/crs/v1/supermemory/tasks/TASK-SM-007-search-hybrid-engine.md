@@ -7,6 +7,8 @@
 **Ước tính:** 5h  
 **Priority:** High
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** sm-search: 3 .go - scaffold only, hybrid engine not implemented  
 ---
 
 ## Mục tiêu

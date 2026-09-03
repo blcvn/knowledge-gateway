@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-004 |
 | **Estimated** | 6h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-search: 32 .go - hybrid BM25+vector search  
 ---
 
 ## Context

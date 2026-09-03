@@ -11,6 +11,8 @@
 | **Depends On** | TASK-CE-004 |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** cognee-search: 38 .go - NodeSets search + hybrid  
 ---
 
 ## Context

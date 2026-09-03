@@ -6,6 +6,8 @@
 **Ước tính:** 3 giờ  
 **Solution tham chiếu:** [SOL-MB-007 §8, §9](../solutions/SOL-MB-007-Shared-Infrastructure.md)
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/telemetry: 2 .go (OTel tracer + metrics)  
 ---
 
 ## Mục tiêu

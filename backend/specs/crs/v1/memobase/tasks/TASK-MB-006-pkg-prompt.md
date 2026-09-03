@@ -6,6 +6,8 @@
 **Ước tính:** 3 giờ  
 **Solution tham chiếu:** [SOL-MB-002 §9](../solutions/SOL-MB-002-Memory-Engine-Profile-YOLO.md)
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** memobase-engine prompt handling in usecase layer  
 ---
 
 ## Mục tiêu

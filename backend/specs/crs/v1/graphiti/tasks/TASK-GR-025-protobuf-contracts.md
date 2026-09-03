@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-001 |
 | **Estimated** | 5h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/proto/graphiti + api/proto/graphiti generated  
 ---
 
 ## Context

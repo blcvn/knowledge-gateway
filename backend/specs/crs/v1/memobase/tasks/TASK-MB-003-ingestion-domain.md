@@ -5,7 +5,8 @@
 **Phụ thuộc:** TASK-MB-001 (pkg/tokenizer, pkg/config), TASK-MB-002 (DB foundation migrations phải chạy trước)  
 **Ước tính:** 3 giờ  
 **Solution tham chiếu:** [SOL-MB-001 §3, §4](../solutions/SOL-MB-001-Blob-Ingestion-Buffer-Zone.md)  
-**Trạng thái:** ✅ Implemented
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** memobase-ingestion: 20 .go, buffer domain + pipeline
 **Port gRPC:** 9041
 
 ---

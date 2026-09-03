@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-OV-006 §2](../solutions/SOL-OV-006-Crypto-Admin-Services.md)  
 **Port gRPC:** 9015
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** ov-crypto: 18 .go - crypto service complete  
 ---
 
 ## Mục tiêu

@@ -7,6 +7,8 @@
 **Ước tính:** 3h  
 **Priority:** High — MCP client authentication
 
+**Trạng thái:** ⏳ Pending  
+**Ghi chú:** OAuth2 server (sm-auth) not implemented  
 ---
 
 ## Mục tiêu

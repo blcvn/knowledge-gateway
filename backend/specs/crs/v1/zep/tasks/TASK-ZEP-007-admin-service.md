@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** High — API key auth foundation
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** zep-admin: 6 .go - admin service multi-tenant  
 ---
 
 ## Mục tiêu

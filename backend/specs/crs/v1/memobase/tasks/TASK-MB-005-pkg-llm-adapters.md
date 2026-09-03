@@ -5,7 +5,8 @@
 **Phụ thuộc:** TASK-MB-001 (pkg/config đã có)  
 **Ước tính:** 4 giờ  
 **Solution tham chiếu:** [SOL-MB-007 §4, §5, §6, §9](../solutions/SOL-MB-007-Shared-Infrastructure.md)
-**Trạng thái:** ✅ Implemented
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/adapters: 2 .go (LLM + embedder)
 
 ---
 

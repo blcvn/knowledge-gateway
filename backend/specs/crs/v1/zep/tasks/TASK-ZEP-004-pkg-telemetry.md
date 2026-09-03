@@ -7,6 +7,8 @@
 **Ước tính:** 1h  
 **Priority:** Medium
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/telemetry: 2 .go (OTel tracer + metrics)  
 ---
 
 ## Mục tiêu

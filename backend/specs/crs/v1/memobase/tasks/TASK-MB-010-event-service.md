@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-MB-004](../solutions/SOL-MB-004-Event-Timeline-Semantic-Search.md)  
 **Port gRPC:** 9044
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** memobase-event: 4 .go - event domain + service  
 ---
 
 ## Mục tiêu

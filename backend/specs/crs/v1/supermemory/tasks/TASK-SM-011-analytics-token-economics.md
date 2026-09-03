@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** Medium
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** sm-analytics: 3 .go - scaffold only, token economics not implemented  
 ---
 
 ## Mục tiêu

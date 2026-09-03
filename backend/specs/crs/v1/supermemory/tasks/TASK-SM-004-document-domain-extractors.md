@@ -7,6 +7,8 @@
 **Ước tính:** 4h  
 **Priority:** Critical
 
+**Trạng thái:** 🔄 Partial  
+**Ghi chú:** sm-document: 3 .go - domain scaffold only, extractors missing  
 ---
 
 ## Mục tiêu

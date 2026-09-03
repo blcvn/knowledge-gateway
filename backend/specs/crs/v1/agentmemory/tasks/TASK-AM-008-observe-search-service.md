@@ -11,6 +11,8 @@
 | **Depends On** | TASK-AM-007, TASK-AM-001 |
 | **Estimated** | 6h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** observe-search service implemented  
 ---
 
 ## Context

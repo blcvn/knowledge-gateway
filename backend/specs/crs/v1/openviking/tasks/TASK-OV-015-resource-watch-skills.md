@@ -6,6 +6,8 @@
 **Ước tính:** 3 giờ  
 **Solution tham chiếu:** [SOL-OV-005 §5, §6, §7, §8](../solutions/SOL-OV-005-Resource-Service.md)
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** ov-resource watch + skills implemented  
 ---
 
 ## Mục tiêu

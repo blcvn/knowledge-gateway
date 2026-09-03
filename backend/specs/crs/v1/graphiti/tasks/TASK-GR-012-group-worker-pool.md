@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-011 (parallel) |
 | **Estimated** | 3h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** graphiti-ingestion group worker pool  
 ---
 
 ## Context

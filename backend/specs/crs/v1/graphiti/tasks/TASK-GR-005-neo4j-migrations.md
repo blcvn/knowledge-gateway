@@ -11,6 +11,8 @@
 | **Depends On** | TASK-GR-002 (parallel) |
 | **Estimated** | 1h |
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** Cypher migrations in deployment/dev/migrations  
 ---
 
 ## Context

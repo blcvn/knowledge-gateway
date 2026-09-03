@@ -7,6 +7,8 @@
 **Ước tính:** 2h  
 **Priority:** Critical — gateway dùng trước tất cả route handlers
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** shared/pkg/tenant + auth middleware stack  
 ---
 
 ## Mục tiêu

@@ -7,6 +7,8 @@
 **Solution tham chiếu:** [SOL-OV-001 §3, §4, §5, §9](../solutions/SOL-OV-001-Gateway-Service.md)  
 **Port HTTP:** 8080
 
+**Trạng thái:** ✅ Implemented  
+**Ghi chú:** gateway REST routes for openviking implemented  
 ---
 
 ## Mục tiêu
