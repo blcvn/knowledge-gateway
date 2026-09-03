@@ -56,3 +56,24 @@
 | P6 Framework Integrator | 3 | S2, S10 | 1 API thay vì 6 |
 | P7 AI Power User | 4 | S1, S4, S5 | Personalization từ session 1 |
 | P8 Product Manager | 3 | S5 | Structured insights từ conversations |
+
+---
+
+## Neuroscience Backing — Tại sao các giải pháp này đúng?
+
+Mỗi solution không chỉ là engineering decision — được backed bởi neuroscience:
+
+| Solution | Neuroscience Principle | Research Source |
+|---|---|---|
+| S1 Persistent Memory | Hippocampus-to-cortex transfer; memory consolidation | [sleep.md](../../research/sleep.md) |
+| S2 Unified API | Single cognitive system, not fragmented modules | [neocortex.md](../../research/neocortex.md) |
+| S3 Temporal Reasoning | Memory encodes timing (event memory) | [sleep.md](../../research/sleep.md) — replay |
+| S4 Knowledge Evolution | Synaptic plasticity; prediction error update | [synapse.md](../../research/synapse.md), [predictive-processing.md](../../research/predictive-processing.md) |
+| S5 User Profiling | Cortical self-model; world model | [predictive-processing.md](../../research/predictive-processing.md) |
+| S6 Context Efficiency | Attention = selective prediction; tiered cortex | [predictive-processing.md](../../research/predictive-processing.md), [neocortex.md](../../research/neocortex.md) |
+| S7 Agent Observability | Metacognition; monitoring own processes | [predictive-processing.md](../../research/predictive-processing.md) |
+| S8 Multi-Agent Coordination | Inter-neuron signaling; no race in brain | [synapse.md](../../research/synapse.md) |
+| S9 Governance | Controlled memory access; selective recall | [personal-memory.md](../../research/personal-memory.md) |
+| S10 Infrastructure | Integrated brain system, not modular boxes | [neocortex.md](../../research/neocortex.md) |
+
+> Đọc thêm: [Research Insights](../research/README.md)

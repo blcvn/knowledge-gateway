@@ -5,6 +5,8 @@
 > - **Business Value**: Pain points giải quyết, actors hưởng lợi, ROI
 >
 > **Tài liệu liên quan:**
+> - [Research Insights](../bussiness/research/README.md) — Neuroscience + Market foundations
+> - [Competitive Analysis](../bussiness/competitive/README.md) — 5 competitors vs VNP Memory
 > - [Pain Points](../bussiness/painpoints/README.md) — Các vấn đề của 8 actors
 > - [Solutions](../bussiness/solutions/README.md) — Giải pháp kỹ thuật chi tiết
 > - [PRD v2](../product/v2/PRD.md) — Product Requirements Document
@@ -45,6 +47,26 @@
 | 28 | [WebSocket Real-time Events](./28-websocket-realtime-events/) | Platform | S10 | P2, P1 |
 
 ---
+
+
+---
+
+## Research Backing — Neuroscience Foundation
+
+Mỗi memory type trong VNP Memory được thiết kế dựa trên neuroscience:
+
+| Memory Type | Neuroscience Analog | Research Source |
+|---|---|---|
+| Episodic (Graphiti) | Event memory với timestamps (hippocampus) | [sleep.md](../research/sleep.md) — hippocampus replay |
+| Semantic (Cognee) | Schema networks trong neocortex | [personal-memory.md](../research/personal-memory.md) |
+| Conversational (Zep) | Working memory + session encoding | [sensor.md](../research/sensor.md) — 5-step pipeline |
+| Profile (Memobase) | Cortical representation of self | [predictive-processing.md](../research/predictive-processing.md) |
+| Adaptive (Supermemory) | Living synaptic weights + pruning | [synapse.md](../research/synapse.md) + [sleep.md](../research/sleep.md) |
+| Procedural (OpenViking) | Neocortex L0/L1/L2 hierarchy | [neocortex.md](../research/neocortex.md) |
+| AgentMemory (Consolidation) | Sleep consolidation: NREM→REM→insight | [sleep.md](../research/sleep.md) — 9 sleep functions |
+| Agent Observe | Prediction error capture | [predictive-processing.md](../research/predictive-processing.md) |
+
+> Chi tiết: [Research Insights](../bussiness/research/README.md)
 
 ## Phân loại theo domain
 

@@ -67,3 +67,25 @@ Các hệ thống hiện tại chỉ giải quyết được **một mảnh**:
 | Framework integration khó | P6 | F01, F13 |
 | AI không cá nhân hóa | P7 | F05, F07 |
 | Không biết AI đang nhớ gì | P4, P7 | F16, F18 |
+
+---
+
+## Competitive Context — Tại sao các giải pháp hiện tại không đủ?
+
+Các pain points trên không phải chỉ VNP Memory thấy. Competitors cũng nhận ra — nhưng mỗi người chỉ giải được một phần:
+
+| Pain Point | Ai đang giải? | Gap còn lại |
+|---|---|---|
+| AI mất context (P1-01, P5-01, P7-01) | Zep (conversational), Memobase (profile) | Không ai có cả 2 + agent lifecycle |
+| Memory fragmented (P1-02) | Không ai | VNP Memory là người đầu tiên unify 6 engines |
+| RAG không hiểu thời gian (P1-03) | Graphiti, Zep | Thiếu user profiling layer |
+| Knowledge không tự update (P1-04) | Supermemory | Thiếu session management |
+| Không có user profile (P1-05) | Memobase | Không có graph memory |
+| Governance / GDPR (P4-01, P4-02) | Không ai có cascading | VNP Memory là người đầu tiên |
+| Agent observability (P1-07) | Không ai | VNP Memory AgentMemory Layer |
+| Multi-agent (P1-08) | Không ai | VNP Memory Orchestration (F11) |
+
+> **Insight từ research:** Zep URD explicitly liệt kê: "Managing conversation state, assembling relevant context, handling temporal data changes" — đây là CÙNG pain points với P1/P3 của VNP Memory.
+> Source: [`docs/research/market/zep/docs/URD.md`](../../research/market/zep/docs/URD.md)
+
+> Chi tiết competitive analysis: [../competitive/README.md](../competitive/README.md) | [Research](../research/README.md)

@@ -5,13 +5,15 @@
 | Field | Value |
 |---|---|
 | **Product** | VNP Memory |
-| **Version** | 2.2.0 |
+| **Version** | 2.3.0 |
 | **Status** | Active Development |
 | **Last Updated** | 2026-09-03 |
 | **Category** | Enterprise AI Infrastructure |
 | **Feature Catalog** | [docs/features/](../features/README.md) — 28 features |
 | **Pain Points** | [docs/bussiness/painpoints/](../bussiness/painpoints/README.md) — 8 actors |
 | **Solutions** | [docs/bussiness/solutions/](../bussiness/solutions/README.md) — 10 solutions |
+| **Research** | [docs/bussiness/research/](../bussiness/research/README.md) — Neuroscience + Market |
+| **Competitive** | [docs/bussiness/competitive/](../bussiness/competitive/README.md) — 5 competitors |
 
 ---
 
@@ -46,15 +48,15 @@ Thay vì xây dựng thêm "một vector DB nữa", VNP Memory tạo ra một **
 
 ### Giá trị cốt lõi
 
-| Pillar | Mô tả | Engine chính |
-|---|---|---|
-| **Episodic Memory** | Theo dõi sự kiện theo thời gian, temporal reasoning | Graphiti |
-| **Semantic Memory** | Trích xuất tri thức, xây dựng knowledge graph | Cognee |
-| **Conversational Memory** | Bộ nhớ hội thoại, context assembly < 200ms | Zep |
-| **Profile Memory** | Structured user profiles từ conversations, event timeline | Memobase |
-| **Adaptive Memory** | Living KG với auto-forgetting, external connectors | Supermemory |
-| **Procedural Memory** | Context phân tầng L0/L1/L2, VikingFS | OpenViking |
-| **AgentMemory Layer** | Hook capture, lifecycle, orchestration, consolidation | observe-service + memory-service |
+| Pillar | Mô tả | Engine chính | Research backing |
+|---|---|---|---|
+| **Episodic Memory** | Theo dõi sự kiện theo thời gian, temporal reasoning | Graphiti | Temporal facts = brain’s event memory |
+| **Semantic Memory** | Trích xuất tri thức, xây dựng knowledge graph | Cognee | Schema networks (personal-memory.md) |
+| **Conversational Memory** | Bộ nhớ hội thoại, context assembly < 200ms | Zep | Hippocampus fast-write (sleep.md) |
+| **Profile Memory** | Structured user profiles từ conversations | Memobase | World model update (predictive-processing.md) |
+| **Adaptive Memory** | Living KG với auto-forgetting, external connectors | Supermemory | Synaptic pruning + forgetAfter (sleep.md) |
+| **Procedural Memory** | Context phân tầng L0/L1/L2, VikingFS | OpenViking | Neocortex hierarchy (neocortex.md) |
+| **AgentMemory Layer** | Hook capture, lifecycle, orchestration, consolidation | observe-service + memory-service | Sleep consolidation stages (sleep.md) |
 
 ---
 
@@ -78,18 +80,33 @@ Enterprise AI đang chuyển từ `RAG → Agentic RAG → Persistent Memory Sys
 
 > Phân tích chi tiết: [Pain Points](../bussiness/painpoints/README.md)
 
-### 2.2 Hạn chế giải pháp hiện tại
+### 2.2 Hạn chế giải pháp hiện tại — Competitive Analysis
 
-| Hệ thống | Mạnh về | Thiếu |
-|---|---|---|
-| Zep | Conversational memory | User profiling, adaptive memory |
-| Mem0 | Lightweight memory | Temporal reasoning, enterprise features |
-| Graphiti | Temporal graph memory | Context assembly, user profiles |
-| Cognee | Extraction pipeline | Session management, filesystem |
-| Memobase | User profiling (YOLO engine) | Graph memory, temporal reasoning |
-| Supermemory | Adaptive KG + connectors | Session management |
+| Capability | Cognee | Graphiti | Memobase | Supermemory | Zep | **VNP Memory** |
+|---|---|---|---|---|---|---|
+| Knowledge graph | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ (5 engines) |
+| Temporal reasoning | ⚠️ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| User profile | ❌ | ❌ | ✅ | ⚠️ | ❌ | ✅ |
+| Filesystem memory | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (OpenViking) |
+| Auto-forget | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| Agent hooks (12 types) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Session replay | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Multi-agent coord. | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (leases) |
+| Memory consolidation | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (4-tier) |
+| GDPR cascading | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| MCP server | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ (37+ tools) |
+| External connectors | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| Custom ontology | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ |
+| Multi-modal ingestion | ✅ | ⚠️ | ❌ | ✅ | ✅ | ✅ |
+| Context < 100-200ms | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ✅ |
+| Enterprise governance | ⚠️ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Unified API | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
-> **Không ai unify toàn bộ stack + cung cấp AgentMemory orchestration layer.** VNP Memory giải quyết bằng cách tích hợp 6 engines chuyên biệt dưới một API thống nhất, kết hợp AgentMemory layer riêng biệt.
+**Positioning:** VNP Memory không cạnh tranh trực tiếp với 5 engines trên — VNP Memory **orchestrates** chúng.
+
+> **VNP Memory = Cognee + Graphiti + Memobase + Supermemory + Zep + AgentMemory + Enterprise Governance**
+
+> Chi tiết: [Competitive Analysis](../bussiness/competitive/README.md) | [Research Insights](../bussiness/research/README.md)
 
 ---
 
@@ -683,3 +700,50 @@ OpenAI, Azure OpenAI, Anthropic, Google Gemini, Groq, Mistral, Ollama, HuggingFa
 ---
 
 *Tham khảo chi tiết từng feature: [docs/features/](../features/README.md)*
+
+---
+
+## Appendix A — Research Foundations
+
+### A.1 Neuroscience-Inspired Design Principles
+
+VNP Memory được thiết kế dựa trên các nguyên lý từ neuroscience — lý giải "tại sao" đằng sau kiến trúc:
+
+| Design Principle | Neuroscience Source | Implementation trong VNP Memory |
+|---|---|---|
+| **Capture everything, store smart** | Hippocampus (RAM) vs Neocortex (HDD) | F08 capture all → F12 consolidate |
+| **Offline consolidation** | Sleep stages: NREM → REM → insight | F12 4-tier pipeline (khi agent idle) |
+| **Memory = relationships** | Schema theory, Hebbian learning | Knowledge Graphs: F02, F03, F04 |
+| **Surprise drives learning** | Predictive Processing — prediction error | Contradiction detection: F07, F09 |
+| **Forgetting is a feature** | Synaptic pruning during sleep | `forgetAfter` + eviction: F07, F09 |
+| **Tiered abstraction** | Neocortex 6 layers | L0/L1/L2 context: F06 |
+| **Context = reconstruction** | Memory as active reconstruction | Context assembly: F05, F13 |
+| **Temporal reasoning essential** | Memory encodes time stamps | `valid_at`/`invalid_at`: F02, F09 |
+
+> Đọc thêm: [Research Insights](../bussiness/research/README.md)
+
+### A.2 Competitive Research Sources
+
+| Competitor | Documents nghiên cứu |
+|---|---|
+| **Cognee** | [`docs/research/market/cognee/`](../../research/market/cognee/) — PRD, SRS, URD, TDD, Architecture, 13 service specs |
+| **Graphiti** | [`docs/research/market/graphiti/`](../../research/market/graphiti/) — PRD, SRS, URD, Architecture, 8 service specs |
+| **Memobase** | [`docs/research/market/memobase/`](../../research/market/memobase/) — PRD, SRS, URD, TDD, Architecture, 9 service specs |
+| **Supermemory** | [`docs/research/market/supermemory/`](../../research/market/supermemory/) — PRD, SRS, URD, TDD, Architecture, 10 service specs |
+| **Zep** | [`docs/research/market/zep/`](../../research/market/zep/) — PRD, SRS, URD, Architecture, 10 service specs |
+
+> Phân tích đầy đủ: [Competitive Landscape](../bussiness/competitive/README.md)
+
+### A.3 Neuroscience Research Sources
+
+| Topic | File | Key Insight áp dụng |
+|---|---|---|
+| Memory consolidation | [`sleep.md`](../../research/sleep.md) | F12 Consolidation 4-tier (mirrors sleep stages) |
+| Schema & learning | [`personal-memory.md`](../../research/personal-memory.md) | F09 Jaccard-based versioning (schema assimilation) |
+| Predictive Processing | [`predictive-processing.md`](../../research/predictive-processing.md) | F07/F09 contradiction detection (prediction error) |
+| Synapse strength | [`synapse.md`](../../research/synapse.md) | F09 salience scoring (synaptic weight) |
+| Perception pipeline | [`sensor.md`](../../research/sensor.md) | F08 14-step observe pipeline |
+| Hierarchical cortex | [`neocortex.md`](../../research/neocortex.md) | F06 L0/L1/L2 tiered context |
+| Morphological computation | [`morphonomic.md`](../../research/morphonomic.md) | Architecture: structure as computation |
+| Neuromorphic computing | [`neumorphic-computing.md`](../../research/neumorphic-computing.md) | Future: hardware-efficient memory ops |
+| Symbol grounding | [`writing.md`](../../research/writing.md) | Context injection: symbol → concept activation |
