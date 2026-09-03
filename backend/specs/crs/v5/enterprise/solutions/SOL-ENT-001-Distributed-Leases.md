@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-ENT-001 |
 | **CR** | [CR-ENT-001](../../../../docs/crs/v5/enterprise/CR-ENT-001-Distributed-Leases.md) |
 | **TDD ref** | [12-agentmemory-services.md](../../../tdd/architecture/12-agentmemory-services.md) §orchestration-service |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🟡 High |
 
 ---
@@ -115,3 +115,7 @@ func (r *SignalRouter) SendSignal(ctx context.Context, req *SendSignalRequest) e
 - [ ] Lease release only by owner (Lua atomic check)
 - [ ] Signal routing via NATS < 10ms
 - [ ] Lease TTL auto-expires (no orphan leases)
+
+---
+
+**Ghi chú audit:** LeaseService (Acquire/Renew/Release/SweepExpired) in orchestration-service; SignalService is a stub (NATS pending)

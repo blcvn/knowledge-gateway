@@ -117,3 +117,7 @@ shared/pkg/privacy/opa.go         [NEW]
 shared/pkg/privacy/opa_test.go    [NEW]
 gateway/adapter/handler/memory_handler.go  [MODIFY — OPA check]
 ```
+
+---
+
+**Ghi chú audit:** shared/pkg/privacy/opa.go [NEW]: OPAEnforcer.Allow() MVP stub + PolicyFetcher interface; vnp-admin/usecase/policy_service.go: PolicyService Rego CRUD; full OPA Rego eval pending

@@ -124,3 +124,7 @@ services/pipeline-service/internal/usecase/pipeline.go         [MODIFY]
 services/pipeline-service/internal/port/llm.go                 [MODIFY — compress, summarize, extract]
 deployment/dev/migrations/0044_session_blobs.sql                [NEW]
 ```
+
+---
+
+**Ghi chú audit:** pipeline-service: PipelineUseCase + 4 engine templates (graphiti/cognee/memobase/knowledge) + Redis consumer worker

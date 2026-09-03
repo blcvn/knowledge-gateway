@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-ENT-006 |
 | **CR** | [CR-ENT-006](../../../../docs/crs/v5/enterprise/CR-ENT-006-Infrastructure-Health.md) |
 | **TDD ref** | [01-gateway.md](../../../tdd/architecture/01-gateway.md) §Health |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🟠 Medium |
 
 ---
@@ -101,3 +101,7 @@ func (h *HealthHandler) Healthz(w http.ResponseWriter, r *http.Request) {
 - [ ] HTTP 503 if any service unhealthy
 - [ ] `GET :8083/healthz/live` lightweight liveness (no downstream checks)
 - [ ] `GET :8083/healthz/ready` readiness (all services healthy)
+
+---
+
+**Ghi chú audit:** gateway ObservabilityServer: /healthz/deep (16 services), /healthz, /readyz, /metrics (Prometheus) endpoints

@@ -103,3 +103,7 @@ func costPerOutputToken(model string) float64 { /* similar */ return 0.002 }
 shared/pkg/telemetry/bifrost.go       [NEW]
 shared/pkg/telemetry/bifrost_test.go  [NEW]
 ```
+
+---
+
+**Ghi chú audit:** shared/pkg/telemetry/bifrost.go [NEW]: LLMUsage struct + LLMCostAccumulator (atomic counters) + LLMCostInterceptor wrapper

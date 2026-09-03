@@ -128,3 +128,7 @@ shared/pkg/telemetry/metrics.go                   [MODIFY — add all metric var
 shared/pkg/telemetry/init.go                       [NEW/MODIFY — call Init()]
 gateway/adapter/handler/memory_handler.go          [MODIFY — instrument]
 ```
+
+---
+
+**Ghi chú audit:** shared/pkg/telemetry/metrics.go [NEW]: metrics naming convention + labels; gateway/middleware/metrics.go: RequestsTotal/RequestDuration/ActiveConnections/CircuitBreakerState/RateLimitRejected/ResponseSize

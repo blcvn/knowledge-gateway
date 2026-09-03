@@ -137,3 +137,7 @@ r.Get("/healthz/ready", healthHandler.ReadinessCheck)
 gateway/adapter/handler/health_handler.go  [MODIFY — aggregate all 42]
 gateway/adapter/handler/router.go          [MODIFY — /healthz/live, /healthz/ready]
 ```
+
+---
+
+**Ghi chú audit:** gateway/internal/infra/server/observability.go: deepHealthHandler with 16 services via registry.HealthCheck(); /healthz/deep endpoint + /metrics

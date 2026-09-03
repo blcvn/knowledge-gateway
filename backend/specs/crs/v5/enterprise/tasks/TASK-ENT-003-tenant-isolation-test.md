@@ -88,3 +88,7 @@ func TestCrossTenantIsolation_Sessions(t *testing.T) {
 tests/integration/tenant_isolation_test.go  [NEW]
 tests/integration/helpers_test.go           [NEW — test helpers]
 ```
+
+---
+
+**Ghi chú audit:** tests/integration/consolidation_test.go: cross-service integration tests including tenant isolation + NATS propagation

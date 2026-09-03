@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-ENT-002 |
 | **CR** | [CR-ENT-002](../../../../docs/crs/v5/enterprise/CR-ENT-002-Consolidation-Pipeline.md) |
 | **TDD ref** | [12-agentmemory-services.md](../../../tdd/architecture/12-agentmemory-services.md) §pipeline-service |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🟡 High |
 
 ---
@@ -99,3 +99,7 @@ func (p *PipelineService) StartSubscriber(ctx context.Context) {
 - [ ] Tier 4: Cross-session insights every 20 sessions
 - [ ] Circuit breaker: stop pipeline if LLM fails 3× consecutive
 - [ ] NATS event published after completion
+
+---
+
+**Ghi chú audit:** pipeline-service: PipelineUseCase + 4 templates + Redis consumer worker + ConsolidationPipeline 4-tier in memory-service

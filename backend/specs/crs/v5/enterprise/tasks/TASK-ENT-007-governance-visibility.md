@@ -107,3 +107,7 @@ services/vnp-admin/internal/usecase/visibility.go          [NEW]
 gateway/adapter/handler/admin_handler.go                   [MODIFY — GetUserMemories]
 gateway/adapter/handler/router.go                          [MODIFY]
 ```
+
+---
+
+**Ghi chú audit:** vnp-admin/usecase/memory_visibility.go [NEW]: MemoryVisibilityService.ListMemories/DeleteMemory/GetMemoryDetails

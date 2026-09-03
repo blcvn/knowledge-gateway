@@ -116,3 +116,7 @@ func TestRenewLease_ExtendsExpiry(t *testing.T) { ... }
 services/orchestration-service/internal/usecase/lease.go       [MODIFY]
 services/orchestration-service/internal/usecase/lease_test.go  [NEW]
 ```
+
+---
+
+**Ghi chú audit:** orchestration-service/internal/orchestration/leases.go: LeaseService.Acquire() (sync.Map + PostgreSQL) + Renew() + Release() + SweepExpired()

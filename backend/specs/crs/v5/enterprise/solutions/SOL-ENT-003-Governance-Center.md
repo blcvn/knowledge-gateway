@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-ENT-003 |
 | **CR** | [CR-ENT-003](../../../../docs/crs/v5/enterprise/CR-ENT-003-Governance-Center.md) |
 | **TDD ref** | [08-platform-services.md](../../../tdd/architecture/08-platform-services.md) |
-| **Status** | Open |
+| **Status** | 🔄 Partial |
 | **Priority** | 🔴 Critical |
 
 ---
@@ -106,3 +106,7 @@ CREATE POLICY audit_insert_only ON audit_log FOR INSERT WITH CHECK (true);
 - [ ] Audit log immutable (INSERT-only via RLS)
 - [ ] GDPR forget generates completion certificate (see SOL-CORE-003)
 - [ ] `GET /v1/admin/audit` searchable by user, operation, time range
+
+---
+
+**Ghi chú audit:** MemoryVisibilityService + AuditService + PolicyService (Rego CRUD) in vnp-admin; OPA enforcement middleware pending full OPA integration

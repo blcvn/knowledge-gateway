@@ -84,3 +84,7 @@ func (r *SignalRouter) Subscribe(tenantID, agentID string, handler func(*Signal)
 services/orchestration-service/internal/usecase/signal.go       [NEW]
 services/orchestration-service/internal/usecase/signal_test.go  [NEW]
 ```
+
+---
+
+**Ghi chú audit:** SignalService exists in dummy.go (stub: Send returns empty signal); NATS-based signal routing not implemented

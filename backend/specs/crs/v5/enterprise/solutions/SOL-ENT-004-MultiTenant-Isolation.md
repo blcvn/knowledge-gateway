@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-ENT-004 |
 | **CR** | [CR-ENT-004](../../../../docs/crs/v5/enterprise/CR-ENT-004-MultiTenant-Isolation.md) |
 | **TDD ref** | [09-shared-packages.md](../../../tdd/architecture/09-shared-packages.md) §tenant |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🔴 Critical |
 
 ---
@@ -105,3 +105,7 @@ func TestCrossTenantIsolation(t *testing.T) {
 - [ ] Every repository query must contain tenant_id filter
 - [ ] Alert fires immediately if query missing tenant filter
 - [ ] API key scoped to single tenant (cannot access other tenants)
+
+---
+
+**Ghi chú audit:** shared/pkg/tenant: UnaryServerInterceptor + ExtractFromMetadata + guard.go (Guard/GuardProject/MustGuard/WithTenant)

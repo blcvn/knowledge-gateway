@@ -92,3 +92,7 @@ func (r *ObservationRepo) GetBySession(ctx context.Context, sessionID, tenantID 
 shared/pkg/tenant/guard.go       [NEW]
 shared/pkg/tenant/guard_test.go  [NEW]
 ```
+
+---
+
+**Ghi chú audit:** shared/pkg/tenant/guard.go [NEW]: Guard() + GuardProject() + MustGuard() + WithTenant() + WithTenantProject()

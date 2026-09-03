@@ -5,7 +5,7 @@
 | **Solution ID** | SOL-ENT-005 |
 | **CR** | [CR-ENT-005](../../../../docs/crs/v5/enterprise/CR-ENT-005-Unified-Observability.md) |
 | **TDD ref** | [09-shared-packages.md](../../../tdd/architecture/09-shared-packages.md) §telemetry |
-| **Status** | Open |
+| **Status** | ✅ Implemented |
 | **Priority** | 🟡 High |
 
 ---
@@ -120,3 +120,7 @@ func (l *instrumentedLLM) Complete(ctx context.Context, req *port.CompletionRequ
 - [ ] LLM cost tracked per provider/model/task in real-time
 - [ ] Grafana dashboard shows: store/recall latency, error rates, LLM cost per day
 - [ ] Alert: `vnp_engine_health{engine} == 0` fires PagerDuty
+
+---
+
+**Ghi chú audit:** shared/pkg/telemetry: metrics.go naming convention + bifrost.go LLM cost tracking; gateway metrics.go: full Prometheus suite

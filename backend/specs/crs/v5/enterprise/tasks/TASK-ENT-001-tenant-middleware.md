@@ -101,3 +101,7 @@ func TestFromContext_Missing_PanicsInDev(t *testing.T) {}
 shared/pkg/tenant/middleware.go       [MODIFY — strict validation]
 shared/pkg/tenant/middleware_test.go  [NEW]
 ```
+
+---
+
+**Ghi chú audit:** shared/pkg/tenant/resolver.go: UnaryServerInterceptor() + ExtractFromMetadata() + InjectIntoContext() + FromContext()
